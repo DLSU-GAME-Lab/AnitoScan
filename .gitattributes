@@ -1,0 +1,7 @@
+vendor/ffmpeg/mac_arm/* filter=lfs diff=lfs merge=lfs -text
+vendor/ffmpeg/win_x64/* filter=lfs diff=lfs merge=lfs -text
+vendor/python/mac_arm/bin/* filter=lfs diff=lfs merge=lfs -text
+vendor/python/mac_arm/lib/* filter=lfs diff=lfs merge=lfs -text
+vendor/python/win_x64/*.exe filter=lfs diff=lfs merge=lfs -text
+vendor/python/win_x64/*.dll filter=lfs diff=lfs merge=lfs -text
+vendor/python/win_x64/DLLs/* filter=lfs diff=lfs merge=lfs -text

@@ -52,3 +52,9 @@ Thumbs.db
 **/__pycache__/
 **/*.py[cod]
 **/*.pyo
+
+# Don't ignore these if in vendor
+!vendor/**/*.exe
+!vendor/**/*.dll
+!vendor/**/*.so
+!vendor/**/*.dylib

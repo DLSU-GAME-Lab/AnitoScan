@@ -1,0 +1,7 @@
+# src/pipeline/requirements.txt
+
+# Utility for Model Setup
+huggingface_hub==1.12.0
+
+# No dependencies for Phase 1. 
+# OpenCV and NumPy will be added here for Phase 2 (Conditioning).
