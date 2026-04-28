@@ -30,3 +30,25 @@
 *.exe
 *.out
 *.app
+
+# IDE LSP helper
+.zed/
+
+# Project data
+data/
+assets/
+
+# AI Model Weights
+models/
+
+# Python Virtual Environment
+src/pipeline/.venv/
+
+# OS-specific junk files
+.DS_Store
+Thumbs.db
+
+# Ignore all python cache files everywhere
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo

@@ -1,0 +1,16 @@
+{
+    "venvPath": "src/pipeline",
+    "venv": ".venv",
+    "include": ["src/pipeline"],
+    "executionEnvironments": [
+        {
+            "root": "src/pipeline",
+            "extraPaths": ["src/pipeline"],
+        },
+    ],
+    "typeCheckingMode": "basic",
+    "reportUnknownMemberType": "none",
+    "reportUnknownVariableType": "none",
+    "reportUnknownArgumentType": "none",
+    "reportUnusedCallResult": "none",
+}
