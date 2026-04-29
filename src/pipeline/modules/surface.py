@@ -12,14 +12,6 @@ from pathlib import Path
 MODULE_PATH = Path(__file__).resolve()  
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
 
-# Point to where NeuS2 will be installed
-# Updated paths for 19reborn/NeuS2
-NEUS2_PATH = PROJECT_ROOT / "vendor" / "NeuS2"
-# The official repo uses a 'scripts' folder for Python execution
-train_script = NEUS2_PATH / "scripts" / "run.py" 
-# NeuS2 supports standard Instant-NGP style JSON (which your transforms.py creates)
-config_name = "base.json" # Or "dtu.json" depending on your scene type
-
 def run_surface_reconstruction(manifest_path, force=False):
     # 1. Load Manifest
     with open(manifest_path, "r") as f:
@@ -33,6 +25,22 @@ def run_surface_reconstruction(manifest_path, force=False):
     output_dir = Path(manifest.get("paths", {}).get("surface", str(PROJECT_ROOT / "data" / "surface")))
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # =====================================================================
+    # UPDATED NEUS2 PATHS FOR 19REBORN REPO
+    # =====================================================================
+    NEUS2_PATH = PROJECT_ROOT / "vendor" / "NeuS2"
+
+    # 1. The entry point in the new repo is usually scripts/run.py
+    train_script = NEUS2_PATH / "scripts" / "run.py"
+
+    # 2. The config is typically a JSON file in the configs folder
+    # 'base.json' is the standard for Instant-NGP/NeuS2 style training
+    config_file = NEUS2_PATH / "configs" / "base.json"
+
+    # 3. Path to the compiled C++ 'testbed' executable you just built
+    # On Windows, this will be in build/RelWithDebInfo/testbed.exe
+    testbed_exe = NEUS2_PATH / "build" / "RelWithDebInfo" / "testbed.exe"
+
     # Validation
     if not geometry_dir.exists() or not (geometry_dir / "transforms.json").exists():
         print(f"[!] Geometry data not found in {geometry_dir}")
@@ -43,14 +51,6 @@ def run_surface_reconstruction(manifest_path, force=False):
         print(f"[!] NeuS2 not found at {NEUS2_PATH}")
         print("    Please clone https://github.com/1900zyh/NeuS2.git into your vendor folder and build it.")
         sys.exit(1)
-
-    # 2. Configure the NeuS2 Environment
-    # NeuS2 runner is usually 'exp_runner.py'
-    train_script = NEUS2_PATH / "exp_runner.py"
-    
-    # NeuS2 uses conf files. 'womask.conf' means training without background masks.
-    # If your pipeline generated black-and-white masks earlier, you can use 'default.conf'
-    config_file = NEUS2_PATH / "confs" / "womask.conf"
 
     # 3. Phase 1: Train the Neural Surface
     print(f"[*] Phase 1: Starting NeuS2 Training...")
