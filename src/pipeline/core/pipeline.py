@@ -10,9 +10,9 @@ PROJECT_ROOT = SCRIPT_PATH.parent.parent.parent.parent
 WORKSPACE_DIR = PROJECT_ROOT / "data" / "runs"  # /data/runs/
 MODULES_DIR = SCRIPT_PATH.parent.parent / "modules"  # /src/
 
+
 def run_phase1(parent_module_path, manifest_path, args):
     # 1. Launch Phase 1: Capture
-    # This locates capture.py relative to this script's directory
     module_path = parent_module_path / "capture.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
     if args.force:
@@ -23,9 +23,9 @@ def run_phase1(parent_module_path, manifest_path, args):
         print(f"[!] Pipeline failed at Phase 1 (Capture). Exit code: {e.returncode}")
         sys.exit(e.returncode)
 
+
 def run_phase2(parent_module_path, manifest_path, args):
-    # 1. Launch Phase 1: Capture
-    # This locates capture.py relative to this script's directory
+    # 2. Launch Phase 2: Conditioning
     module_path = parent_module_path / "remove_background.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
     if args.force:
@@ -33,8 +33,11 @@ def run_phase2(parent_module_path, manifest_path, args):
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"[!] Pipeline failed at Phase 2 (Remove Background). Exit code: {e.returncode}")
+        print(
+            f"[!] Pipeline failed at Phase 2 (Remove Background). Exit code: {e.returncode}"
+        )
         sys.exit(e.returncode)
+
 
 def run_pipeline():
     # 0.1. Define the Interface
@@ -77,13 +80,13 @@ def run_pipeline():
     # 0.2. Establish Workspace (WORKSPACE_ROOT/[name]/)
     base_dir = (WORKSPACE_DIR / args.name).resolve()
     capture_dir = base_dir / "01_capture" / "raw_frames"
-    mask_dir = base_dir / "01_capture" / "masked_frames"
+    mask_dir = base_dir / "02_conditioning" / "masked_frames"
 
     manifest_path = base_dir / "manifest.json"
 
     capture_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
-    
+
     input_path = Path(PROJECT_ROOT / "data" / "input" / Path(args.input)).resolve()
 
     # If the path provided doesn't exist locally, check data/input/

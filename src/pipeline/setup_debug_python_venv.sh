@@ -57,7 +57,7 @@ fi
 # 4. Install/Update Dependencies
 # We use the python binary inside the .venv to ensure we stay in the sandbox
 VENV_PYTHON="./.venv/bin/python3"
-if [[ "$OS_TYPE" == *"MINGW"* ]]; then
+if [[ "$OS_TYPE" == *"MINGW"* || "$OS_TYPE" == *"MSYS"* || "$OS_TYPE" == *"CYGWIN"* ]]; then
     VENV_PYTHON="./.venv/Scripts/python.exe"
 fi
 
