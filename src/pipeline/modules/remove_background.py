@@ -4,16 +4,19 @@ import shutil
 import sys
 import time
 from pathlib import Path
+
 import cv2
 import numpy as np
 import torch
-from ultralytics import SAM
+from ultralytics.models.sam import SAM
 
 # DIRECTORY RESOLUTION
 MODULE_PATH = Path(__file__).resolve()  # /src/pipeline/modules/remove_background.py
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
+MODELS_DIR = PROJECT_ROOT / "models" / "conditioning"
 
-IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
+
 
 def run_remove_background(manifest_path, force=False, model_size="s"):
     # 1. Load Manifest
@@ -35,11 +38,10 @@ def run_remove_background(manifest_path, force=False, model_size="s"):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Gather source images
-    source_images = sorted([
-        f for f in input_dir.iterdir() 
-        if f.suffix.lower() in IMAGE_EXTENSIONS
-    ])
-    
+    source_images = sorted(
+        [f for f in input_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
+    )
+
     total_expected_frames = len(source_images)
     if total_expected_frames == 0:
         print(f"[!] Error: No valid images found in {input_dir}")
@@ -51,56 +53,79 @@ def run_remove_background(manifest_path, force=False, model_size="s"):
 
     print(f"[*] Found {existing_frame_count} existing masked frames in {output_dir}.")
     if existing_frame_count >= total_expected_frames and not force:
-        print(f"[*] Expected ~{total_expected_frames}. Skipping background removal phase.")
+        print(
+            f"[*] Expected ~{total_expected_frames}. Skipping background removal phase."
+        )
         print("PROGRESS: 100")
         return
 
     # 4. Initialize SAM 2
     if torch.cuda.is_available():
-        device = 'cuda'
+        device = "cuda"
     elif torch.backends.mps.is_available():
-        device = 'mps'
+        device = "mps"
     else:
-        device = 'cpu'
-        
+        device = "cpu"
+
+    model_filename = f"sam2_{model_size}.pt"
+    model_path = MODELS_DIR / model_filename
+
+    if not model_path.exists():
+        print(f"[!] Error: Weights not found at {model_path}")
+        print(f"[*] Expected location: {model_path.absolute()}")
+        sys.exit(1)
+
     print(f"[*] Initializing SAM 2 ({model_size}) on device: {device}")
-    model = SAM(f"sam2_{model_size}.pt")
+    model = SAM(str(model_path))
 
     # 5. Background Removal Logic
     start_perf = time.perf_counter()
     print(f"[*] Processing {total_expected_frames} frames to: {output_dir}")
 
-    for i, img_path in enumerate(source_images):
-        # We save as PNG to preserve the alpha (transparency) channel
-        target_name = f"{img_path.stem}.png"
-        target_path = output_dir / target_name
+    with torch.inference_mode():
+        for i, img_path in enumerate(source_images):
+            target_name = f"{img_path.stem}.png"
+            target_path = output_dir / target_name
 
-        # Predict using SAM 2
-        results = model.predict(source=str(img_path), conf=0.25, device=device, verbose=False)
+            results_list = model.predict(
+                source=str(img_path),
+                conf=0.25,
+                device=device,
+                verbose=False,
+                imgsz=1024,
+            )
 
-        img = cv2.imread(str(img_path))
-        bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+            results = results_list[0]
 
-        if not results[0].masks:
-            # If nothing is detected, keep the image but make it fully opaque
-            # so the pipeline doesn't crash on a missing file
-            bgra[:, :, 3] = 255 
-        else:
-            # Extract mask, resize to match image, and apply to alpha channel
-            mask = results[0].masks.data[0].cpu().numpy().astype(np.float32) 
-            h, w = img.shape[:2]
-            mask_resized = cv2.resize(mask, (w, h))
-            
-            mask_255 = (mask_resized * 255).astype(np.uint8)
-            bgra[:, :, 3] = cv2.bitwise_not(mask_255)
+            img = cv2.imread(str(img_path))
+            if img is None:
+                continue
+            bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
 
-        # Export
-        cv2.imwrite(str(target_path), bgra)
+            if not results[0].masks:
+                # If nothing is detected, keep the image but make it fully opaque
+                # so the pipeline doesn't crash on a missing file
+                bgra[:, :, 3] = 255
+            else:
+                # Extract mask, resize to match image, and apply to alpha channel
+                mask = results[0].masks.data[0].cpu().numpy().astype(np.float32)
+                h, w = img.shape[:2]
+                mask_resized = cv2.resize(mask, (w, h))
 
-        # Progress tracking
-        percent = int(((i + 1) / total_expected_frames) * 100)
-        print(f"PROGRESS: {percent}")
-        sys.stdout.flush()
+                mask_255 = (mask_resized * 255).astype(np.uint8)
+                mask_soft = cv2.GaussianBlur(mask_255, (5, 5), 0)
+                _, mask_final = cv2.threshold(mask_soft, 127, 255, cv2.THRESH_BINARY)
+                bgra[:, :, 3] = cv2.bitwise_not(mask_final)
+
+            # Export
+            cv2.imwrite(str(target_path), bgra)
+            if device == "mps":
+                torch.mps.empty_cache()
+
+            # Progress tracking
+            percent = int(((i + 1) / total_expected_frames) * 100)
+            print(f"PROGRESS: {percent}")
+            sys.stdout.flush()
 
     print("PROGRESS: 100")
 
@@ -118,12 +143,15 @@ def run_remove_background(manifest_path, force=False, model_size="s"):
     print(f"[*] Total Time: {total_time:.2f}s")
     print(f"[*] Processing Speed: {processing_speed:.2f} frames/sec")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=str, required=True)
     parser.add_argument("--force", action="store_true")
     # Added model_size as an optional argument so you can override it from the CLI if needed
-    parser.add_argument("--model_size", type=str, default="s", choices=['t', 's', 'b', 'l'])
-    
+    parser.add_argument(
+        "--model_size", type=str, default="s", choices=["t", "s", "b", "l"]
+    )
+
     args = parser.parse_args()
     run_remove_background(args.manifest, force=args.force, model_size=args.model_size)
