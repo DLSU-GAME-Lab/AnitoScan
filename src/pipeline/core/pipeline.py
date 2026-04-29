@@ -34,13 +34,12 @@ def run_phase2(parent_module_path, manifest_path, args):
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
         print(
-            f"[!] Pipeline failed at Phase 2 (Remove Background). Exit code: {e.returncode}"
+            f"[!] Pipeline failed at Phase 2 (Filter/Masking). Exit code: {e.returncode}"
         )
         sys.exit(e.returncode)
 
 def run_phase3(parent_module_path, manifest_path, args):
-    # 1. Launch Phase 1: Capture
-    # This locates capture.py relative to this script's directory
+    # 1. Launch Phase 3: Spatial Initialization
     module_path = parent_module_path / "spacial.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
     if args.force:
@@ -48,7 +47,7 @@ def run_phase3(parent_module_path, manifest_path, args):
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"[!] Pipeline failed at Phase 2 (Remove Background). Exit code: {e.returncode}")
+        print(f"[!] Pipeline failed at Phase 3 (Spatial Initialization). Exit code: {e.returncode}")
         sys.exit(e.returncode)
 
 def run_pipeline():
@@ -91,13 +90,15 @@ def run_pipeline():
 
     # 0.2. Establish Workspace (WORKSPACE_ROOT/[name]/)
     base_dir = (WORKSPACE_DIR / args.name).resolve()
-    capture_dir = base_dir / "01_capture" / "raw_frames"
-    mask_dir = base_dir / "02_conditioning" / "masked_frames"
+    capture_dir = base_dir / "01_capture"
+    mask_dir = base_dir / "02_conditioning"
+    spacial_dir = base_dir / "03_spatial"
 
     manifest_path = base_dir / "manifest.json"
 
     capture_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
+    spacial_dir.mkdir(parents=True, exist_ok=True)
 
     input_path = Path(PROJECT_ROOT / "data" / "input" / Path(args.input)).resolve()
 
@@ -120,6 +121,7 @@ def run_pipeline():
             "run_root": str(base_dir),
             "raw_frames": str(capture_dir),
             "masked_frames": str(mask_dir),
+            "spacial": str(spacial_dir),
         },
     }
 

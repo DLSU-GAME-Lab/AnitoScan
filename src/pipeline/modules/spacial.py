@@ -33,7 +33,7 @@ except ImportError:
 
 
 
-def run_spacial_reconstruction(manifest_path, force=False, model_weights="naver/MASt3R_ViTLarge_BaseDecoder_512_catpt"):
+def run_spacial_reconstruction(manifest_path, force=False):
     # 1. Load Manifest
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
@@ -43,7 +43,7 @@ def run_spacial_reconstruction(manifest_path, force=False, model_weights="naver/
     
     # We need a new path in the manifest for the 3D output data
     # Assuming manifest["paths"]["spacial_data"] exists
-    output_dir = Path(manifest.get("paths", {}).get("spacial_data", str(PROJECT_ROOT / "data" / "spacial_data")))
+    output_dir = Path(manifest.get("paths", {}).get("spacial", str(PROJECT_ROOT / "data" / "spacial")))
 
     # 2. Preparation & Validation
     if not input_dir.exists() or not input_dir.is_dir():
@@ -90,8 +90,10 @@ def run_spacial_reconstruction(manifest_path, force=False, model_weights="naver/
     # Load the MASt3R model
     # Note: Depending on your specific MASt3R version, the init might vary slightly.
     # Force the model to load with a tuple to override the broken config
+    local_model_path = r"models\spacial\MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
+
     model = AsymmetricMASt3R.from_pretrained(
-        model_weights
+        local_model_path
     ).to(device)
     model.eval()
 
@@ -112,24 +114,36 @@ def run_spacial_reconstruction(manifest_path, force=False, model_weights="naver/
 
         # Load images using DUSt3R's native loader to handle sizing and normalization
         # We pass the paths as strings inside a list
-        imgs, imgs_tensor, _, _ = load_images([str(img_path_1), str(img_path_2)], size=512)
+        imgs = load_images([str(img_path_1), str(img_path_2)], size=512)
+        # The tensor is typically stored inside each image dict under the 'img' key
+        imgs_tensor = torch.stack([img['img'] for img in imgs])
         
         # Create a single pair configuration
-        pairs = make_pairs(imgs_tensor, scene_graph="complete", prefilter=None, symmetrize=True)
+        pairs = make_pairs(imgs, scene_graph="complete", prefilter=None, symmetrize=True)
 
         with torch.no_grad():
             # Run inference
             output = inference(pairs, model, device, batch_size=1, verbose=False)
             
-            # Extract pointmaps, confidence, and descriptors
-            # Depending on how you want to use the data later, you can save these arrays
-            view1 = output['view1']
-            view2 = output['view2']
-            
-            pts3d_1 = view1['pts3d'].cpu().numpy()
-            pts3d_2 = view2['pts3d'].cpu().numpy()
-            conf_1 = view1['conf'].cpu().numpy()
-            conf_2 = view2['conf'].cpu().numpy()
+            # Extract predictions
+            pred1 = output['pred1']
+            pred2 = output['pred2']
+
+            # Image 1 is standard
+            pts3d_1 = pred1['pts3d'].detach().cpu().numpy()
+
+            # Image 2 uses a different key in the Asymmetric model
+            if 'pts3d' in pred2:
+                pts3d_2 = pred2['pts3d'].detach().cpu().numpy()
+            else:
+                # This is the key MASt3R uses for the second view in a pair
+                pts3d_2 = pred2['pts3d_in_other_view'].detach().cpu().numpy()
+
+            # Confidence and Descriptors are usually in both
+            conf_1 = pred1['conf'].detach().cpu().numpy()
+            conf_2 = pred2['conf'].detach().cpu().numpy()
+            desc_1 = pred1['desc'].detach().cpu().numpy()
+            desc_2 = pred2['desc'].detach().cpu().numpy()
             
             # Save the raw 3D data as an NPZ file for the next step in your pipeline
             np.savez_compressed(
@@ -167,7 +181,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=str, required=True, help="Path to project manifest.json")
     parser.add_argument("--force", action="store_true", help="Overwrite existing spacial data")
-    parser.add_argument("--weights", type=str, default="naver/MASt3R_ViTLarge_BaseDecoder_512_catpt", help="HuggingFace model weights")
     
     args = parser.parse_args()
-    run_spacial_reconstruction(args.manifest, force=args.force, model_weights=args.weights)
+    run_spacial_reconstruction(args.manifest, force=args.force)
