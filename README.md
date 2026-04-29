@@ -14,7 +14,7 @@ AnitoScan is a hybrid 3D reconstruction system designed for the DLSU GAME Lab.
 3. Go to `vendor\NeuS2`
 
 ## If in windows
-4.1. Run `cmake . -B build`
+4.1. Run `cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM="3.5.0"`
 4.2. Run `cmake --build build --config RelWithDebInfo -j`
 
 ## Running the tool
