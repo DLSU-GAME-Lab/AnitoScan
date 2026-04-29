@@ -60,3 +60,4 @@ Thumbs.db
 !vendor/**/*.dylib
 /.vs
 /out
+/output

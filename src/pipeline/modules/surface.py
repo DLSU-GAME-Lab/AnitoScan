@@ -12,6 +12,13 @@ from pathlib import Path
 MODULE_PATH = Path(__file__).resolve()  
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
 
+# 1. Update the path resolution
+NEUS2_PATH = PROJECT_ROOT / "vendor" / "NeuS2"
+train_script = NEUS2_PATH / "scripts" / "run.py"
+# The confirmed path:
+config_file = NEUS2_PATH / "configs" / "nerf" / "base.json"
+
+# 2. Update the train_cmd logic
 def run_surface_reconstruction(manifest_path, force=False):
     # 1. Load Manifest
     with open(manifest_path, "r") as f:
@@ -22,53 +29,32 @@ def run_surface_reconstruction(manifest_path, force=False):
     geometry_dir = geometry_dir / "transform"
 
     # We will save the final 3D mesh here
-    output_dir = Path(manifest.get("paths", {}).get("surface", str(PROJECT_ROOT / "data" / "surface")))
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = Path(manifest.get("paths", {}).get("geometry", str(PROJECT_ROOT / "data" / "surface")))
+    output_dir = output_dir / "final_reconstruction.obj"
 
-    # =====================================================================
-    # UPDATED NEUS2 PATHS FOR 19REBORN REPO
-    # =====================================================================
-    NEUS2_PATH = PROJECT_ROOT / "vendor" / "NeuS2"
-
-    # 1. The entry point in the new repo is usually scripts/run.py
-    train_script = NEUS2_PATH / "scripts" / "run.py"
-
-    # 2. The config is typically a JSON file in the configs folder
-    # 'base.json' is the standard for Instant-NGP/NeuS2 style training
-    config_file = NEUS2_PATH / "configs" / "base.json"
-
-    # 3. Path to the compiled C++ 'testbed' executable you just built
-    # On Windows, this will be in build/RelWithDebInfo/testbed.exe
-    testbed_exe = NEUS2_PATH / "build" / "RelWithDebInfo" / "testbed.exe"
-
-    # Validation
-    if not geometry_dir.exists() or not (geometry_dir / "transforms.json").exists():
-        print(f"[!] Geometry data not found in {geometry_dir}")
-        print("    Please run transforms.py first.")
-        sys.exit(1)
-
-    if not NEUS2_PATH.exists():
-        print(f"[!] NeuS2 not found at {NEUS2_PATH}")
-        print("    Please clone https://github.com/1900zyh/NeuS2.git into your vendor folder and build it.")
-        sys.exit(1)
-
-    # 3. Phase 1: Train the Neural Surface
-    print(f"[*] Phase 1: Starting NeuS2 Training...")
-    print(f"[*] Reading data from: {geometry_dir}")
-
+    # Construct the command for the 19reborn version
     train_cmd = [
-        sys.executable,  # Use current python environment
+        sys.executable,
         str(train_script),
-        "--mode", "train",
-        "--conf", str(config_file),
-        "--case", str(geometry_dir)
+        "--name", "AnitoScan_Project",
+        "--mode", "sdf",               # SDF is required for high-quality surfaces
+        "--scene", str(geometry_dir / "transforms.json"),
+        "--marching_cubes_res", "256",
+        "--network", str(config_file), # Points to configs/nerf/base.json
+        "--train",                     # Enable training mode
+        "--n_steps", "500",             # ~5-10 mins on a modern GPU
+        "--save_mesh",                  # Generate .ply when finished
+        "--save_mesh_path", str(output_dir)
     ]
 
+    print(f"[*] Executing NeuS2 command...")
+    # It's vital to run this with the NeuS2 root as the CWD (Current Working Directory)
+    # because the internal C++ testbed relies on relative paths to shaders/kernels.
     try:
-        # Run training. We use subprocess.run so we can see the output in real-time
         subprocess.run(train_cmd, cwd=str(NEUS2_PATH), check=True)
     except subprocess.CalledProcessError as e:
-        print(f"[!] NeuS2 Training failed with exit code {e.returncode}")
+        print(f"[!] NeuS2 failed with exit code {e.returncode}")
+        print(f"[!] NeuS2 failed. Check if you installed 'commentjson' and 'pytorch3d'.")
         sys.exit(1)
 
     # 4. Phase 2: Extract the 3D Mesh
