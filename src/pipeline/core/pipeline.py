@@ -36,6 +36,19 @@ def run_phase2(parent_module_path, manifest_path, args):
         print(f"[!] Pipeline failed at Phase 2 (Remove Background). Exit code: {e.returncode}")
         sys.exit(e.returncode)
 
+def run_phase3(parent_module_path, manifest_path, args):
+    # 1. Launch Phase 1: Capture
+    # This locates capture.py relative to this script's directory
+    module_path = parent_module_path / "spacial.py"
+    cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
+    if args.force:
+        cmd.append("--force")
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[!] Pipeline failed at Phase 2 (Remove Background). Exit code: {e.returncode}")
+        sys.exit(e.returncode)
+
 def run_pipeline():
     # 0.1. Define the Interface
     parser = argparse.ArgumentParser(
@@ -118,6 +131,7 @@ def run_pipeline():
 
     run_phase1(parent_module_path, manifest_path, args)
     run_phase2(parent_module_path, manifest_path, args)
+    run_phase3(parent_module_path, manifest_path, args)
 
 
 if __name__ == "__main__":
