@@ -22,6 +22,7 @@ VENDOR_FFPROBE_DIR = (
     PROJECT_ROOT / "vendor" / "ffmpeg" / PLATFORM_SUBFOLDER / f"ffprobe{BINARY_EXT}"
 )  # /vendor/ffmpeg/PLATFORM_SUBFOLDER/ffprobe(.exe)
 
+IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
 
 def get_video_duration(video_path):
     """Uses vendored ffprobe to get duration in seconds."""
@@ -60,6 +61,39 @@ def run_capture(manifest_path, force=False):
     if force and output_dir.exists():
         print(f"[!] Force flag detected. Wiping: {output_dir}")
         shutil.rmtree(output_dir)
+
+    # --- Image Folder Detection Logic ---
+    if input_source.is_dir():
+        print(f"[*] Input is a directory. Processing as image sequence: {input_source}")
+        
+        # Get sorted list of images
+        source_images = sorted([
+            f for f in input_source.iterdir() 
+            if f.suffix.lower() in IMAGE_EXTENSIONS
+        ])
+        
+        total_source = len(source_images)
+        if total_source == 0:
+            print(f"[!] Error: No valid images found in {input_source}")
+            sys.exit(1)
+
+        print(f"[*] Found {total_source} images. Copying to output...")
+        
+        for i, img_path in enumerate(source_images):
+            # Format filename to match FFmpeg style: frame_0001.jpg
+            target_name = f"frame_{i+1:04d}.jpg"
+            shutil.copy2(img_path, output_dir / target_name)
+            
+            # Progress tracking
+            if i % 5 == 0 or i == total_source - 1:
+                percent = int(((i + 1) / total_source) * 100)
+                print(f"PROGRESS: {percent}")
+                sys.stdout.flush()
+        
+        print("[*] Image copy complete.")
+        print("PROGRESS: 100")
+        return
+    # --- End Image Folder Detection ---
 
     duration = get_video_duration(input_source)
     total_expected_frames = int(duration * target_fps)

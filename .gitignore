@@ -58,3 +58,4 @@ Thumbs.db
 !vendor/**/*.dll
 !vendor/**/*.so
 !vendor/**/*.dylib
+/.vs

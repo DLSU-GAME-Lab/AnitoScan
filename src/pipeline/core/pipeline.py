@@ -10,6 +10,31 @@ PROJECT_ROOT = SCRIPT_PATH.parent.parent.parent.parent
 WORKSPACE_DIR = PROJECT_ROOT / "data" / "runs"  # /data/runs/
 MODULES_DIR = SCRIPT_PATH.parent.parent / "modules"  # /src/
 
+def run_phase1(parent_module_path, manifest_path, args):
+    # 1. Launch Phase 1: Capture
+    # This locates capture.py relative to this script's directory
+    module_path = parent_module_path / "capture.py"
+    cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
+    if args.force:
+        cmd.append("--force")
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[!] Pipeline failed at Phase 1 (Capture). Exit code: {e.returncode}")
+        sys.exit(e.returncode)
+
+def run_phase2(parent_module_path, manifest_path, args):
+    # 1. Launch Phase 1: Capture
+    # This locates capture.py relative to this script's directory
+    module_path = parent_module_path / "remove_background.py"
+    cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
+    if args.force:
+        cmd.append("--force")
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[!] Pipeline failed at Phase 2 (Remove Background). Exit code: {e.returncode}")
+        sys.exit(e.returncode)
 
 def run_pipeline():
     # 0.1. Define the Interface
@@ -52,8 +77,13 @@ def run_pipeline():
     # 0.2. Establish Workspace (WORKSPACE_ROOT/[name]/)
     base_dir = (WORKSPACE_DIR / args.name).resolve()
     capture_dir = base_dir / "01_capture" / "raw_frames"
+    mask_dir = base_dir / "01_capture" / "masked_frames"
+
     manifest_path = base_dir / "manifest.json"
+
     capture_dir.mkdir(parents=True, exist_ok=True)
+    mask_dir.mkdir(parents=True, exist_ok=True)
+    
     input_path = Path(PROJECT_ROOT / "data" / "input" / Path(args.input)).resolve()
 
     # If the path provided doesn't exist locally, check data/input/
@@ -74,6 +104,7 @@ def run_pipeline():
         "paths": {
             "run_root": str(base_dir),
             "raw_frames": str(capture_dir),
+            "masked_frames": str(mask_dir),
         },
     }
 
@@ -83,19 +114,10 @@ def run_pipeline():
     print(f"[*] Workspace initialized: {base_dir}")
     print(f"[*] Mode: {args.mode} | Target FPS: {args.fps}")
 
-    # 1. Launch Phase 1: Capture
-    # This locates capture.py relative to this script's directory
-    module_path = Path(__file__).parent.parent / "modules" / "capture.py"
-    cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
-    if args.force:
-        cmd.append("--force")
+    parent_module_path = Path(__file__).parent.parent / "modules"
 
-    try:
-        subprocess.run(cmd, check=True)
-
-    except subprocess.CalledProcessError as e:
-        print(f"[!] Pipeline failed at Phase 1 (Capture). Exit code: {e.returncode}")
-        sys.exit(e.returncode)
+    run_phase1(parent_module_path, manifest_path, args)
+    run_phase2(parent_module_path, manifest_path, args)
 
 
 if __name__ == "__main__":
