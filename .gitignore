@@ -32,17 +32,20 @@
 *.app
 
 # IDE LSP helper
-.zed/
+/.zed/
 
 # Project data
-data/
-assets/
+/data/
+/assets/
 
 # AI Model Weights
-models/
+/models/
 
 # Python Virtual Environment
-src/pipeline/.venv/
+/src/pipeline/.venv/
+
+# Don't ignore if in vendor
+!vendor/**
 
 # OS-specific junk files
 .DS_Store
@@ -53,11 +56,6 @@ Thumbs.db
 **/*.py[cod]
 **/*.pyo
 
-# Don't ignore these if in vendor
-!vendor/**/*.exe
-!vendor/**/*.dll
-!vendor/**/*.so
-!vendor/**/*.dylib
 /.vs
 /out
 /output
