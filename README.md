@@ -21,3 +21,6 @@ AnitoScan is a hybrid 3D reconstruction system designed for the DLSU GAME Lab.
 1. Place video input in `data/input/`.
 2. Execute the pipeline via:
    `./src/pipeline/.venv/bin/python src/pipeline/core/pipeline.py --name <run_name> --input <file> --fps 10`
+
+## Checking versions of dependency
+- ./src/pipeline/.venv/bin/pip index versions <dependency_name>
