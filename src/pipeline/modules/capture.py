@@ -16,7 +16,7 @@ IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
 
 
 def run_capture(
-    manifest_path, force=False, blur_threshold=80.0, proxy_width=640, jpg_quality=95
+    manifest_path, blur_threshold, proxy_width, jpg_quality, max_search, force=False
 ):
     # 1. Load Manifest
     with open(manifest_path, "r") as f:
@@ -70,9 +70,8 @@ def run_capture(
     total_frames_in = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     sample_interval = max(1, int(fps_in / target_fps))
 
-    MAX_SEARCH = 5
     print(
-        f"[*] Extracting (Target: {target_fps} FPS | Threshold: {blur_threshold} | Proxy: {proxy_width}px | Quality: {jpg_quality})"
+        f"[*] Extracting (Target: {target_fps} FPS | Threshold: {blur_threshold} | Proxy: {proxy_width}px | Quality: {jpg_quality} | Max Search: {max_search} adjacent frames)"
     )
 
     # 4. Extraction Loop
@@ -86,62 +85,71 @@ def run_capture(
     executor = ThreadPoolExecutor(max_workers=4)
 
     while True:
+        if frame_idx % sample_interval != 0:
+            if not cap.grab():
+                break
+            frame_idx += 1
+            continue
+
         ret, frame = cap.read()
         if not ret:
             break
 
-        if frame_idx % sample_interval == 0:
-            best_frame = frame.copy()
-            best_score = -1.0
-            found_sharp = False
+        best_frame = frame
+        best_score = -1.0
+        found_sharp = False
 
-            # Inner loop: Search Window
-            for search_offset in range(MAX_SEARCH):
-                if search_offset > 0:
-                    ret, frame = cap.read()
-                    frame_idx += 1
-                    if not ret:
-                        break
-
-                # Proxy Resize Logic
-                h, w = frame.shape[:2]
-                aspect = h / w
-                proxy_dim = (proxy_width, int(proxy_width * aspect))
-
-                # Calculate sharpness on proxy
-                gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), proxy_dim)
-                enhanced_gray = clahe.apply(gray)
-                score = cv2.Laplacian(enhanced_gray, cv2.CV_64F).var()
-
-                if score > best_score:
-                    best_score = score
-                    best_frame = frame.copy()
-
-                if score >= blur_threshold:
-                    found_sharp = True
+        # Search Window
+        for search_offset in range(max_search):
+            if search_offset > 0:
+                ret, frame = cap.read()
+                frame_idx += 1
+                if not ret:
                     break
 
-            saved_count += 1
-            target_name = f"frame_{saved_count:04d}.jpg"
-            target_path = str(output_dir / target_name)
+            # Proxy Resize Logic
+            h, w = frame.shape[:2]
+            aspect = h / w
+            proxy_dim = (proxy_width, int(proxy_width * aspect))
 
-            # Threaded Save
-            executor.submit(
-                cv2.imwrite,
-                target_path,
-                best_frame,
-                [cv2.IMWRITE_JPEG_QUALITY, jpg_quality],
+            # Calculate sharpness on proxy
+            gray = cv2.resize(
+                cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY),
+                proxy_dim,
+                interpolation=cv2.INTER_NEAREST,
             )
+            enhanced_gray = clahe.apply(gray)
+            score = cv2.Laplacian(enhanced_gray, cv2.CV_64F).var()
 
-            if not found_sharp:
-                saved_blurry += 1
+            if score > best_score:
+                best_score = score
+                best_frame = frame.copy()
 
-            # Progress Tracking
-            current_percent = min(int((frame_idx / total_frames_in) * 100), 99)
-            if current_percent >= last_percent + 5:
-                print(f"PROGRESS: {current_percent}")
-                sys.stdout.flush()
-                last_percent = current_percent
+            if score >= blur_threshold:
+                found_sharp = True
+                break
+
+        saved_count += 1
+        target_name = f"frame_{saved_count:04d}.jpg"
+        target_path = str(output_dir / target_name)
+
+        # Threaded Save
+        executor.submit(
+            cv2.imwrite,
+            target_path,
+            best_frame,
+            [cv2.IMWRITE_JPEG_QUALITY, jpg_quality],
+        )
+
+        if not found_sharp:
+            saved_blurry += 1
+
+        # Progress Tracking
+        current_percent = min(int((frame_idx / total_frames_in) * 100), 99)
+        if current_percent >= last_percent + 5:
+            print(f"PROGRESS: {current_percent}")
+            sys.stdout.flush()
+            last_percent = current_percent
 
         frame_idx += 1
 
@@ -162,13 +170,15 @@ if __name__ == "__main__":
     parser.add_argument("--blur-threshold", type=float)
     parser.add_argument("--proxy-width", type=int)
     parser.add_argument("--jpg-quality", type=int)
+    parser.add_argument("--max_search", type=int)
 
     args = parser.parse_args()
 
     run_capture(
         args.manifest,
-        force=args.force,
         blur_threshold=args.blur_threshold,
         proxy_width=args.proxy_width,
         jpg_quality=args.jpg_quality,
+        max_search=args.max_search,
+        force=args.force,
     )

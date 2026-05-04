@@ -25,6 +25,8 @@ def run_phase1(parent_module_path, manifest_path, args):
         str(args.proxy_width),
         "--jpg-quality",
         str(args.jpg_quality),
+        "--max_search",
+        str(args.max_search),
     ]
     if args.force:
         cmd.append("--force")
@@ -36,7 +38,7 @@ def run_phase1(parent_module_path, manifest_path, args):
 
 
 def run_phase2(parent_module_path, manifest_path, args):
-    # 2. Launch Phase 2: Conditioning
+    # 2. Launch Phase 2: Masking
     module_path = parent_module_path / "remove_background.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
     if args.force:
@@ -126,12 +128,18 @@ def run_pipeline():
     parser.add_argument(
         "--jpg-quality", type=int, default=85, help="JPEG quality 1-100"
     )
+    parser.add_argument(
+        "--max_search",
+        type=int,
+        default=3,
+        help="Max adjacent frames to search if blurry frame is found",
+    )
     args = parser.parse_args()
 
     # 0.2. Establish Workspace (WORKSPACE_ROOT/[name]/)
     base_dir = (WORKSPACE_DIR / args.name).resolve()
     capture_dir = base_dir / "01_capture"
-    mask_dir = base_dir / "02_conditioning"
+    mask_dir = base_dir / "02_masking"
     spatial_dir = base_dir / "03_spatial"
     geometry_dir = base_dir / "04_geometry"
 
@@ -159,6 +167,7 @@ def run_pipeline():
             "blur_threshold": args.blur_threshold,
             "proxy_width": args.proxy_width,
             "jpg_quality": args.jpg_quality,
+            "max_search": args.max_search,
         },
         "status": {
             "phase": 1,
