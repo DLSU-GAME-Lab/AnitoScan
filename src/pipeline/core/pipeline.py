@@ -14,7 +14,18 @@ MODULES_DIR = SCRIPT_PATH.parent.parent / "modules"  # /src/
 def run_phase1(parent_module_path, manifest_path, args):
     # 1. Launch Phase 1: Capture
     module_path = parent_module_path / "capture.py"
-    cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
+    cmd = [
+        sys.executable,
+        str(module_path),
+        "--manifest",
+        str(manifest_path),
+        "--blur-threshold",
+        str(args.blur_threshold),
+        "--proxy-width",
+        str(args.proxy_width),
+        "--jpg-quality",
+        str(args.jpg_quality),
+    ]
     if args.force:
         cmd.append("--force")
     try:
@@ -38,17 +49,21 @@ def run_phase2(parent_module_path, manifest_path, args):
         )
         sys.exit(e.returncode)
 
+
 def run_phase3(parent_module_path, manifest_path, args):
     # 1. Launch Phase 3: Spatial Initialization
-    module_path = parent_module_path / "spacial.py"
+    module_path = parent_module_path / "spatial.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
     if args.force:
         cmd.append("--force")
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"[!] Pipeline failed at Phase 3 (Spatial Initialization). Exit code: {e.returncode}")
+        print(
+            f"[!] Pipeline failed at Phase 3 (Spatial Initialization). Exit code: {e.returncode}"
+        )
         sys.exit(e.returncode)
+
 
 def run_phase4(parent_module_path, manifest_path, args):
     # 1. Launch Phase 4: Geometry generation
@@ -61,6 +76,7 @@ def run_phase4(parent_module_path, manifest_path, args):
     except subprocess.CalledProcessError as e:
         print(f"[!] Pipeline failed at Phase 4 (Geometry). Exit code: {e.returncode}")
         sys.exit(e.returncode)
+
 
 def run_pipeline():
     # 0.1. Define the Interface
@@ -98,20 +114,32 @@ def run_pipeline():
         action="store_true",
         help="Bypass caching and force a fresh execution of all active pipeline phases",
     )
+    parser.add_argument(
+        "--blur-threshold",
+        type=float,
+        default=80.0,
+        help="Laplacian variance threshold",
+    )
+    parser.add_argument(
+        "--proxy-width", type=int, default=640, help="Width for blur check proxy"
+    )
+    parser.add_argument(
+        "--jpg-quality", type=int, default=85, help="JPEG quality 1-100"
+    )
     args = parser.parse_args()
 
     # 0.2. Establish Workspace (WORKSPACE_ROOT/[name]/)
     base_dir = (WORKSPACE_DIR / args.name).resolve()
     capture_dir = base_dir / "01_capture"
     mask_dir = base_dir / "02_conditioning"
-    spacial_dir = base_dir / "03_spatial"
+    spatial_dir = base_dir / "03_spatial"
     geometry_dir = base_dir / "04_geometry"
 
     manifest_path = base_dir / "manifest.json"
 
     capture_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
-    spacial_dir.mkdir(parents=True, exist_ok=True)
+    spatial_dir.mkdir(parents=True, exist_ok=True)
     geometry_dir.mkdir(parents=True, exist_ok=True)
 
     input_path = Path(PROJECT_ROOT / "data" / "input" / Path(args.input)).resolve()
@@ -126,7 +154,12 @@ def run_pipeline():
         "run_name": args.name,
         "input_source": str(input_path),
         "mode": args.mode,
-        "settings": {"requested_fps": args.fps},
+        "settings": {
+            "requested_fps": args.fps,
+            "blur_threshold": args.blur_threshold,
+            "proxy_width": args.proxy_width,
+            "jpg_quality": args.jpg_quality,
+        },
         "status": {
             "phase": 1,
             "completed": [],
@@ -135,7 +168,7 @@ def run_pipeline():
             "run_root": str(base_dir),
             "raw_frames": str(capture_dir),
             "masked_frames": str(mask_dir),
-            "spacial": str(spacial_dir),
+            "spatial": str(spatial_dir),
             "geometry": str(geometry_dir),
         },
     }

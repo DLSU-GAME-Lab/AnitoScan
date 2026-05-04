@@ -1,50 +1,23 @@
 import argparse
 import json
 import shutil
-import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import cv2
+
 # DIRECTORY RESOLUTION
-MODULE_PATH = Path(__file__).resolve()  # /src/pipeline/modules/capture.py
+MODULE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
-if sys.platform == "darwin":
-    PLATFORM_SUBFOLDER = "mac_arm"
-    BINARY_EXT = ""
-elif sys.platform == "win32":
-    PLATFORM_SUBFOLDER = "win_x64"
-    BINARY_EXT = ".exe"
-VENDOR_FFMPEG_DIR = (
-    PROJECT_ROOT / "vendor" / "ffmpeg" / PLATFORM_SUBFOLDER / f"ffmpeg{BINARY_EXT}"
-)  # /vendor/ffmpeg/PLATFORM_SUBFOLDER/ffmpeg(.exe)
-VENDOR_FFPROBE_DIR = (
-    PROJECT_ROOT / "vendor" / "ffmpeg" / PLATFORM_SUBFOLDER / f"ffprobe{BINARY_EXT}"
-)  # /vendor/ffmpeg/PLATFORM_SUBFOLDER/ffprobe(.exe)
 
-IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
-
-def get_video_duration(video_path):
-    """Uses vendored ffprobe to get duration in seconds."""
-    cmd = [
-        str(VENDOR_FFPROBE_DIR),
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        str(video_path),
-    ]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        return float(result.stdout.strip())
-    except Exception as e:
-        print(f"[!] ffprobe error: {e}")
-        return 0.0
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
 
 
-def run_capture(manifest_path, force=False):
+def run_capture(
+    manifest_path, force=False, blur_threshold=80.0, proxy_width=640, jpg_quality=95
+):
     # 1. Load Manifest
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
@@ -62,107 +35,140 @@ def run_capture(manifest_path, force=False):
         print(f"[!] Force flag detected. Wiping: {output_dir}")
         shutil.rmtree(output_dir)
 
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     # --- Image Folder Detection Logic ---
     if input_source.is_dir():
         print(f"[*] Input is a directory. Processing as image sequence: {input_source}")
-        
-        # Get sorted list of images
-        source_images = sorted([
-            f for f in input_source.iterdir() 
-            if f.suffix.lower() in IMAGE_EXTENSIONS
-        ])
-        
+        source_images = sorted(
+            [f for f in input_source.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
+        )
+
         total_source = len(source_images)
         if total_source == 0:
             print(f"[!] Error: No valid images found in {input_source}")
             sys.exit(1)
 
         print(f"[*] Found {total_source} images. Copying to output...")
-        
         for i, img_path in enumerate(source_images):
-            # Format filename to match FFmpeg style: frame_0001.jpg
-            target_name = f"frame_{i+1:04d}.jpg"
+            target_name = f"frame_{i + 1:04d}.jpg"
             shutil.copy2(img_path, output_dir / target_name)
-            
-            # Progress tracking
             if i % 5 == 0 or i == total_source - 1:
                 percent = int(((i + 1) / total_source) * 100)
                 print(f"PROGRESS: {percent}")
                 sys.stdout.flush()
-        
-        print("[*] Image copy complete.")
         print("PROGRESS: 100")
         return
-    # --- End Image Folder Detection ---
 
-    duration = get_video_duration(input_source)
-    total_expected_frames = int(duration * target_fps)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # 3. OpenCV Video Capture
+    cap = cv2.VideoCapture(str(input_source))
+    if not cap.isOpened():
+        print(f"[!] Could not open video: {input_source}")
+        sys.exit(1)
 
-    # 3. Check if we already have the frames we need
-    existing_frame_count = len(list(output_dir.glob("*.jpg")))
+    fps_in = cap.get(cv2.CAP_PROP_FPS)
+    total_frames_in = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    sample_interval = max(1, int(fps_in / target_fps))
 
-    if total_expected_frames > 0:
-        print(f"[*] Found {existing_frame_count} existing frames in {output_dir}.")
-        if existing_frame_count >= total_expected_frames:
-            print(f"[*] Expected ~{total_expected_frames}. Skipping extraction phase.")
-            print("PROGRESS: 100")
-            return
-
-    # 4. Extraction Logic
-    start_perf = time.perf_counter()
-
-    ffmpeg_cmd = [
-        str(VENDOR_FFMPEG_DIR),
-        "-i",
-        str(input_source),
-        "-vf",
-        f"fps={target_fps}",
-        "-q:v",
-        "2",
-        str(output_dir / "frame_%04d.jpg"),
-        "-y",
-    ]
-
-    print(f"[*] Extracting frames to: {output_dir}")
-
-    process = subprocess.Popen(
-        ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    MAX_SEARCH = 5
+    print(
+        f"[*] Extracting (Target: {target_fps} FPS | Threshold: {blur_threshold} | Proxy: {proxy_width}px | Quality: {jpg_quality})"
     )
 
-    last_count = 0
-    while process.poll() is None:
-        current_count = len(list(output_dir.glob("*.jpg")))
+    # 4. Extraction Loop
+    start_perf = time.perf_counter()
+    saved_count = 0
+    frame_idx = 0
+    saved_blurry = 0
+    last_percent = -1
 
-        if current_count > last_count:
-            last_count = current_count
-            if total_expected_frames > 0:
-                percent = min(int((current_count / total_expected_frames) * 100), 99)
-                print(f"PROGRESS: {percent}")
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    executor = ThreadPoolExecutor(max_workers=4)
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        if frame_idx % sample_interval == 0:
+            best_frame = frame.copy()
+            best_score = -1.0
+            found_sharp = False
+
+            # Inner loop: Search Window
+            for search_offset in range(MAX_SEARCH):
+                if search_offset > 0:
+                    ret, frame = cap.read()
+                    frame_idx += 1
+                    if not ret:
+                        break
+
+                # Proxy Resize Logic
+                h, w = frame.shape[:2]
+                aspect = h / w
+                proxy_dim = (proxy_width, int(proxy_width * aspect))
+
+                # Calculate sharpness on proxy
+                gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), proxy_dim)
+                enhanced_gray = clahe.apply(gray)
+                score = cv2.Laplacian(enhanced_gray, cv2.CV_64F).var()
+
+                if score > best_score:
+                    best_score = score
+                    best_frame = frame.copy()
+
+                if score >= blur_threshold:
+                    found_sharp = True
+                    break
+
+            saved_count += 1
+            target_name = f"frame_{saved_count:04d}.jpg"
+            target_path = str(output_dir / target_name)
+
+            # Threaded Save
+            executor.submit(
+                cv2.imwrite,
+                target_path,
+                best_frame,
+                [cv2.IMWRITE_JPEG_QUALITY, jpg_quality],
+            )
+
+            if not found_sharp:
+                saved_blurry += 1
+
+            # Progress Tracking
+            current_percent = min(int((frame_idx / total_frames_in) * 100), 99)
+            if current_percent >= last_percent + 5:
+                print(f"PROGRESS: {current_percent}")
                 sys.stdout.flush()
+                last_percent = current_percent
 
-        time.sleep(0.1)
+        frame_idx += 1
 
+    cap.release()
+    executor.shutdown(wait=True)
     print("PROGRESS: 100")
 
-    end_perf = time.perf_counter()
-    total_time = end_perf - start_perf
-    final_frame_count = len(list(output_dir.glob("*.jpg")))
-
-    if total_time > 0:
-        extraction_speed = final_frame_count / total_time
-    else:
-        extraction_speed = 0
-
+    total_time = time.perf_counter() - start_perf
     print("[*] Capture Phase Complete.")
-    print(f"[*] Total Frames: {final_frame_count} frames")
-    print(f"[*] Total Time: {total_time:.2f}s")
-    print(f"[*] Extraction Speed: {extraction_speed:.2f} frames/sec")
+    print(f"[*] Total Saved: {saved_count} frames | Blurry Fallbacks: {saved_blurry}")
+    print(f"[*] Speed: {saved_count / total_time:.2f} frames/sec")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=str, required=True)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--blur-threshold", type=float)
+    parser.add_argument("--proxy-width", type=int)
+    parser.add_argument("--jpg-quality", type=int)
+
     args = parser.parse_args()
-    run_capture(args.manifest, force=args.force)
+
+    run_capture(
+        args.manifest,
+        force=args.force,
+        blur_threshold=args.blur_threshold,
+        proxy_width=args.proxy_width,
+        jpg_quality=args.jpg_quality,
+    )
