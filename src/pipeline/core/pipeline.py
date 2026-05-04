@@ -40,7 +40,20 @@ def run_phase1(parent_module_path, manifest_path, args):
 def run_phase2(parent_module_path, manifest_path, args):
     # 2. Launch Phase 2: Masking
     module_path = parent_module_path / "remove_background.py"
-    cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
+    cmd = [
+        sys.executable,
+        str(module_path),
+        "--manifest",
+        str(manifest_path),
+        "--iou_threshold",
+        str(args.iou_threshold),
+        "--drift_limit",
+        str(args.drift_limit),
+        "--max_yoloe_failures",
+        str(args.max_yoloe_failures),
+        "--yoloe_model_size",
+        str(args.yoloe_model_size),
+    ]
     if args.force:
         cmd.append("--force")
     try:
@@ -133,6 +146,31 @@ def run_pipeline():
         type=int,
         default=3,
         help="Max adjacent frames to search if blurry frame is found",
+    )
+    parser.add_argument(
+        "--iou_threshold",
+        type=float,
+        default=0.15,
+        help="Minimum overlap between boundary boxes",
+    )
+    parser.add_argument(
+        "--drift_limit",
+        type=int,
+        default=350,
+        help="Maximum drift limit between boundary boxes",
+    )
+    parser.add_argument(
+        "--max_yoloe_failures",
+        type=int,
+        default=2,
+        help="Maximum failures before doing automatic reset for YOLOE",
+    )
+    parser.add_argument(
+        "--yoloe_model_size",
+        type=str,
+        choices=["n", "s", "m", "l", "x"],
+        default="s",
+        help="YOLOE model size",
     )
     args = parser.parse_args()
 
