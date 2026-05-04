@@ -161,6 +161,7 @@ def run_capture(
     print("[*] Capture Phase Complete.")
     print(f"[*] Total Saved: {saved_count} frames | Blurry Fallbacks: {saved_blurry}")
     print(f"[*] Speed: {saved_count / total_time:.2f} frames/sec")
+    print(f"[*] Total Time: {total_time:.2f}s")
 
 
 if __name__ == "__main__":
