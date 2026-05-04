@@ -1,7 +1,10 @@
 # src/pipeline/requirements.txt
 
 # Utility for Model Setup
-huggingface_hub==1.12.0
+# huggingface_hub==1.12.0
 
-# No dependencies for Phase 1. 
-# OpenCV and NumPy will be added here for Phase 2 (Conditioning).
+# Phase 1 Dependencies
+numpy>=2.4.4
+opencv-python>=4.13.0.92  # switch to opencv-python-headless in production
+torch>=2.11.0
+ultralytics>=8.4.46
