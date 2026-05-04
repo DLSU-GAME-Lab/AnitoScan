@@ -100,7 +100,7 @@ def run_remove_background(
         device = "cpu"
 
     yoloe_path = MODELS_DIR / f"yoloe-26{yoloe_model_size}-seg-pf.pt"
-    # # sam_path = MODELS_DIR / "sam2.1_s.pt"
+    sam_path = MODELS_DIR / "sam2.1_s.pt"
 
     # Uncomment to disable auto-download of model weights
     # if not yoloe_path.exists():
@@ -112,26 +112,25 @@ def run_remove_background(
     #     sys.exit(1)
 
     detector = YOLOE(str(yoloe_path))
-    # segmenter = SAM(str(sam_path))
+    segmenter = SAM(str(sam_path))
 
     # 4. Processing Loop
     start_perf = time.perf_counter()
     last_percent = -1
+    prev_box = None
+    consecutive_failures = 0
 
     # Step A: Zero-Shot Object Detection to get boundary box
     det_generator = detector.predict(
         source=str(input_dir), conf=0.35, device=device, stream=True, verbose=False
     )
 
-    prev_box = None
-    consecutive_failures = 0
-
     # Use a ThreadPool for writing to disk so the CPU can keep detecting
     with ThreadPoolExecutor(max_workers=4) as executor:
         for i, det_results in enumerate(det_generator):
             # Extract the current image path from the detection metadata
             img_path = Path(det_results.path)
-            img = cv2.imread(str(img_path))
+            img = det_results.orig_img
             if img is None:
                 print(f"[!] Critical: OpenCV could not read {img_path}")
                 continue
@@ -139,6 +138,9 @@ def run_remove_background(
             class_names = det_results.names
             h_img, w_img = img.shape[:2]
             img_area = h_img * w_img
+
+            # Default: Fully Transparent BGRA Frame
+            final_output = np.zeros((h_img, w_img, 4), dtype=np.uint8)
 
             if det_results.boxes is not None and len(det_results.boxes) > 0:
                 valid_boxes = []
@@ -194,31 +196,28 @@ def run_remove_background(
                         and winner_coords is not None
                         and best_candidate_match is not None
                     ):
-                        coords_int = winner_coords.astype(int)
-                        conf = float(best_candidate_match.conf[0])
-                        cls_id = int(best_candidate_match.cls[0])
-                        label = class_names[cls_id].capitalize()
-
-                        cv2.rectangle(
-                            img,
-                            (coords_int[0], coords_int[1]),
-                            (coords_int[2], coords_int[3]),
-                            (255, 255, 0),
-                            3,
+                        prompt_bboxes = np.array([winner_coords], dtype=np.float32)
+                        sam_results = segmenter.predict(
+                            source=img,
+                            bboxes=prompt_bboxes,
+                            device=device,
+                            verbose=False,
                         )
-                        cv2.putText(
-                            img,
-                            f"{label}: {conf:.2f}",
-                            (coords_int[0], coords_int[1] - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.9,
-                            (255, 255, 0),
-                            2,
-                        )
+                        if sam_results[0].masks is not None:
+                            mask_np = sam_results[0].masks.data[0].cpu().numpy()
+                            mask_resized = cv2.resize(
+                                (mask_np > 0).astype(np.uint8) * 255,
+                                (w_img, h_img),
+                                interpolation=cv2.INTER_NEAREST,
+                            )
 
-                        # Update state for the next frame
-                        consecutive_failures = 0
-                        prev_box = winner_coords
+                            # Convert to BGRA and apply mask to Alpha
+                            bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+                            bgra[:, :, 3] = mask_resized
+                            final_output = bgra
+
+                            consecutive_failures = 0
+                            prev_box = winner_coords
                     else:
                         # Fallback: No candidate in this frame matched the previous one
                         print(f"\n[!] REJECTION DEBUG - Frame {i}")
@@ -245,8 +244,8 @@ def run_remove_background(
                             prev_box = None
 
             # 5. Asynchronous Save
-            target_path = output_dir / f"filtered_{img_path.name}"
-            executor.submit(cv2.imwrite, str(target_path), img)
+            target_path = output_dir / f"{img_path.stem}.png"
+            executor.submit(cv2.imwrite, str(target_path), final_output)
 
             # 6. Live Progress Reporting
             current_percent = min(int(((i + 1) / total_expected_frames) * 100), 99)
@@ -254,9 +253,6 @@ def run_remove_background(
                 print(f"PROGRESS: {current_percent}")
                 sys.stdout.flush()
                 last_percent = current_percent
-
-            if device == "mps":
-                torch.mps.empty_cache()
 
     print("PROGRESS: 100")
     total_time = time.perf_counter() - start_perf
