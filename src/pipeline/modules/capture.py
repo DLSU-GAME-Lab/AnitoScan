@@ -37,6 +37,17 @@ def run_capture(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # --- Skip Logic: Check if frames already exist ---
+    existing_frames = [
+        f for f in output_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS
+    ]
+    if len(existing_frames) > 0 and not force:
+        print(
+            f"[*] Found {len(existing_frames)} existing frames in {output_dir}. Skipping capture phase."
+        )
+        print("PROGRESS: 100")
+        return
+
     # --- Image Folder Detection Logic ---
     if input_source.is_dir():
         print(f"[*] Input is a directory. Processing as image sequence: {input_source}")
