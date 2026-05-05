@@ -254,8 +254,17 @@ def run_remove_background(
                 sys.stdout.flush()
                 last_percent = current_percent
 
-    print("PROGRESS: 100")
     total_time = time.perf_counter() - start_perf
+    print("PROGRESS: 100")
+
+    # Finalize Manifest
+    manifest["status"]["phase"] = 2
+    if "spatial" not in manifest["status"]["completed"]:
+        manifest["status"]["completed"].append("masking")
+
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=4)
+
     print(f"[*] Complete. Filtered visualization saved to: {output_dir}")
     print(f"[*] Speed: {total_expected_frames / total_time:.2f} fps")
     print(f"[*] Total Time: {total_time:.2f}s")

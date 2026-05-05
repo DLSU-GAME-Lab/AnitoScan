@@ -166,9 +166,19 @@ def run_capture(
 
     cap.release()
     executor.shutdown(wait=True)
-    print("PROGRESS: 100")
 
     total_time = time.perf_counter() - start_perf
+
+    print("PROGRESS: 100")
+
+    # Finalize Manifest
+    manifest["status"]["phase"] = 1
+    if "spatial" not in manifest["status"]["completed"]:
+        manifest["status"]["completed"].append("capture")
+
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=4)
+
     print("[*] Capture Phase Complete.")
     print(f"[*] Total Saved: {saved_count} frames | Blurry Fallbacks: {saved_blurry}")
     print(f"[*] Speed: {saved_count / total_time:.2f} frames/sec")
