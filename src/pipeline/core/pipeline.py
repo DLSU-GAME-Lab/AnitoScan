@@ -59,9 +59,7 @@ def run_phase2(parent_module_path, manifest_path, args):
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(
-            f"[!] Pipeline failed at Phase 2 (Filter/Masking). Exit code: {e.returncode}"
-        )
+        print(f"[!] Pipeline failed at Phase 2 (Masking). Exit code: {e.returncode}")
         sys.exit(e.returncode)
 
 
@@ -89,7 +87,9 @@ def run_phase4(parent_module_path, manifest_path, args):
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"[!] Pipeline failed at Phase 4 (Geometry). Exit code: {e.returncode}")
+        print(
+            f"[!] Pipeline failed at Phase 4 (Geometry Generation). Exit code: {e.returncode}"
+        )
         sys.exit(e.returncode)
 
 

@@ -135,7 +135,7 @@ def run_remove_background(
                 print(f"[!] Critical: OpenCV could not read {img_path}")
                 continue
 
-            class_names = det_results.names
+            # class_names = det_results.names
             h_img, w_img = img.shape[:2]
             img_area = h_img * w_img
 

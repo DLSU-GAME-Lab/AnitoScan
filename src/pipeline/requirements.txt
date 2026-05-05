@@ -4,7 +4,11 @@
 # huggingface_hub==1.12.0
 
 # Phase 1 Dependencies
-numpy>=2.4.4
 opencv-python>=4.13.0.92  # switch to opencv-python-headless in production
+
+# Phase 2 Dependencies
+numpy>=2.4.4
 torch>=2.11.0
 ultralytics>=8.4.46
+
+
