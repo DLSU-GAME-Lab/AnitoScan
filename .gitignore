@@ -38,9 +38,6 @@
 /data/
 /assets/
 
-# AI Model Weights
-/models/
-
 # Python Virtual Environment
 /src/pipeline/.venv/
 
