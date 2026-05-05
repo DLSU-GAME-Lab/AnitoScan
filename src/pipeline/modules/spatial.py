@@ -5,17 +5,21 @@ import sys
 import time
 from pathlib import Path
 
-import cv2
 import numpy as np
 import torch
-from PIL import Image
+import trimesh
 
 # DIRECTORY RESOLUTION
 MODULE_PATH = Path(__file__).resolve()  # /src/pipeline/modules/spatial.py
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
+MODELS_DIR = PROJECT_ROOT / "models" / "03_spatial"
 
 MAST3R_PATH = PROJECT_ROOT / "vendor" / "mast3r"
 DUST3R_PATH = MAST3R_PATH / "dust3r"
+
+print(f"[*] Searching for MASt3R in: {MAST3R_PATH}")
+if not MAST3R_PATH.exists():
+    print(f"[!] ERROR: Folder not found at {MAST3R_PATH}")
 
 for p in [MAST3R_PATH, DUST3R_PATH]:
     if p.exists() and str(p) not in sys.path:
@@ -24,8 +28,8 @@ for p in [MAST3R_PATH, DUST3R_PATH]:
 # Attempt MASt3R / DUSt3R imports
 try:
     from dust3r.image_pairs import make_pairs
-    from dust3r.inference import inference
     from dust3r.utils.image import load_images
+    from mast3r.cloud_opt.sparse_ga import sparse_global_alignment
     from mast3r.model import AsymmetricMASt3R
 except ImportError:
     print("[!] Error: MASt3R modules not found.")
@@ -38,14 +42,9 @@ def run_spatial_reconstruction(manifest_path, force=False):
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
 
-    # Input comes from the previous step (remove_background.py)
-    input_dir = Path(manifest["paths"]["masked_frames"])
-
-    # We need a new path in the manifest for the 3D output data
-    # Assuming manifest["paths"]["spatial_data"] exists
-    output_dir = Path(
-        manifest.get("paths", {}).get("spatial", str(PROJECT_ROOT / "data" / "spatial"))
-    )
+    # Input comes from the first step (capture.py)
+    input_dir = Path(manifest["paths"]["raw_frames"])
+    output_dir = Path(manifest["paths"]["spatial"])
 
     # 2. Preparation & Validation
     if not input_dir.exists() or not input_dir.is_dir():
@@ -58,8 +57,8 @@ def run_spatial_reconstruction(manifest_path, force=False):
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Gather source masked images (must be PNGs to preserve the alpha channel)
-    source_images = sorted(list(input_dir.glob("*.png")))
+    # Gather source images
+    source_images = sorted([str(p) for p in input_dir.glob("*.jpg")])
     total_images = len(source_images)
 
     if total_images < 2:
@@ -68,20 +67,18 @@ def run_spatial_reconstruction(manifest_path, force=False):
         )
         sys.exit(1)
 
-    # In a pairwise sequence, N images yield N-1 pairs
-    total_expected_pairs = total_images - 1
+    # 3. Check for existing artifacts in the output directory
+    required_artifacts = ["transforms.json", "init_points.ply"]
 
-    # 3. Check if we already have the outputs we need
-    existing_outputs = list(output_dir.glob("*.npz"))
-    existing_count = len(existing_outputs)
-
-    print(f"[*] Found {existing_count} existing spatial data files in {output_dir}.")
-    if existing_count >= total_expected_pairs and not force:
-        print(
-            f"[*] Expected ~{total_expected_pairs}. Skipping spatial reconstruction phase."
-        )
-        print("PROGRESS: 100")
-        return
+    # Check if the folder exists and contains both required files
+    if output_dir.exists() and not force:
+        artifacts_present = all((output_dir / f).exists() for f in required_artifacts)
+        if artifacts_present:
+            print(
+                f"[*] Found completed artifacts in {output_dir}. Skipping spatial reconstruction."
+            )
+            print("PROGRESS: 100")
+            return
 
     # 4. Initialize MASt3R
     if torch.cuda.is_available():
@@ -96,94 +93,94 @@ def run_spatial_reconstruction(manifest_path, force=False):
     # Load the MASt3R model
     # Note: Depending on your specific MASt3R version, the init might vary slightly.
     # Force the model to load with a tuple to override the broken config
-    local_model_path = (
-        r"models\spatial\MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
-    )
+    model_path = str(MODELS_DIR / "MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric")
 
-    model = AsymmetricMASt3R.from_pretrained(local_model_path).to(device)
+    model = AsymmetricMASt3R.from_pretrained(model_path).to(device)
     model.eval()
 
-    # 5. Spatial Reconstruction Logic
+    # Load images for the pair-matching metadata
+    imgs_meta = load_images(
+        source_images, size=256
+    )  # TODO: change to 512 for release ver
+
+    # Create the scene graph
+    # 'swin-3' means a sliding window of size 3
+    pairs = make_pairs(imgs_meta, scene_graph="swin-3", symmetrize=True)
+
+    # sparse_global_alignment performs inference and optimization internally
+    cache_path = output_dir / "matching_cache"
+    cache_path.mkdir(exist_ok=True)
+
+    # 4. MASt3R-SfM: Sparse Global Alignment
+    # This function replaces the manual inference + GlobalAligner loop.
+    # It handles its own caching and memory optimization.
+    print(f"[*] Running Sparse Global Alignment on {total_images} frames...")
     start_perf = time.perf_counter()
-    print(f"[*] Processing {total_expected_pairs} pairs to: {output_dir}")
 
-    # Process pairs consecutively (Frame 1 -> Frame 2, Frame 2 -> Frame 3, etc.)
-    for i in range(total_images - 1):
-        img_path_1 = source_images[i]
-        img_path_2 = source_images[i + 1]
+    scene = sparse_global_alignment(
+        imgs=source_images,
+        pairs_in=pairs,
+        model=model,
+        device=device,
+        cache_path=str(cache_path),
+        niter1=300,  # Coarse alignment iterations
+        niter2=100,  # Fine alignment iterations
+    )
 
-        target_name = f"pair_{i + 1:04d}.npz"
-        target_path = output_dir / target_name
+    # 5. Extraction for next phase
+    # The returned 'scene' object has methods to get optimized poses
+    poses = scene.get_im_poses().detach().cpu().numpy()  # 4x4 matrices [R|t]
+    focals = scene.get_focals().detach().cpu().numpy()
 
-        if target_path.exists() and not force:
-            continue
+    pts3d_list = [p.detach().cpu().numpy() for p in scene.pts3d]
+    pts3d_flattened = np.concatenate(pts3d_list, axis=0)
 
-        # Load images using DUSt3R's native loader to handle sizing and normalization
-        # We pass the paths as strings inside a list
-        imgs = load_images([str(img_path_1), str(img_path_2)], size=512)
-        # The tensor is typically stored inside each image dict under the 'img' key
-        imgs_tensor = torch.stack([img["img"] for img in imgs])
+    transforms = {"camera_model": "PINHOLE", "frames": []}
 
-        # Create a single pair configuration
-        pairs = make_pairs(
-            imgs, scene_graph="complete", prefilter=None, symmetrize=True
+    for i, path in enumerate(source_images):
+        # We store camera-to-world (c2w) matrices for NeuS2
+        transforms["frames"].append(
+            {
+                "file_path": f"./{Path(path).name}",
+                "transform_matrix": poses[i].tolist(),
+                "focal_length": float(focals[i]),
+            }
         )
 
-        with torch.no_grad():
-            # Run inference
-            output = inference(pairs, model, device, batch_size=1, verbose=False)
+    # Save outputs
+    with open(output_dir / "transforms.json", "w") as f:
+        json.dump(transforms, f, indent=4)
 
-            # Extract predictions
-            pred1 = output["pred1"]
-            pred2 = output["pred2"]
+    pc = trimesh.PointCloud(vertices=pts3d_flattened)
+    pc.export(str(output_dir / "init_points.ply"))
 
-            # Image 1 is standard
-            pts3d_1 = pred1["pts3d"].detach().cpu().numpy()
-
-            # Image 2 uses a different key in the Asymmetric model
-            if "pts3d" in pred2:
-                pts3d_2 = pred2["pts3d"].detach().cpu().numpy()
-            else:
-                # This is the key MASt3R uses for the second view in a pair
-                pts3d_2 = pred2["pts3d_in_other_view"].detach().cpu().numpy()
-
-            # Confidence and Descriptors are usually in both
-            conf_1 = pred1["conf"].detach().cpu().numpy()
-            conf_2 = pred2["conf"].detach().cpu().numpy()
-            desc_1 = pred1["desc"].detach().cpu().numpy()
-            desc_2 = pred2["desc"].detach().cpu().numpy()
-
-            # Save the raw 3D data as an NPZ file for the next step in your pipeline
-            np.savez_compressed(
-                target_path,
-                pts3d_1=pts3d_1,
-                pts3d_2=pts3d_2,
-                conf_1=conf_1,
-                conf_2=conf_2,
-                img1_name=img_path_1.name,
-                img2_name=img_path_2.name,
-            )
-
-        # Progress tracking
-        percent = int(((i + 1) / total_expected_pairs) * 100)
-        print(f"PROGRESS: {percent}")
-        sys.stdout.flush()
-
+    total_time = time.perf_counter() - start_perf
     print("PROGRESS: 100")
 
-    end_perf = time.perf_counter()
-    total_time = end_perf - start_perf
-    final_file_count = len(list(output_dir.glob("*.npz")))
+    # 6. Finalize Manifest
+    manifest["status"]["phase"] = 3
+    if "spatial" not in manifest["status"]["completed"]:
+        manifest["status"]["completed"].append("spatial")
+
+    total_frames = len(source_images)
 
     if total_time > 0:
-        processing_speed = final_file_count / total_time
+        processing_speed = total_frames / total_time
     else:
         processing_speed = 0
 
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=4)
+    has_transforms = (output_dir / "transforms.json").exists()
+    has_points = (output_dir / "init_points.ply").exists()
+
     print("[*] Spatial Reconstruction Phase Complete.")
-    print(f"[*] Total Pairs Processed: {final_file_count}")
+    print("[*] Artifacts Generated:")
+    print(f"    - Camera Poses: {'[OK]' if has_transforms else '[MISSING]'}")
+    print(f"    - Sparse Cloud: {'[OK]' if has_points else '[MISSING]'}")
+    print(f"[*] Total Frames Aligned: {total_frames}")
+    print(f"[*] Processing Speed: {processing_speed:.2f} frames/sec")
     print(f"[*] Total Time: {total_time:.2f}s")
-    print(f"[*] Processing Speed: {processing_speed:.2f} pairs/sec")
 
 
 if __name__ == "__main__":
