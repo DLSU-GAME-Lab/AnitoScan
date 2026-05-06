@@ -220,7 +220,7 @@ def run_remove_background(
                             prev_box = winner_coords
                     else:
                         # Fallback: No candidate in this frame matched the previous one
-                        print(f"\n[!] REJECTION DEBUG - Frame {i}")
+                        print(f"\n[!] REJECTION DEBUG - Frame {i + 1}")
                         print(f"    - Valid Candidates Found: {len(valid_boxes)}")
                         print(
                             f"    - Target Thresholds: IoU > {iou_threshold} | Drift < {drift_limit}px"
