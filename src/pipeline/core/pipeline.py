@@ -132,7 +132,7 @@ def run_pipeline():
     parser.add_argument(
         "--blur-threshold",
         type=float,
-        default=80.0,
+        default=200.0,
         help="Laplacian variance threshold",
     )
     parser.add_argument(
@@ -156,7 +156,7 @@ def run_pipeline():
     parser.add_argument(
         "--drift_limit",
         type=int,
-        default=350,
+        default=500,
         help="Maximum drift limit between boundary boxes",
     )
     parser.add_argument(
