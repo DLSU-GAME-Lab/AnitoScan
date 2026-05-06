@@ -39,7 +39,7 @@
 /assets/
 
 # Python Virtual Environment
-/src/pipeline/.venv/
+**/.venv/
 
 # Don't ignore if in vendor
 !vendor/**
