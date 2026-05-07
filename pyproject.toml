@@ -11,7 +11,7 @@ dependencies = [
     "huggingface-hub[torch]>=1.13.0",
     "imageio~=2.16.0",
     "matplotlib>=3.10.9",
-    "numpy>=1.26.4,<2.0.0",
+    "numpy>=2.1.0",
     "numpy-quaternion>=2024.0.13",
     "opencv-python==4.10.0.84",
     "poselib>=2.0.5",

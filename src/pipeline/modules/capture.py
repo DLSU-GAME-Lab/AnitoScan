@@ -173,7 +173,7 @@ def run_capture(
 
     # Finalize Manifest
     manifest["status"]["phase"] = 1
-    if "spatial" not in manifest["status"]["completed"]:
+    if "capture" not in manifest["status"]["completed"]:
         manifest["status"]["completed"].append("capture")
 
     with open(manifest_path, "w") as f:

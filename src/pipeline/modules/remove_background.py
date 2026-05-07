@@ -259,7 +259,7 @@ def run_remove_background(
 
     # Finalize Manifest
     manifest["status"]["phase"] = 2
-    if "spatial" not in manifest["status"]["completed"]:
+    if "masking" not in manifest["status"]["completed"]:
         manifest["status"]["completed"].append("masking")
 
     with open(manifest_path, "w") as f:

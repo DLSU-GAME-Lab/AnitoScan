@@ -30,9 +30,9 @@ Navigate to the `mast3r` vendor directory to compile the hardware-accelerated ex
 ```DOS
 cd "vendor\mast3r\dust3r\croco\models\curope"
 
-:: Replace the path below with your actual CUDA installation path
-set CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1
+set CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4
 set DISTUTILS_USE_SDK=1
+$env:PLATFORM = "x64"
 
 uv run python setup.py build_ext --inplace
 cd ../../../../../..
