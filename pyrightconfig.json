@@ -1,14 +1,15 @@
 {
-    "venvPath": "src/pipeline",
+    "venvPath": ".",
     "venv": ".venv",
     "include": ["src/pipeline"],
     "executionEnvironments": [
         {
             "root": "src/pipeline",
             "extraPaths": [
-                "src/pipeline",
+                ".",
                 "vendor/mast3r",
                 "vendor/mast3r/dust3r",
+                "vendor/NeuS2",
             ],
         },
     ],

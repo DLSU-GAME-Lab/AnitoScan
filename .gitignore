@@ -56,3 +56,7 @@ Thumbs.db
 /.vs
 /out
 /output
+
+vendor/NeuS2/configs/nerf/**.json
+!vendor/NeuS2/configs/nerf/base.json
+!vendor/NeuS2/configs/nerf/dtu.json
