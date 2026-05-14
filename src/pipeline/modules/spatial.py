@@ -42,8 +42,7 @@ except ImportError:
     sys.exit(1)
 
 
-# Convert BGRA masked PNGs to cropped RGB JPGs for MASt3R
-# Crops tightly around the masked object to maximize feature density
+# Convert BGRA masked PNGs to full-size RGB JPGs for MASt3R (No cropping)
 def convert_masked_frames(source_images, converted_dir):
 
     converted_images = []
@@ -54,35 +53,16 @@ def convert_masked_frames(source_images, converted_dir):
         if not out_path.exists():
             img = cv2.imread(png_path, cv2.IMREAD_UNCHANGED)
             if img is None:
-                print(f"[!] Warning: Could not read {png_path}, skiping.")
+                print(f"[!] Warning: Could not read {png_path}, skipping.")
                 continue
 
             if img.ndim == 3 and img.shape[2] == 4:
                 alpha_channel = img[:, :, 3]
                 bgr = img[:, :, :3]
 
-                # Find bounding box of the masked object
-                coords = cv2.findNonZero(alpha_channel)
-                if coords is None:
-                    print(f"[!] Warning: Empty mask in {Path(png_path).name}, skipping")
-                    continue
-
-                x, y, w, h = cv2.boundingRect(coords)
-
-                # Add 5% padding
-                pad_x = int(w * 0.05)
-                pad_y = int(h * 0.05)
-                H, W = img.shape[:2]
-                x1 = max(0, x - pad_x)
-                y1 = max(0, y - pad_y)
-                x2 = min(W, x + w + pad_x)
-                y2 = min(H, y + h + pad_y)
-
-                # Crop and apply binary mask - object on black background
-                bgr_crop = bgr[y1:y2, x1:x2]
-                alpha_crop = alpha_channel[y1:y2, x1:x2]
-                mask = (alpha_crop > 0).astype(np.uint8)
-                composited = bgr_crop.copy()
+                # Apply binary mask directly to the full-size image
+                mask = (alpha_channel > 0).astype(np.uint8)
+                composited = bgr.copy()
                 composited[mask == 0] = 0
 
             else:
@@ -110,7 +90,7 @@ def filter_outliers(pts, colors, n_neighbors=20, std_multiplier=2.0):
     return pts[mask], colors[mask]
 
 
-def filter_islands(pts, colors, connection_radius=0.01):  # Reduced from 0.03
+def filter_islands(pts, colors, connection_radius=0.05):  # Reduced from 0.03
     """
     Keeps only the largest connected cluster of points.
     """
@@ -338,11 +318,14 @@ def run_spatial_reconstruction(manifest_path, force=False):
     transforms = {"camera_model": "PINHOLE", "frames": []}
 
     for i, path in enumerate(source_images):
+        h, w = cv2.imread(path).shape[:2]
         transforms["frames"].append(
             {
                 "file_path": f"./{Path(path).name}",
                 "transform_matrix": poses[i].tolist(),
                 "focal_length": float(focals[i]),
+                "w": w,
+                "h": h,
             }
         )
 

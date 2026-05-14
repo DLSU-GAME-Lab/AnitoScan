@@ -114,6 +114,11 @@ def run_remove_background(
     detector = YOLOE(str(yoloe_path))
     segmenter = SAM(str(sam_path))
 
+    # Adjust these if the mask is still too tight or too loose
+    BOX_PADDING_PERCENT = 0.08  # Expands the YOLO box by 8% before SAM
+    MASK_DILATION_ITERATIONS = 2  # Number of times to thicken the final pixel mask
+    dilation_kernel = np.ones((5, 5), np.uint8)
+
     # 4. Processing Loop
     start_perf = time.perf_counter()
     last_percent = -1
@@ -196,7 +201,21 @@ def run_remove_background(
                         and winner_coords is not None
                         and best_candidate_match is not None
                     ):
-                        prompt_bboxes = np.array([winner_coords], dtype=np.float32)
+                        # Calculate padding pixels based on the box size
+                        box_w = winner_coords[2] - winner_coords[0]
+                        box_h = winner_coords[3] - winner_coords[1]
+                        pad_x = box_w * BOX_PADDING_PERCENT
+                        pad_y = box_h * BOX_PADDING_PERCENT
+
+                        # Apply padding while ensuring we don't go outside image boundaries
+                        padded_coords = [
+                            max(0, winner_coords[0] - pad_x),
+                            max(0, winner_coords[1] - pad_y),
+                            min(w_img, winner_coords[2] + pad_x),
+                            min(h_img, winner_coords[3] + pad_y),
+                        ]
+
+                        prompt_bboxes = np.array([padded_coords], dtype=np.float32)
                         sam_results = segmenter.predict(
                             source=img,
                             bboxes=prompt_bboxes,

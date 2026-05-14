@@ -10,6 +10,7 @@
                 "vendor/mast3r",
                 "vendor/mast3r/dust3r",
                 "vendor/NeuS2",
+                "vendor/2d-gaussian-splatting",
             ],
         },
     ],
