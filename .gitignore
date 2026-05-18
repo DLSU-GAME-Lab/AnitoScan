@@ -42,7 +42,7 @@
 **/.venv/
 
 # Don't ignore if in vendor
-!vendor/**
+#!vendor/**
 
 # OS-specific junk files
 .DS_Store
@@ -57,7 +57,15 @@ Thumbs.db
 /out
 /output
 
-vendor/NeuS2/configs/nerf/**.json
+# Vendor
+# Block the heavy dependency folders entirely
+/vendor/imgui/
+/vendor/SDL2/
+/vendor/nlohmann_json/
+
+/vendor/NeuS2/configs/nerf/**.json
+/vendor/2d-gaussian-splatting/
+
+# Whitelist
 !vendor/NeuS2/configs/nerf/base.json
 !vendor/NeuS2/configs/nerf/dtu.json
-!vendor/2d-gaussian-splatting
