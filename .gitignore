@@ -59,11 +59,16 @@ Thumbs.db
 
 # Vendor
 # Block the heavy dependency folders entirely
+#/vendor/sdl2-build/
+#/vendor/sdl2-src/
+#/vendor/sdl2-subbuild/
+#/vendor/imgui-src/
+#/vendor/imgui-build/
+#/vendor/imgui-subbuild/
+#/vendor/nlohmann_json-src/
+#/vendor/nlohmann_json-build/
+#/vendor/nlohmann_json-subbuild/
 /vendor/imgui/
-/vendor/SDL2/
-/vendor/imgui-src/
-/vendor/imgui-subbuild/
-/vendor/nlohmann_json/
 
 /vendor/NeuS2/configs/nerf/**.json
 
