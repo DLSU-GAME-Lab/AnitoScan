@@ -69,6 +69,8 @@ Thumbs.db
 #/vendor/nlohmann_json-build/
 #/vendor/nlohmann_json-subbuild/
 /vendor/imgui/
+/vendor/SDL2/
+/vendor/nlohmann_json/
 
 /vendor/NeuS2/configs/nerf/**.json
 
