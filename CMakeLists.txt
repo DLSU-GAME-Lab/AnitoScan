@@ -45,25 +45,41 @@ FetchContent_MakeAvailable(nlohmann_json)
 # TODO: complete when editor is now included
 add_executable(${PROJECT_NAME}
     src/editor/main.cpp
+    src/editor/App.cpp
+    src/editor/IPCClient.cpp 
+    src/editor/UI/panels/ScanPanel.cpp
+    src/editor/UI/UIManager.cpp 
+    src/editor/UI/UIPanel.cpp
     # Add your other .cpp files here
-
 
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp 
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+#    "src/editor/panels/ScanPanel.h" "src/editor/panels/ScanPanel.cpp" "src/editor/App.h" "src/editor/IPCClient.h" "src/editor/IPCClient.cpp" "src/editor/UI/UIPanel.cpp"
+#    "src/editor/Types.h")
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     "${CMAKE_SOURCE_DIR}/src"
     "${imgui_SOURCE_DIR}"
     "${imgui_SOURCE_DIR}/backends"
+    "${SDL2_SOURCE_DIR}/include"
+    "${nlohmann_json_SOURCE_DIR}/include"
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     SDL2::SDL2
+    SDL2::SDL2main
     opengl32
     nlohmann_json::nlohmann_json
-)   
+)
+
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:SDL2::SDL2>
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+)

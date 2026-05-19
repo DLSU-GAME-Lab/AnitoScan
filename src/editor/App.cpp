@@ -1,0 +1,115 @@
+#include "App.h"
+#include "UI/UIManager.h"
+
+
+App::App(int width, int height) {
+	this->isRunning = false;
+	this->window = nullptr;
+	this->glContext = nullptr;
+	this->screenWidth = width;
+	this->screenHeight = height;
+}
+
+App::~App() {
+	Cleanup();
+}
+
+void App::Initialize() {
+	if (!InitializeSDL()) {
+		std::cerr << "[ERROR]: SDL initialization failed: " << SDL_GetError() << std::endl;
+		return;
+	}
+
+	if (!InitializeOpenGL()) {
+		std::cerr << "[ERROR]: OpenGL initialization failed: " << SDL_GetError() << std::endl;
+		return;
+	}
+
+	if (!UIManager::GetInstance()->Initialize(this->window, this->glContext)) {
+		std::cerr << "[ERROR]: ImGui initialization failed: " << std::endl;
+		return;
+	}
+	
+	this->isRunning = true;
+	std::cerr << "App is initialized and running." << std::endl;
+}
+
+bool App::InitializeSDL() {
+	// initialize SDL
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0) {
+		std::cerr << "[ERROR]: SDL initialization failed: " << SDL_GetError() << std::endl;
+		return false;
+	}
+
+	// set OpenGL Attributes
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
+	// create the window
+	window = SDL_CreateWindow(
+		"AnitoScan",
+		SDL_WINDOWPOS_UNDEFINED,
+		SDL_WINDOWPOS_UNDEFINED,
+		this->screenWidth, this->screenHeight,
+		SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
+	);
+
+	if (!window) {
+		std::cerr << "[ERROR]: Creating window failed: " << SDL_GetError << std::endl;
+		return false;
+	}
+
+	return true;
+}
+
+bool App::InitializeOpenGL() {
+	// bind the OpenGL context to window
+	this->glContext = SDL_GL_CreateContext(this->window);
+	if (!glContext) {
+		std::cerr << "[ERROR]: OpenGL Context creation failed: " << SDL_GetError() << std::endl;
+	}
+
+	SDL_GL_MakeCurrent(this->window, this->glContext);
+
+	// enable v-sync
+	SDL_GL_SetSwapInterval(1);
+
+	return true;
+}
+
+void App::Run()
+{
+	// main loop
+	SDL_Event event;
+	while (this->isRunning) {
+
+		// handle window/input events
+		while (SDL_PollEvent(&event)) {
+			ImGui_ImplSDL2_ProcessEvent(&event);
+
+			if (event.type == SDL_QUIT) {
+				this->isRunning = false;
+			}
+		}
+
+		// ImGui draw/render
+		UIManager::GetInstance()->BeginNewFrame();
+		UIManager::GetInstance()->DrawAllUIs();
+		UIManager::GetInstance()->EndFrame();
+
+		SDL_GL_SwapWindow(this->window);
+	}
+}
+
+void App::Cleanup() {
+	UIManager::GetInstance()->Shutdown();
+	// destroy window frame
+	if (this->window) {
+		SDL_DestroyWindow(window);
+	}
+
+	SDL_Quit();
+}
