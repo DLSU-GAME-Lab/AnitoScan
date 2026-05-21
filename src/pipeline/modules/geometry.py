@@ -38,23 +38,23 @@ def run_bundle_adjustment(image_dir: Path, output_dir: Path):
     print("[*] Extracting SIFT features...")
 
     # Initialize the specific reader options object required by the new API
-    reader_options = pycolmap.ImageReaderOptions()
+    reader_options = pycolmap.ImageReaderOptions()  # type: ignore
     reader_options.camera_model = "PINHOLE"
 
-    pycolmap.extract_features(
+    pycolmap.extract_features(  # type: ignore
         database_path,
         image_dir,
-        camera_mode=pycolmap.CameraMode.SINGLE,
+        camera_mode=pycolmap.CameraMode.SINGLE,  # type: ignore
         reader_options=reader_options,
     )
 
     # 2. Feature Matching (Building the observation tracks)
     print("[*] Matching features...")
-    pycolmap.match_exhaustive(database_path)
+    pycolmap.match_exhaustive(database_path)  # type: ignore
 
     # 3. Incremental Mapping & Bundle Adjustment (Ceres Solver)
     print("[*] Running Ceres Solver (Bundle Adjustment)...")
-    maps = pycolmap.incremental_mapping(database_path, image_dir, output_dir)
+    maps = pycolmap.incremental_mapping(database_path, image_dir, output_dir)  # type: ignore
 
     # Because pycolmap can technically return multiple disjoint maps,
     # we check if any maps were created, and extract the largest one (index 0)

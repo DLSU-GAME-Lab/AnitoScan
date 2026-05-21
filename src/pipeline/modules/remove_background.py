@@ -1,6 +1,5 @@
 import argparse
 import json
-import os
 import shutil
 import sys
 import time
@@ -178,7 +177,7 @@ def run_remove_background(
     total_frames = len(source_images)
     target_min_frames = manifest["settings"].get("minimum_frames", 45)
 
-    print(f"[*] Starting Background Removal Phase.")
+    print("[*] Starting Background Removal Phase.")
     print(
         f"[*] Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})"
     )
