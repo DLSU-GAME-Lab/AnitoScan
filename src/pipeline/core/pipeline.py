@@ -11,6 +11,22 @@ WORKSPACE_DIR = PROJECT_ROOT / "data" / "runs"  # /data/runs/
 MODULES_DIR = SCRIPT_PATH.parent.parent / "modules"  # /src/
 
 
+# IPC helpers
+def send(obj: dict):
+    print(json.dumps(obj), flush=True)
+
+def send_progress(value: float, label: str = ""):
+    send({"type": "progress", "value": round(value, 2), "label": label})
+
+def send_log(text: str):
+    send({"type": "log", "text" : text})
+
+def send_done(data: dict = {}):
+    send({"type": "done", "data": data})
+
+def send_error(text: str):
+    send({"type": "error", "text": text})
+
 def run_phase1(parent_module_path, manifest_path, args):
     # 1. Launch Phase 1: Capture
     module_path = parent_module_path / "capture.py"

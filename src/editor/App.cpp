@@ -15,18 +15,27 @@ App::~App() {
 }
 
 void App::Initialize() {
+	//SDL
 	if (!InitializeSDL()) {
 		std::cerr << "[ERROR]: SDL initialization failed: " << SDL_GetError() << std::endl;
 		return;
 	}
 
+	//OPENGL
 	if (!InitializeOpenGL()) {
 		std::cerr << "[ERROR]: OpenGL initialization failed: " << SDL_GetError() << std::endl;
 		return;
 	}
 
-	if (!UIManager::GetInstance()->Initialize(this->window, this->glContext)) {
+	//IMGUI
+	if (!UIManager::GetInstance()->Initialize(this->window, this->glContext, this->ipc)) {
 		std::cerr << "[ERROR]: ImGui initialization failed: " << std::endl;
+		return;
+	}
+
+	//IPC 
+	if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/dummy.py")) {
+		std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
 		return;
 	}
 	
@@ -80,6 +89,34 @@ bool App::InitializeOpenGL() {
 	return true;
 }
 
+// IPC and action decoder from the python backend
+void App::PollBackend() {
+	std::vector<BackendMessage> messages;
+	this->ipc.Poll(messages);
+	UIPanel* ui = UIManager::GetInstance()->GetPanelByType(UIType::SCAN_PANEL);
+	ScanPanel* panel = static_cast<ScanPanel*>(ui);
+
+	for (BackendMessage& msg : messages) {
+		auto j = nlohmann::json::parse(msg.raw);
+
+		if (msg.type == "log") {
+			String text = j.value("text", "");
+			panel->PushLog(text);
+		}
+		else if (msg.type == "progress") {
+			float value = j.value("value", 0.0f);
+			String label = j.value("label", "");
+			panel->SetProgress(value, label);
+		}
+		else if (msg.type == "done") {
+			panel->SetDone();
+		}
+		else if (msg.type == "error") {
+			panel->PushLog("[ERROR] " + j.value("text", "unknown error"));
+		}
+	}
+}
+
 void App::Run()
 {
 	// main loop
@@ -95,6 +132,8 @@ void App::Run()
 			}
 		}
 
+		this->PollBackend();
+
 		// ImGui draw/render
 		UIManager::GetInstance()->BeginNewFrame();
 		UIManager::GetInstance()->DrawAllUIs();
@@ -104,11 +143,17 @@ void App::Run()
 	}
 }
 
+
 void App::Cleanup() {
+	this->ipc.Shutdown();
 	UIManager::GetInstance()->Shutdown();
 	// destroy window frame
+	if (this->glContext) {
+		SDL_GL_DeleteContext(this->glContext);
+	}
+
 	if (this->window) {
-		SDL_DestroyWindow(window);
+		SDL_DestroyWindow(this->window);
 	}
 
 	SDL_Quit();

@@ -2,7 +2,7 @@
 
 UIManager* UIManager::sharedInstance = nullptr;
 
-bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext) {
+bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClient& ipc) {
 	sharedInstance = new UIManager();
 
 	// create ImGui context and IO
@@ -27,23 +27,27 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext) {
 		return false;
 	}
 
+	sharedInstance->CreateUIPanels(ipc);
+
 	return true;
 }
 
-void UIManager::InitializeUIPanels() {
-	ScanPanel* scanPanel = new ScanPanel();
-	this->UIList.push_back(scanPanel);
-	this->UIMap[UIType::SCAN_PANEL] = scanPanel;
+// Create and register the UI Panels
+void UIManager::CreateUIPanels(IPCClient& ipc) {
+	ScanPanel* scanPanel = new ScanPanel(ipc);
+	this->uiList.push_back(scanPanel);
+	this->uiMap[UIType::SCAN_PANEL] = scanPanel;
+	
+	DockSpace* dockSpace = new DockSpace();
+	this->uiList.push_back(dockSpace);
+	this->uiMap[UIType::DOCKSPACE] = dockSpace;
 }
 
 UIManager* UIManager::GetInstance() {
 	return sharedInstance;
 }
 
-UIManager::UIManager() {
-
-	this->InitializeUIPanels();
-}
+UIManager::UIManager() {}
 	
 UIManager::~UIManager() {}
 
@@ -56,7 +60,7 @@ void UIManager::BeginNewFrame() {
 
 // draw
 void UIManager::DrawAllUIs() {
-	for (UIPanel* panel : UIList) {
+	for (UIPanel* panel : this->uiList) {
 		if(panel->IsActive())
 			panel->Draw();
 	}
@@ -73,7 +77,7 @@ void UIManager::EndFrame() {
 
 UIPanel* UIManager::GetPanelByType(UIType type) {
 	UIPanel* ret = nullptr;
-	for (UIPanel* panel : UIList) {
+	for (UIPanel* panel : this->uiList) {
 		if (panel->GetType() == type) {
 			ret = panel;
 			break;
@@ -82,15 +86,14 @@ UIPanel* UIManager::GetPanelByType(UIType type) {
 	return ret;
 }
 
-void UIManager::Shutdown()
-{
+void UIManager::Shutdown() {
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
 	ImGui::DestroyContext();
 
-	for (UIPanel* panel : UIList)
+	for (UIPanel* panel : this->uiList)
 		delete panel;
 
-	UIList.clear();
-	UIMap.clear();
+	uiList.clear();
+	uiMap.clear();
 }

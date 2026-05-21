@@ -9,11 +9,13 @@
 #include "../Types.h"
 #include "UIPanel.h"
 #include "panels/ScanPanel.h"
+#include "panels/DockSpace.h"
+#include "../IPCClient.h"
 
 class UIManager {
 public:
 	static UIManager* GetInstance();
-	static bool Initialize(SDL_Window* window, SDL_GLContext glContext);
+	static bool Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClient& ipc);
 
 	void BeginNewFrame();
 	void DrawAllUIs();
@@ -22,7 +24,7 @@ public:
 	void Shutdown();
 
 private:
-	void InitializeUIPanels();
+	void CreateUIPanels(IPCClient& ipc);
 
 private:
 	UIManager();
@@ -32,7 +34,7 @@ private:
 	static UIManager* sharedInstance;
 
 private:
-	UIList UIList;
-	UIMap UIMap;
+	UIList uiList;
+	UIMap uiMap;
 
 };

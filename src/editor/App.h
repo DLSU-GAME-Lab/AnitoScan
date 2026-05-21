@@ -7,6 +7,11 @@
 #include <backends/imgui_impl_sdl2.h>
 #include <backends/imgui_impl_opengl3.h>
 
+#include "IPCClient.h"
+#include "Types.h"
+
+class IPCClient;
+
 class App {
 public:
 	App(int width, int height);
@@ -18,6 +23,8 @@ public:
 private:
 	bool InitializeSDL();
 	bool InitializeOpenGL();
+	//bool InitializeImGui();
+	void PollBackend();
 	void Cleanup();
 
 	bool isRunning;
@@ -26,5 +33,7 @@ private:
 
 	int screenWidth;
 	int screenHeight;
+
+	IPCClient ipc;
 
 };

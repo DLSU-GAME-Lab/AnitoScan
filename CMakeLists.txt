@@ -34,7 +34,7 @@ FetchContent_MakeAvailable(SDL2)
 FetchContent_Declare(
     nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG        v3.12.0
+    GIT_TAG        v3.11.3
     SUBBUILD_DIR   "${CMAKE_SOURCE_DIR}/vendor/nlohmann_json/subbuild"
     SOURCE_DIR     "${CMAKE_SOURCE_DIR}/vendor/nlohmann_json/src"
     BINARY_DIR     "${CMAKE_SOURCE_DIR}/vendor/nlohmann_json/build"
@@ -47,9 +47,10 @@ add_executable(${PROJECT_NAME}
     src/editor/main.cpp
     src/editor/App.cpp
     src/editor/IPCClient.cpp 
-    src/editor/UI/panels/ScanPanel.cpp
     src/editor/UI/UIManager.cpp 
     src/editor/UI/UIPanel.cpp
+    src/editor/UI/panels/DockSpace.cpp
+    src/editor/UI/panels/ScanPanel.cpp
     # Add your other .cpp files here
 
     ${imgui_SOURCE_DIR}/imgui.cpp
