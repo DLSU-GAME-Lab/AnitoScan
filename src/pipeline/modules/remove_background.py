@@ -230,8 +230,18 @@ def run_remove_background(
                                 interpolation=cv2.INTER_NEAREST,
                             )
 
-                            # Convert to BGRA and apply mask to Alpha
+                            # Convert to BGRA
                             bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+
+                            # HARD-MASK THE RGB CHANNELS
+                            bgra[:, :, :3] = cv2.bitwise_and(
+                                bgra[:, :, :3], bgra[:, :, :3], mask=mask_resized
+                            )
+
+                            # # INVERT THE MASK AREA TO 255 (Turns background from 0 to 255 / White)
+                            bgra[mask_resized == 0, :3] = 255
+
+                            # Apply mask to Alpha
                             bgra[:, :, 3] = mask_resized
                             final_output = bgra
 

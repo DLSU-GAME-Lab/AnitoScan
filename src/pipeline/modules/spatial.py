@@ -90,7 +90,7 @@ def filter_outliers(pts, colors, n_neighbors=20, std_multiplier=2.0):
     return pts[mask], colors[mask]
 
 
-def filter_islands(pts, colors, connection_radius=0.05):  # Reduced from 0.03
+def filter_islands(pts, colors, connection_radius=0.03):  # Reduced from 0.03
     """
     Keeps only the largest connected cluster of points.
     """
@@ -277,6 +277,7 @@ def run_spatial_reconstruction(manifest_path, force=False):
     # The returned 'scene' object has methods to get optimized poses
     poses = scene.get_im_poses().detach().cpu().numpy()  # 4x4 matrices [R|t]
     focals = scene.get_focals().detach().cpu().numpy()
+    principal_points = scene.get_principal_points().detach().cpu().numpy()
 
     pts3d_raw = scene.pts3d  # list of 252 tensors (M, 3) - XYZ
     colors_raw = scene.pts3d_colors  # list of 252 tensors (M, 1) - RGB
@@ -324,6 +325,8 @@ def run_spatial_reconstruction(manifest_path, force=False):
                 "file_path": f"./{Path(path).name}",
                 "transform_matrix": poses[i].tolist(),
                 "focal_length": float(focals[i]),
+                "cx": float(principal_points[i, 0]),
+                "cy": float(principal_points[i, 1]),
                 "w": w,
                 "h": h,
             }
@@ -380,4 +383,5 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    run_spatial_reconstruction(args.manifest, force=args.force)
+    # run_spatial_reconstruction(args.manifest, force=args.force)
+    print("Skipping MASt3R phase")
