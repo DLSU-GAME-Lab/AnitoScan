@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
@@ -13,53 +14,154 @@ from ultralytics.models.sam import SAM
 from ultralytics.models.yolo import YOLOE
 
 # DIRECTORY RESOLUTION
-MODULE_PATH = Path(__file__).resolve()  # /src/pipeline/modules/remove_background.py
+MODULE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
 MODELS_DIR = PROJECT_ROOT / "models" / "02_masking"
-
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
 
 
 def calculate_iou(boxA, boxB):
-    # box = [x1, y1, x2, y2]
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])
     xB = min(boxA[2], boxB[2])
     yB = min(boxA[3], boxB[3])
-
     interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
     boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
     boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
-
     iou = interArea / float(boxAArea + boxBArea - interArea)
     return iou
 
 
 def calculate_centroid_drift(boxA, boxB):
-    # Get centers: (x1 + x2) / 2, (y1 + y2) / 2
     centerA = np.array([(boxA[0] + boxA[2]) / 2, (boxA[1] + boxA[3]) / 2])
     centerB = np.array([(boxB[0] + boxB[2]) / 2, (boxB[1] + boxB[3]) / 2])
-    # Euclidean distance
     return np.linalg.norm(centerA - centerB)
 
 
+def get_user_selection(img, detector, temp_dir, frame_name, device):
+    """Runs YOLOE, draws uniquely colored candidates with collision avoidance, and gets terminal input.
+
+    Returns a tuple: (chosen_box_coordinates or None, elapsed_wait_time_seconds)
+    """
+    start_wait = time.perf_counter()
+    print(f"\n[*] Running YOLOE-26 on {frame_name}...")
+    results = detector.predict(source=img, conf=0.35, device=device, verbose=False)[0]
+
+    if results.boxes is None or len(results.boxes) == 0:
+        print("[!] YOLOE found no valid subjects in this frame.")
+        return None, time.perf_counter() - start_wait
+
+    h_img, w_img = img.shape[:2]
+    img_area = h_img * w_img
+    valid_boxes = []
+
+    for box in results.boxes:
+        coords = box.xyxy[0].cpu().numpy()
+        box_area = (coords[2] - coords[0]) * (coords[3] - coords[1])
+        if (box_area / img_area) < 0.70:
+            valid_boxes.append(coords.tolist())
+
+    if not valid_boxes:
+        return None, time.perf_counter() - start_wait
+
+    preview_img = img.copy()
+    overlay = img.copy()  # Create an overlay for transparency
+
+    # Distinct high-contrast colors in BGR format
+    palette = [
+        (0, 255, 0),  # Bright Green
+        (255, 255, 0),  # Cyan
+        (0, 0, 255),  # Pure Red
+        (255, 0, 255),  # Magenta
+        (0, 165, 255),  # Orange
+        (255, 0, 0),  # Pure Blue
+        (0, 255, 255),  # Bright Yellow
+        (140, 0, 140),  # Dark Purple
+    ]
+
+    # Store label positions to prevent overlapping text
+    drawn_labels = []
+
+    for idx, coords in enumerate(valid_boxes):
+        x1, y1, x2, y2 = map(int, coords)
+
+        # Select a unique color from the palette based on index
+        color = palette[idx % len(palette)]
+
+        # 1. Draw the semi-transparent box
+        cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 2)
+
+        # 2. Collision detection for the label
+        label_y = y1
+        shift_amount = 35  # Height of the label background + padding
+
+        # Check if this new label is going to collide with any existing label
+        while any(
+            abs(label_y - dy) < shift_amount and abs(x1 - dx) < 40
+            for dx, dy in drawn_labels
+        ):
+            label_y += shift_amount  # Push it down below the colliding label
+
+        # Keep track of where we are putting this one
+        drawn_labels.append((x1, label_y))
+
+        # 3. Draw the dynamic color label background and text on the overlay
+        cv2.rectangle(overlay, (x1, label_y - 30), (x1 + 40, label_y), color, -1)
+        cv2.putText(
+            overlay,
+            str(idx),
+            (x1 + 5, label_y - 5),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.9,
+            (0, 0, 0),
+            2,
+        )
+
+    # Blend the overlay with the original image (60% opacity for the boxes/labels)
+    alpha = 0.6
+    cv2.addWeighted(overlay, alpha, preview_img, 1 - alpha, 0, preview_img)
+
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    preview_path = temp_dir / f"{frame_name}_candidates.png"
+
+    write_success = cv2.imwrite(str(preview_path), preview_img)
+    if not write_success:
+        print(
+            f"\n[!] CRITICAL ERROR: OpenCV failed to write the preview image to: {preview_path}"
+        )
+        sys.exit(1)
+
+    print("\n==================================================")
+    print(f" ACTION REQUIRED: Open {preview_path}")
+    print("==================================================")
+
+    while True:
+        try:
+            choice = input(
+                f"Enter the ID of the correct bounding box (0-{len(valid_boxes) - 1}) or 's' to skip: "
+            )
+            if choice.lower() == "s":
+                return None, time.perf_counter() - start_wait
+            idx = int(choice)
+            if 0 <= idx < len(valid_boxes):
+                return valid_boxes[idx], time.perf_counter() - start_wait
+            else:
+                print("[!] Invalid ID. Try again.")
+        except ValueError:
+            print("[!] Please enter a valid number.")
+
+
 def run_remove_background(
-    manifest_path,
-    iou_threshold,
-    drift_limit,
-    max_yoloe_failures,
-    yoloe_model_size,
-    force=False,
+    manifest_path, yoloe_model_size, iou_threshold=0.35, drift_limit=200, force=False
 ):
-    # 1. Load Manifest
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
 
     input_dir = Path(manifest["paths"]["raw_frames"]).resolve()
     output_dir = Path(manifest["paths"]["masked_frames"]).resolve()
+    temp_dir = output_dir / "temp"
 
-    # 2. Preparation & Validation
-    if not input_dir.exists() or not input_dir.is_dir():
+    if not input_dir.exists():
         print(f"[!] Input directory not found: {input_dir}")
         sys.exit(1)
 
@@ -68,225 +170,151 @@ def run_remove_background(
         shutil.rmtree(output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
 
-    # Gather source images
     source_images = sorted(
         [f for f in input_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
     )
+    total_frames = len(source_images)
+    target_min_frames = manifest["settings"].get("minimum_frames", 45)
 
-    total_expected_frames = len(source_images)
-    if total_expected_frames == 0:
-        print(f"[!] Error: No valid images found in {input_dir}")
-        sys.exit(1)
-
-    # 3. Check if we already have the frames we need
-    existing_frames = list(output_dir.glob("*.png"))
-    existing_frame_count = len(existing_frames)
-
-    print(f"[*] Found {existing_frame_count} existing masked frames in {output_dir}.")
-    if existing_frame_count >= total_expected_frames and not force:
-        print(
-            f"[*] Expected ~{total_expected_frames}. Skipping background removal phase."
-        )
-        print("PROGRESS: 100")
-        return
-
-    # 4. Initialize Models
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif torch.backends.mps.is_available():
-        device = "mps"
-    else:
-        device = "cpu"
-
-    yoloe_path = MODELS_DIR / f"yoloe-26{yoloe_model_size}-seg-pf.pt"
-    sam_path = MODELS_DIR / "sam2.1_s.pt"
-
-    # Uncomment to disable auto-download of model weights
-    # if not yoloe_path.exists():
-    #     print(f"[!] YOLOE weights not found: {yoloe_path}")
-    #     sys.exit(1)
-
-    # if not sam_path.exists():
-    #     print(f"[!] SAM weights not found: {sam_path}")
-    #     sys.exit(1)
-
-    detector = YOLOE(str(yoloe_path))
-    segmenter = SAM(str(sam_path))
-
-    # Adjust these if the mask is still too tight or too loose
-    BOX_PADDING_PERCENT = 0.08  # Expands the YOLO box by 8% before SAM
-    MASK_DILATION_ITERATIONS = 2  # Number of times to thicken the final pixel mask
-    dilation_kernel = np.ones((5, 5), np.uint8)
-
-    # 4. Processing Loop
-    start_perf = time.perf_counter()
-    last_percent = -1
-    prev_box = None
-    consecutive_failures = 0
-
-    # Step A: Zero-Shot Object Detection to get boundary box
-    det_generator = detector.predict(
-        source=str(input_dir), conf=0.35, device=device, stream=True, verbose=False
+    print(f"[*] Starting Background Removal Phase.")
+    print(
+        f"[*] Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})"
     )
 
-    # Use a ThreadPool for writing to disk so the CPU can keep detecting
+    device = (
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
+        else "cpu"
+    )
+
+    detector = YOLOE(str(MODELS_DIR / f"yoloe-26{yoloe_model_size}-seg-pf.pt"))
+    segmenter = SAM(str(MODELS_DIR / "sam2.1_s.pt"))
+
+    start_perf = time.perf_counter()
+    total_user_time = 0.0  # Tracks elapsed human intervention overhead
+    prev_box = None
+
     with ThreadPoolExecutor(max_workers=4) as executor:
-        for i, det_results in enumerate(det_generator):
-            # Extract the current image path from the detection metadata
-            img_path = Path(det_results.path)
-            img = det_results.orig_img
+        for i, img_path in enumerate(source_images):
+            img = cv2.imread(str(img_path))
             if img is None:
-                print(f"[!] Critical: OpenCV could not read {img_path}")
                 continue
 
-            # class_names = det_results.names
             h_img, w_img = img.shape[:2]
             img_area = h_img * w_img
+            target_path = output_dir / f"{img_path.stem}.png"
 
-            # Default: Fully Transparent BGRA Frame
-            final_output = np.zeros((h_img, w_img, 4), dtype=np.uint8)
+            # 1. YOLOE Bounding Box Prediction
+            det_results = detector.predict(
+                source=img, conf=0.35, device=device, verbose=False
+            )[0]
+            valid_boxes = []
 
-            if det_results.boxes is not None and len(det_results.boxes) > 0:
-                valid_boxes = []
+            if det_results.boxes is not None:
                 for box in det_results.boxes:
                     coords = box.xyxy[0].cpu().numpy()
                     box_area = (coords[2] - coords[0]) * (coords[3] - coords[1])
-
                     if (box_area / img_area) < 0.70:
-                        valid_boxes.append(box)
+                        valid_boxes.append(coords.tolist())
 
-                if valid_boxes:
-                    best_candidate_match = None
-                    highest_iou = -1.0
-                    winner_coords = None
+            # 2. Strict Math Validation Heuristics (IoU & Drift Boundary Gates)
+            chosen_box = None
+            if prev_box is None:
+                # First frame initialization anchor configuration
+                chosen_box, wait_time = get_user_selection(
+                    img, detector, temp_dir, img_path.stem, device
+                )
+                total_user_time += wait_time
+            elif valid_boxes:
+                best_iou = -1.0
+                best_match = None
 
-                    found_any_match = False
-                    # Keep track of the best "failed" candidate for debugging
-                    best_failed_stats = {"iou": -1.0, "drift": -1.0}
+                for candidate in valid_boxes:
+                    iou = calculate_iou(prev_box, candidate)
+                    drift = calculate_centroid_drift(prev_box, candidate)
 
-                    # Search through all valid boxes for the best temporal match
-                    for idx, candidate_box in enumerate(valid_boxes):
-                        candidate_coords = candidate_box.xyxy[0].cpu().numpy()
+                    if iou > iou_threshold and drift < drift_limit:
+                        if iou > best_iou:
+                            best_iou = iou
+                            best_match = candidate
 
-                        # First frame initialization: just take the most confident one
-                        if prev_box is None:
-                            best_candidate_match = candidate_box
-                            winner_coords = candidate_coords
-                            found_any_match = True
-                            break
+                if best_match is not None:
+                    chosen_box = best_match
+                else:
+                    print(
+                        f"\n[!] Tracking signature broke on {img_path.name} (Strict limits violated)."
+                    )
+                    chosen_box, wait_time = get_user_selection(
+                        img, detector, temp_dir, img_path.stem, device
+                    )
+                    total_user_time += wait_time
+            else:
+                chosen_box, wait_time = get_user_selection(
+                    img, detector, temp_dir, img_path.stem, device
+                )
+                total_user_time += wait_time
 
-                        iou = calculate_iou(prev_box, candidate_coords)
-                        drift = calculate_centroid_drift(prev_box, candidate_coords)
+            # If skipped or failed, write zeroed blank structural mask frame matching target shape
+            if chosen_box is None:
+                executor.submit(
+                    cv2.imwrite,
+                    str(target_path),
+                    np.zeros((h_img, w_img, 4), dtype=np.uint8),
+                )
+                prev_box = None
+                continue
 
-                        # Check thresholds (using 250px drift for safer 1 FPS tracking)
-                        if iou > iou_threshold and drift < drift_limit:
-                            # We want the candidate that overlaps most with our last known position
-                            if iou > highest_iou:
-                                highest_iou = iou
-                                best_candidate_match = candidate_box
-                                winner_coords = candidate_coords
-                                found_any_match = True
-                        else:
-                            if iou > best_failed_stats["iou"]:
-                                best_failed_stats = {
-                                    "iou": iou,
-                                    "drift": drift,
-                                    "idx": idx,
-                                }
+            prev_box = chosen_box
 
-                    # Only proceed if we found a candidate that passed the temporal check
-                    if (
-                        found_any_match
-                        and winner_coords is not None
-                        and best_candidate_match is not None
-                    ):
-                        # Calculate padding pixels based on the box size
-                        box_w = winner_coords[2] - winner_coords[0]
-                        box_h = winner_coords[3] - winner_coords[1]
-                        pad_x = box_w * BOX_PADDING_PERCENT
-                        pad_y = box_h * BOX_PADDING_PERCENT
+            # 3. Static Segment Anything Model Extraction
+            box_w, box_h = chosen_box[2] - chosen_box[0], chosen_box[3] - chosen_box[1]
+            pad_x, pad_y = box_w * 0.08, box_h * 0.08
+            padded_box = [
+                max(0, chosen_box[0] - pad_x),
+                max(0, chosen_box[1] - pad_y),
+                min(w_img, chosen_box[2] + pad_x),
+                min(h_img, chosen_box[3] + pad_y),
+            ]
 
-                        # Apply padding while ensuring we don't go outside image boundaries
-                        padded_coords = [
-                            max(0, winner_coords[0] - pad_x),
-                            max(0, winner_coords[1] - pad_y),
-                            min(w_img, winner_coords[2] + pad_x),
-                            min(h_img, winner_coords[3] + pad_y),
-                        ]
+            sam_results = segmenter.predict(
+                source=img, bboxes=[padded_box], device=device, verbose=False
+            )[0]
 
-                        prompt_bboxes = np.array([padded_coords], dtype=np.float32)
-                        sam_results = segmenter.predict(
-                            source=img,
-                            bboxes=prompt_bboxes,
-                            device=device,
-                            verbose=False,
-                        )
-                        if sam_results[0].masks is not None:
-                            mask_np = sam_results[0].masks.data[0].cpu().numpy()
-                            mask_resized = cv2.resize(
-                                (mask_np > 0).astype(np.uint8) * 255,
-                                (w_img, h_img),
-                                interpolation=cv2.INTER_NEAREST,
-                            )
+            if sam_results.masks is not None:
+                mask_np = sam_results.masks.data[0].cpu().numpy()
+                mask_resized = cv2.resize(
+                    (mask_np > 0).astype(np.uint8) * 255,
+                    (w_img, h_img),
+                    interpolation=cv2.INTER_NEAREST,
+                )
 
-                            # Convert to BGRA
-                            bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+                bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+                bgra[:, :, :3] = cv2.bitwise_and(
+                    bgra[:, :, :3], bgra[:, :, :3], mask=mask_resized
+                )
+                bgra[mask_resized == 0, :3] = 255
+                bgra[:, :, 3] = mask_resized
 
-                            # HARD-MASK THE RGB CHANNELS
-                            bgra[:, :, :3] = cv2.bitwise_and(
-                                bgra[:, :, :3], bgra[:, :, :3], mask=mask_resized
-                            )
+                executor.submit(cv2.imwrite, str(target_path), bgra)
+            else:
+                executor.submit(
+                    cv2.imwrite,
+                    str(target_path),
+                    np.zeros((h_img, w_img, 4), dtype=np.uint8),
+                )
+                prev_box = None  # Tear down tracking anchor path if extraction completely drops
 
-                            # # INVERT THE MASK AREA TO 255 (Turns background from 0 to 255 / White)
-                            bgra[mask_resized == 0, :3] = 255
-
-                            # Apply mask to Alpha
-                            bgra[:, :, 3] = mask_resized
-                            final_output = bgra
-
-                            consecutive_failures = 0
-                            prev_box = winner_coords
-                    else:
-                        # Fallback: No candidate in this frame matched the previous one
-                        print(f"\n[!] REJECTION DEBUG - Frame {i + 1}")
-                        print(f"    - Valid Candidates Found: {len(valid_boxes)}")
-                        print(
-                            f"    - Target Thresholds: IoU > {iou_threshold} | Drift < {drift_limit}px"
-                        )
-                        if len(valid_boxes) > 0:
-                            print(
-                                f"    - Best Failed Candidate (#{best_failed_stats['idx']}):"
-                            )
-                            print(f"      IoU: {best_failed_stats['iou']:.4f}")
-                            print(f"      Drift: {best_failed_stats['drift']:.1f}px")
-                        else:
-                            print(
-                                "    - Reason: YOLOE found 0 valid boxes (Area < 70%)."
-                            )
-                        print("-" * 30)
-                        consecutive_failures += 1
-                        if consecutive_failures >= max_yoloe_failures:
-                            print(
-                                f"[*] Lost track for {consecutive_failures} frames. Resetting anchor at Frame {i + 1}."
-                            )
-                            prev_box = None
-
-            # 5. Asynchronous Save
-            target_path = output_dir / f"{img_path.stem}.png"
-            executor.submit(cv2.imwrite, str(target_path), final_output)
-
-            # 6. Live Progress Reporting
-            current_percent = min(int(((i + 1) / total_expected_frames) * 100), 99)
-            if current_percent >= last_percent + 5:
-                print(f"PROGRESS: {current_percent}")
-                sys.stdout.flush()
-                last_percent = current_percent
+            sys.stdout.write(f"\r[*] Processed {i + 1}/{total_frames} frames")
+            sys.stdout.flush()
 
     total_time = time.perf_counter() - start_perf
-    print("PROGRESS: 100")
+    processing_time = total_time - total_user_time
+    print("\nPROGRESS: 100")
 
-    # Finalize Manifest
     manifest["status"]["phase"] = 2
     if "masking" not in manifest["status"]["completed"]:
         manifest["status"]["completed"].append("masking")
@@ -294,28 +322,33 @@ def run_remove_background(
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=4)
 
-    print(f"[*] Complete. Filtered visualization saved to: {output_dir}")
-    print(f"[*] Speed: {total_expected_frames / total_time:.2f} fps")
-    print(f"[*] Total Time: {total_time:.2f}s")
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir)
+
+    print(f"\n[*] Complete. Filtered segmentation masks saved to: {output_dir}")
+    print(f"[*] Total Gross Session Duration: {total_time:.2f}s")
+    print(f"[*] Total User Interaction Hold Time: {total_user_time:.2f}s")
+    print(f"[*] Pure AI Processing Execution Speed: {processing_time:.2f}s")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=str, required=True)
     parser.add_argument("--force", action="store_true")
-    parser.add_argument("--iou_threshold", type=float)
-    parser.add_argument("--drift_limit", type=int)
-    parser.add_argument("--max_yoloe_failures", type=int)
     parser.add_argument(
-        "--yoloe_model_size", type=str, choices=["n", "s", "m", "l", "x"]
+        "--yoloe_model_size", type=str, choices=["n", "s", "m", "l", "x"], default="s"
     )
 
+    parser.add_argument("--iou_threshold", type=float, default=0.35)
+    parser.add_argument("--drift_limit", type=int, default=200)
+    parser.add_argument("--max_yoloe_failures", type=int)
+
     args = parser.parse_args()
+
     run_remove_background(
         args.manifest,
+        yoloe_model_size=args.yoloe_model_size,
         iou_threshold=args.iou_threshold,
         drift_limit=args.drift_limit,
-        max_yoloe_failures=args.max_yoloe_failures,
-        yoloe_model_size=args.yoloe_model_size,
         force=args.force,
     )
