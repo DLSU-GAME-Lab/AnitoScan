@@ -151,7 +151,7 @@ def get_user_selection(img, detector, temp_dir, frame_name, device):
 
 
 def run_remove_background(
-    manifest_path, yoloe_model_size, iou_threshold=0.35, drift_limit=200, force=False
+    manifest_path, yoloe_model_size, iou_threshold, drift_limit, force=False
 ):
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
@@ -209,7 +209,7 @@ def run_remove_background(
 
             # 1. YOLOE Bounding Box Prediction
             det_results = detector.predict(
-                source=img, conf=0.35, device=device, verbose=False
+                source=img, conf=0.25, device=device, verbose=False
             )[0]
             valid_boxes = []
 
@@ -338,9 +338,8 @@ if __name__ == "__main__":
         "--yoloe_model_size", type=str, choices=["n", "s", "m", "l", "x"], default="s"
     )
 
-    parser.add_argument("--iou_threshold", type=float, default=0.35)
-    parser.add_argument("--drift_limit", type=int, default=200)
-    parser.add_argument("--max_yoloe_failures", type=int)
+    parser.add_argument("--iou_threshold", type=float, required=True)
+    parser.add_argument("--drift_limit", type=int, required=True)
 
     args = parser.parse_args()
 
