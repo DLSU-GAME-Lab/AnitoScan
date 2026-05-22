@@ -40,7 +40,7 @@ void ScanPanel::DrawActions() {
 	ImGui::SameLine();
 
 	ImGui::BeginDisabled(this->isScanning);
-	if (ImGui::Button("Run Scan")) {
+	if (ImGui::Button("Run Pipeline")) {
 		this->isScanning = true;
 		this->progress = 0.0f;
 		this->progressLabel = "Starting...";
@@ -49,6 +49,8 @@ void ScanPanel::DrawActions() {
 		nlohmann::json cmd;
 		cmd["action"] = "run_scan";
 		cmd["name"] = "test_run";
+		cmd["input"] = "IMG_7518.mp4";
+		cmd["fps"] = 10;
 		this->ipc.Send(cmd.dump());
 	}
 	ImGui::EndDisabled();

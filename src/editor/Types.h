@@ -10,6 +10,7 @@ enum class UIType {
 	MENU_BAR,
 	DOCKSPACE,
 	SCAN_PANEL,
+	CAPTURE_PANEL,
 	UNKNOWN
 };
 

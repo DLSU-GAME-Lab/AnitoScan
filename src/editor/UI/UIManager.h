@@ -10,6 +10,8 @@
 #include "UIPanel.h"
 #include "panels/ScanPanel.h"
 #include "panels/DockSpace.h"
+#include "panels/CapturePanel.h"
+
 #include "../IPCClient.h"
 
 class UIManager {

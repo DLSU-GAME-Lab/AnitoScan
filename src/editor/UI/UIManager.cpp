@@ -14,7 +14,7 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClien
 	}
 
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable, ImGuiConfigFlags_NavEnableKeyboard;
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_NavEnableKeyboard;
 	ImGui::StyleColorsDark();
 
 	if (!ImGui_ImplSDL2_InitForOpenGL(window, glContext)) {
@@ -41,6 +41,10 @@ void UIManager::CreateUIPanels(IPCClient& ipc) {
 	DockSpace* dockSpace = new DockSpace();
 	this->uiList.push_back(dockSpace);
 	this->uiMap[UIType::DOCKSPACE] = dockSpace;
+
+	//CapturePanel* capturePanel = new CapturePanel();
+	//this->uiList.push_back(scanPanel);
+	//this->uiMap[UIType::CAPTURE_PANEL] = capturePanel;
 }
 
 UIManager* UIManager::GetInstance() {

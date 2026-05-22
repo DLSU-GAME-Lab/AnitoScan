@@ -33,11 +33,19 @@ void App::Initialize() {
 		return;
 	}
 
-	//IPC 
-	if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/dummy.py")) {
+	////IPC - dummy
+	//if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/dummy.py")) {
+	//	std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
+	//	return;
+	//}
+
+	//IPC - pipeline.py
+	if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py")) {
 		std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
 		return;
 	}
+
+
 	
 	this->isRunning = true;
 	std::cerr << "App is initialized and running." << std::endl;
@@ -97,22 +105,27 @@ void App::PollBackend() {
 	ScanPanel* panel = static_cast<ScanPanel*>(ui);
 
 	for (BackendMessage& msg : messages) {
-		auto j = nlohmann::json::parse(msg.raw);
+		try {
+			auto j = nlohmann::json::parse(msg.raw);
 
-		if (msg.type == "log") {
-			String text = j.value("text", "");
-			panel->PushLog(text);
+			if (msg.type == "log") {
+				String text = j.value("text", "");
+				panel->PushLog(text);
+			}
+			else if (msg.type == "progress") {
+				float value = j.value("value", 0.0f);
+				String label = j.value("label", "");
+				panel->SetProgress(value, label);
+			}
+			else if (msg.type == "done") {
+				panel->SetDone();
+			}
+			else if (msg.type == "error") {
+				panel->PushLog("[ERROR] " + j.value("text", "unknown error"));
+			}
 		}
-		else if (msg.type == "progress") {
-			float value = j.value("value", 0.0f);
-			String label = j.value("label", "");
-			panel->SetProgress(value, label);
-		}
-		else if (msg.type == "done") {
-			panel->SetDone();
-		}
-		else if (msg.type == "error") {
-			panel->PushLog("[ERROR] " + j.value("text", "unknown error"));
+		catch (const nlohmann::json::exception&){
+			panel->PushLog("[RAW] " + msg.raw);
 		}
 	}
 }

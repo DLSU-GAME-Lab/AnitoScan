@@ -51,6 +51,7 @@ add_executable(${PROJECT_NAME}
     src/editor/UI/UIPanel.cpp
     src/editor/UI/panels/DockSpace.cpp
     src/editor/UI/panels/ScanPanel.cpp
+    src/editor/UI/panels/CapturePanel.cpp
     # Add your other .cpp files here
 
     ${imgui_SOURCE_DIR}/imgui.cpp

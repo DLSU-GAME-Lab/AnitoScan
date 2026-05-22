@@ -23,10 +23,10 @@ public:
 private:
 	bool InitializeSDL();
 	bool InitializeOpenGL();
-	//bool InitializeImGui();
 	void PollBackend();
 	void Cleanup();
 
+private:
 	bool isRunning;
 	SDL_Window* window;
 	SDL_GLContext glContext;
