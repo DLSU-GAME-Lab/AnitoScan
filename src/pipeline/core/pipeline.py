@@ -11,6 +11,11 @@ WORKSPACE_DIR = PROJECT_ROOT / "data" / "runs"  # /data/runs/
 MODULES_DIR = SCRIPT_PATH.parent.parent / "modules"  # /src/pipeline/modules/
 
 
+def _get(args, key, default=None):
+    if isinstance(args, dict):
+        return args.get(key, default)   # IPC mode
+    return getattr(args, key, default)  # CLI mode  
+
 # IPC helpers
 def send(obj: dict):
     print(json.dumps(obj), flush=True)
@@ -58,30 +63,10 @@ def run_phase1(parent_module_path, manifest_path, args, ipc_mode=False):
         "--max_search",
         str(args.get("max_search", 3)),
     ]
-
-    if args.get("force"):
-        cmd.append("--force")
-
-    if args.image:
-        cmd.append("--image")
-    if args.video:
-        cmd.append("--video")
-
+    if _get(args, "force"): cmd.append("--force")
+    if _get(args, "image"): cmd.append("--image")
+    if _get(args, "video"): cmd.append("--video")
     _run_phase(1, "Capture", cmd, ipc_mode)
-
-    # if args.force:
-    #     cmd.append("--force")
-    # try:
-    #     subprocess.run(cmd, check=True)
-    # except subprocess.CalledProcessError as e:
-    #     print(f"[!] Pipeline failed at Phase 1 (Capture). Exit code: {e.returncode}")
-    #     sys.exit(e.returncode)
-
-    # if args.get("force"):
-    #     cmd.append("--force")
-    # result = subprocess.run(cmd)
-    # if result.returncode != 0:
-    #     raise RuntimeError(f"[!] Pipeline failed at Phase 1 (Capture). Exit code: {result.returncode}")
 
 
 def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False):
@@ -91,65 +76,28 @@ def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False):
         str(module_path),
         "--manifest",
         str(manifest_path),
-        "--yoloe_model_size",
-        str(args.yoloe_model_size),
         "--iou_threshold",
-        str(args.get("iou_threshold", 0.15)),
+        str(_get(args, "iou_threshold", 0.15)), 
         "--drift_limit",
-        str(args.get("drift_limit", 500)),
+        str(_get(args, "drift_limit", 500)),
         "--max_yoloe_failures",
-        str(args.get("max_yoloe_failures", 2)),
+        str(_get(args, "max_yoloe_failures", 2)),
         "--yoloe_model_size",
-        str(args.get("yoloe_model_size","s")),
+        str(_get(args, "yoloe_model_size", "s")),
     ]
 
     if args.get("force"):
         cmd.append("--force")
-
     _run_phase(2, "Masking", cmd, ipc_mode)
 
-    # if args.force:
-    #     cmd.append("--force")
-    # try:
-    #     subprocess.run(cmd, check=True)
-    # except subprocess.CalledProcessError as e:
-    #     print(f"[!] Pipeline failed at Phase 2 (Masking). Exit code: {e.returncode}")
-    #     sys.exit(e.returncode)
-    # if args.get("force"):
-    #     cmd.append("--force")
-    # result = subprocess.run(cmd)
-    # if result.returncode != 0:
-    #     raise RuntimeError(f"[!] Pipeline failed at Phase 2 (Masking). Exit code: {result.returncode}")
 
 
 def run_phase3(parent_module_path, manifest_path, args, ipc_mode=False):
-    # 1. Launch Phase 3: Spatial Initialization
     module_path = parent_module_path / "spatial.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
     if args.get("force"):
         cmd.append("--force")
-    
     _run_phase(3, "Spatial Initialization", cmd, ipc_mode)
-    
-    
-    # if args.force:
-    #     cmd.append("--force")
-    # try:
-    #     subprocess.run(cmd, check=True)
-    # except subprocess.CalledProcessError as e:
-    #     print(
-    #         f"[!] Pipeline failed at Phase 3 (Spatial Initialization). Exit code: {e.returncode}"
-    #     )
-    #     sys.exit(e.returncode)
-    # if args.get("force"):
-    #     cmd.append("--force")
-    # result = subprocess.run(cmd)
-    # if result.returncode != 0:
-    #     raise RuntimeError(f"[!] Pipeline failed at Phase 3 (Spatial Initialization). Exit code: {result.returncode}")
-
-
-
-
 
 
 def run_phase4(parent_module_path, manifest_path, args, ipc_mode=False):
@@ -157,29 +105,14 @@ def run_phase4(parent_module_path, manifest_path, args, ipc_mode=False):
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
     if args.get("force"):
         cmd.append("--force")
-    
     _run_phase(4, "Geometry Generation", cmd, ipc_mode)
-
-    # if args.force:
-    #     cmd.append("--force")
-    # try:
-    #     subprocess.run(cmd, check=True)
-    # except subprocess.CalledProcessError as e:
-    #     print(
-    #         f"[!] Pipeline failed at Phase 4 (Geometry Generation). Exit code: {e.returncode}"
-    #     )
-    #     sys.exit(e.returncode)
-    # if args.get("force"):
-    #     cmd.append("--force")
-    # result = subprocess.run(cmd)
-    # if result.returncode != 0:
-    #     raise RuntimeError(f"[!] Pipeline failed at Phase 4 (Geometry Generation). Exit code: {result.returncode}")
-
-
 
 
 def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
-    base_dir = (WORKSPACE_DIR / args["name"]).resolve()
+    name = _get(args, "name")   or ""
+    input = _get(args, "input") or ""
+
+    base_dir = (WORKSPACE_DIR / name).resolve()
     capture_dir = base_dir / "01_capture"
     mask_dir = base_dir / "02_masking"
     spatial_dir = base_dir / "03_spatial"
@@ -192,22 +125,24 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
     spatial_dir.mkdir(parents=True, exist_ok=True)
     geometry_dir.mkdir(parents=True, exist_ok=True)
 
-    input_path = Path(PROJECT_ROOT / "data" / "input" / args["input"]).resolve()
+    input_path = Path(PROJECT_ROOT / "data" / "input" / input).resolve()
 
     if not input_path.exists():
-        raise FileNotFoundError(f"Input source not found: {args['input']}")
+        raise FileNotFoundError(f"Input source not found: {input}")
     
     manifest = {
         "run_name": args["name"],
         "input_source": str(input_path),
-        "mode": args.get("mode", "disk"),
+       # "mode": args.get("mode", "disk"),
+        "mode":  _get(args, "mode", "disk"),
         "settings": {
-            "requested_fps": args["fps"],
-            "blur_threshold": args.get("blur_threshold", 200.0),
-            "proxy_width": args.get("proxy_width", 640),
-            "jpg_quality": args.get("jpg_quality", 85),
-            "max_search": args.get("max_search", 3),
+            "minimum_frames": _get(args, "minimum_frames", 45),
+            "blur_threshold": _get(args, "blur_threshold", 200.0),
+            "proxy_width":    _get(args, "proxy_width", 640.0),
+            "jpg_quality":    _get(args, "jpg_quality", 85),
+            "max_search":     _get(args, "max_search", 3),
         },
+
         "status": {
             "phase": 1,
             "completed": [],
@@ -224,27 +159,25 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=4)
 
+    send_log(f"Workspace initialized: {base_dir}")
+    print(f"[*] Workspace initialized: {base_dir}")
+
     parent_module_path = Path(__file__).parent.parent / "modules"
 
-    send_log(f"Worspace initialized: {base_dir}")
     send_progress(0.0, "[*] Starting Phase 1: Capture")
     run_phase1(parent_module_path, manifest_path, args, ipc_mode)
-   # run_phase1(parent_module_path, manifest_path, args)
 
     send_progress(0.25, "[*] Starting Phase 2: Masking")
     run_phase2(parent_module_path, manifest_path, args, ipc_mode)
- #   run_phase2(parent_module_path, manifest_path, args)
 
     send_progress(0.50, "[*] Starting Phase 3: Spatial")
     run_phase3(parent_module_path, manifest_path, args, ipc_mode)
-   # run_phase3(parent_module_path, manifest_path, args)
 
     send_progress(0.75, "[*] Starting Phase 4: Geometry")
     run_phase4(parent_module_path, manifest_path, args, ipc_mode)
-   # run_phase4(parent_module_path, manifest_path, args)
 
     send_progress(1.0, "[*] Complete")
-    send_done({"run_name": args["name"], "output": str(base_dir)})
+    send_done({"run_name": name, "output": str(base_dir)})
 
 
 def run_ipc_mode():
@@ -329,66 +262,7 @@ def run_cli_mode():
 
     run_pipeline_with_args(vars(args), ipc_mode=False)
 
-    # # 0.2. Establish Workspace (WORKSPACE_ROOT/[name]/)
-    # base_dir = (WORKSPACE_DIR / args.name).resolve()
-    # capture_dir = base_dir / "01_capture"
-    # mask_dir = base_dir / "02_masking"
-    # spatial_dir = base_dir / "03_spatial"
-    # geometry_dir = base_dir / "04_geometry"
-
-    # manifest_path = base_dir / "manifest.json"
-
-    # capture_dir.mkdir(parents=True, exist_ok=True)
-    # mask_dir.mkdir(parents=True, exist_ok=True)
-    # spatial_dir.mkdir(parents=True, exist_ok=True)
-    # geometry_dir.mkdir(parents=True, exist_ok=True)
-
-    # input_path = Path(PROJECT_ROOT / "data" / "input" / Path(args.input)).resolve()
-
-    # # If the path provided doesn't exist locally, check data/input/
-    # if not input_path.exists():
-    #     print(f"[!] Input source not found: {args.input}")
-    #     sys.exit(1)
-
-    # # 0.3. Create the Manifest
-    # manifest = {
-    #     "run_name": args.name,
-    #     "input_source": str(input_path),
-    #     "mode": args.mode,
-    #     "settings": {
-    #         "requested_fps": args.fps,
-    #         "blur_threshold": args.blur_threshold,
-    #         "proxy_width": args.proxy_width,
-    #         "jpg_quality": args.jpg_quality,
-    #         "max_search": args.max_search,
-    #     },
-    #     "status": {
-    #         "phase": 1,
-    #         "completed": [],
-    #     },
-    #     "paths": {
-    #         "run_root": str(base_dir),
-    #         "raw_frames": str(capture_dir),
-    #         "masked_frames": str(mask_dir),
-    #         "spatial": str(spatial_dir),
-    #         "geometry": str(geometry_dir),
-    #     },
-    # }
-
-    # with open(manifest_path, "w") as f:
-    #     json.dump(manifest, f, indent=4)
-
-    #print(f"[*] Workspace initialized: {base_dir}")
-    #print(f"[*] Mode: {args.mode} | Target FPS: {args.fps}")
-
-    # parent_module_path = Path(__file__).parent.parent / "modules"
-
-    # run_phase1(parent_module_path, manifest_path, args)
-    # run_phase2(parent_module_path, manifest_path, args)
-    # run_phase3(parent_module_path, manifest_path, args)
-    # run_phase4(parent_module_path, manifest_path, args)
-
-
+    
 if __name__ == "__main__":
     #run_pipeline()
     if len(sys.argv) > 1 and sys.argv[1] == "--ipc":
