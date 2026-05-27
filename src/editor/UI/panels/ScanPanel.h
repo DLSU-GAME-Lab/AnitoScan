@@ -17,6 +17,7 @@ private:
 	void DrawActions();
 	void DrawProgress();
 	void DrawLog();
+	void DrawTest();
 
 private:
 	IPCClient& ipc;

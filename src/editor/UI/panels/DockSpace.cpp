@@ -1,6 +1,6 @@
 #include "DockSpace.h"
 
-DockSpace::DockSpace() : UIPanel(UIType::DOCKSPACE) {
+DockSpace::DockSpace() : UIPanel(UIType::DOCKSPACE, "Dockspace") {
 
 }
 
@@ -32,33 +32,33 @@ void DockSpace::Draw() {
 	static bool layoutInitialized = false;
 	if (!layoutInitialized) {
 		layoutInitialized = true;
-		
 	}
 
+	//SetupDefaultLayout(dockspaceID);
 	ImGui::End();
 }
 
-void DockSpace::SetupDefaultLayout(ImGuiID dockspaceID) {
-	ImGui::DockBuilderRemoveNode(dockspaceID);
-	ImGui::DockBuilderAddNode(dockspaceID, ImGuiDockNodeFlags_PassthruCentralNode);
-	ImGui::DockBuilderSetNodeSize(dockspaceID, ImGui::GetMainViewport()->WorkSize);
-
-	//ImGuiID leftID, remainderID;
-	//ImGui::DockBuilderSplitNode(dockspaceID, ImGuiDir_Left, 0.25f, &leftID, &remainderID);
-
-	//ImGuiID centerID, bottomID;
-	//ImGui::DockBuilderSplitNode(remainderID, ImGuiDir_Down, 0.25f, &bottomID, &centerID);
-	//ImGuiID centerLeftID, centerRightID;
-	//ImGui::DockBuilderSplitNode(centerID, ImGuiDir_Left, 0.5f, &centerLeftID, &centerRightID);
-
-
-	ImGuiID leftID, rightID;
-	ImGui::DockBuilderSplitNode(dockspaceID, ImGuiDir_Left, 0.5f, &leftID, &rightID);
-
-	ImGui::DockBuilderDockWindow("Scan Panel", leftID);
-	ImGui::DockBuilderDockWindow("Capture", rightID);
-	//ImGui::DockBuilderDockWindow("Phase 2", centerRightID);
-	//ImGui::DockBuilderDockWindow("Log", bottomID);
-
-	ImGui::DockBuilderFinish(dockspaceID);
-}
+//void DockSpace::SetupDefaultLayout(ImGuiID dockspaceID) {
+//	ImGui::DockBuilderRemoveNode(dockspaceID);
+//	ImGui::DockBuilderAddNode(dockspaceID, ImGuiDockNodeFlags_PassthruCentralNode);
+//	ImGui::DockBuilderSetNodeSize(dockspaceID, ImGui::GetMainViewport()->WorkSize);
+//
+//	//ImGuiID leftID, remainderID;
+//	//ImGui::DockBuilderSplitNode(dockspaceID, ImGuiDir_Left, 0.25f, &leftID, &remainderID);
+//
+//	//ImGuiID centerID, bottomID;
+//	//ImGui::DockBuilderSplitNode(remainderID, ImGuiDir_Down, 0.25f, &bottomID, &centerID);
+//	//ImGuiID centerLeftID, centerRightID;
+//	//ImGui::DockBuilderSplitNode(centerID, ImGuiDir_Left, 0.5f, &centerLeftID, &centerRightID);
+//
+//
+//	ImGuiID leftID, rightID;
+//	ImGui::DockBuilderSplitNode(dockspaceID, ImGuiDir_Left, 0.5f, &leftID, &rightID);
+//
+//	ImGui::DockBuilderDockWindow("Scan Panel", leftID);
+//	ImGui::DockBuilderDockWindow("Capture", rightID);
+//	//ImGui::DockBuilderDockWindow("Phase 2", centerRightID);
+//	//ImGui::DockBuilderDockWindow("Log", bottomID);
+//
+//	ImGui::DockBuilderFinish(dockspaceID);
+//}

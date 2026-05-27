@@ -1,16 +1,22 @@
 #include "UIPanel.h"
 
-UIPanel::UIPanel(UIType type) {
+UIPanel::UIPanel(UIType type, String name) {
 	this->type = type;
+	this->name = name;
 	this->activeSelf = true;
 }
 
-UIPanel::UIPanel(UIType type, bool isActive) {
+UIPanel::UIPanel(UIType type, String name, bool isActive) {
 	this->type = type;
+	this->name = name;
 	this->activeSelf = isActive;
 }
 
 UIPanel::~UIPanel() {}
+
+String UIPanel::GetName() {
+	return this->name;
+}
 
 UIType UIPanel::GetType() {
 	return this->type;

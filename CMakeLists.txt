@@ -71,6 +71,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${imgui_SOURCE_DIR}/backends"
     "${SDL2_SOURCE_DIR}/include"
     "${nlohmann_json_SOURCE_DIR}/include"
+    "${CMAKE_SOURCE_DIR}/vendor/stb"
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

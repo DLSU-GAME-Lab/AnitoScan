@@ -1,6 +1,7 @@
 #include "ScanPanel.h"
+#include "imfilebrowser.h"
 
-ScanPanel::ScanPanel(IPCClient& ipc) : UIPanel(UIType::SCAN_PANEL), ipc(ipc) {
+ScanPanel::ScanPanel(IPCClient& ipc) : UIPanel(UIType::SCAN_PANEL, "Scan"), ipc(ipc) {
 	this->isScanning = false;
 	this->scrollToBottom = true;	
 	this->progress = 0.0f;
@@ -31,13 +32,13 @@ void ScanPanel::SetDone() {
 
 
 void ScanPanel::DrawActions() {
-	if (ImGui::Button("Ping")) {
-		nlohmann::json cmd;
-		cmd["action"] = "ping";
-		this->ipc.Send(cmd.dump());
-	}
+	//if (ImGui::Button("Ping")) {
+	//	nlohmann::json cmd;
+	//	cmd["action"] = "ping";
+	//	this->ipc.Send(cmd.dump());
+	//}
 
-	ImGui::SameLine();
+	//ImGui::SameLine();
 
 	ImGui::BeginDisabled(this->isScanning);
 	if (ImGui::Button("Run Pipeline")) {
@@ -47,10 +48,10 @@ void ScanPanel::DrawActions() {
 		this->logLines.clear();
 
 		nlohmann::json cmd;
-		cmd["action"] = "run_scan";
+		cmd["action"] = "run_pipeline";
 		cmd["name"] = "test_run";
-		cmd["input"] = "IMG_7518.mp4";
-		cmd["fps"] = 10;
+		cmd["input"] = "IMG_2144.MOV";
+	//	cmd["fps"] = 10;
 		this->ipc.Send(cmd.dump());
 	}
 	ImGui::EndDisabled();
@@ -61,10 +62,17 @@ void ScanPanel::DrawActions() {
 
 
 	//TODO: implement cancellation option on every phase once pipeline.py is connected
+	//if (ImGui::Button("Cancel")) {
+	//	this->isScanning = false;
+	//	this->ipc.Shutdown();
+	//	ipc.Start(".venv\\Scripts\\python.exe", "src/pipeline/core/dummy.py");
+	//}
+
 	if (ImGui::Button("Cancel")) {
 		this->isScanning = false;
 		this->ipc.Shutdown();
-		ipc.Start(".venv\\Scripts\\python.exe", "src/pipeline/core/dummy.py");
+		//ipc.Start(".venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py");
+		this->ipc.Start(".venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc");
 	}
 	ImGui::EndDisabled();
 
@@ -100,7 +108,7 @@ void ScanPanel::DrawLog() {
 
 // MAIN DRAW
 void ScanPanel::Draw() {
-	ImGui::Begin("Scan Panel");
+	ImGui::Begin(this->name.c_str());
 
 	DrawActions();
 	ImGui::Separator();
@@ -109,5 +117,15 @@ void ScanPanel::Draw() {
 	DrawLog();
 	ImGui::Separator();
 
+	//DrawTest();
+
 	ImGui::End();
+}
+
+
+void ScanPanel::DrawTest() {
+	ImGui::FileBrowser browser;
+	browser.Open();
+
+	browser.Display();
 }

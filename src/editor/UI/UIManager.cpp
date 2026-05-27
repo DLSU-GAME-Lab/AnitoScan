@@ -34,17 +34,17 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClien
 
 // Create and register the UI Panels
 void UIManager::CreateUIPanels(IPCClient& ipc) {
-	ScanPanel* scanPanel = new ScanPanel(ipc);
-	this->uiList.push_back(scanPanel);
-	this->uiMap[UIType::SCAN_PANEL] = scanPanel;
-	
 	DockSpace* dockSpace = new DockSpace();
 	this->uiList.push_back(dockSpace);
 	this->uiMap[UIType::DOCKSPACE] = dockSpace;
 
-	//CapturePanel* capturePanel = new CapturePanel();
-	//this->uiList.push_back(scanPanel);
-	//this->uiMap[UIType::CAPTURE_PANEL] = capturePanel;
+	ScanPanel* scanPanel = new ScanPanel(ipc);
+	this->uiList.push_back(scanPanel);
+	this->uiMap[UIType::SCAN_PANEL] = scanPanel;
+	
+	CapturePanel* capturePanel = new CapturePanel();
+	this->uiList.push_back(capturePanel);
+	this->uiMap[UIType::CAPTURE_PANEL] = capturePanel;
 }
 
 UIManager* UIManager::GetInstance() {

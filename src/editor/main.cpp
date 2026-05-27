@@ -1,8 +1,7 @@
 #include "App.h"
 
 int main(int argc, char** args) {
-	App app(1400, 800);
-
+	App app(1920, 1000);
 	app.Initialize();
 	app.Run();
 

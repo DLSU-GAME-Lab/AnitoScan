@@ -7,17 +7,19 @@ class UIManager;
 
 class UIPanel {
 public:
-	UIPanel(UIType type);
-	UIPanel(UIType type, bool isActive);
+	UIPanel(UIType type, String name);
+	UIPanel(UIType type, String name, bool isActive);
 	~UIPanel();
 
 	UIType GetType();
+	String GetName();
 	bool IsActive();
 	void SetActive(bool isActive);
 	
 	virtual void Draw() = 0;
 
-private:
-	bool activeSelf;
+protected:
 	UIType type;
+	String name;
+	bool activeSelf;
 };

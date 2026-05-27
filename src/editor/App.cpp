@@ -1,6 +1,9 @@
 #include "App.h"
 #include "UI/UIManager.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 
 App::App(int width, int height) {
 	this->isRunning = false;
@@ -40,7 +43,7 @@ void App::Initialize() {
 	//}
 
 	//IPC - pipeline.py
-	if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py")) {
+	if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc")) {
 		std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
 		return;
 	}
@@ -65,13 +68,25 @@ bool App::InitializeSDL() {
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
+	float dpiScale = 1.25f;  
+	int logicalW = static_cast<int>(this->screenWidth / dpiScale);   
+	int logicalH = static_cast<int>(this->screenHeight / dpiScale);  
+
 	// create the window
+	//window = SDL_CreateWindow(
+	//	"AnitoScan",
+	//	SDL_WINDOWPOS_CENTERED,
+	//	SDL_WINDOWPOS_CENTERED,
+	//	this->screenWidth, this->screenHeight,
+	//	SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
+	//);
+
 	window = SDL_CreateWindow(
 		"AnitoScan",
-		SDL_WINDOWPOS_UNDEFINED,
-		SDL_WINDOWPOS_UNDEFINED,
-		this->screenWidth, this->screenHeight,
-		SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
+		SDL_WINDOWPOS_CENTERED,
+		SDL_WINDOWPOS_CENTERED,
+		logicalW, logicalH,
+		SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED
 	);
 
 	if (!window) {
@@ -125,8 +140,21 @@ void App::PollBackend() {
 			}
 		}
 		catch (const nlohmann::json::exception&){
-			panel->PushLog("[RAW] " + msg.raw);
-		}
+			//panel->PushLog("[RAW] " + msg.raw);
+			if (msg.raw.find("PROGRESS:") != std::string::npos) {
+				try {
+					int percent = std::stoi(msg.raw.substr(msg.raw.find(":") + 1));
+
+					float overall = (percent / 100.0f) * 0.25f;
+					String temp = "Phase 1: Capture " + std::to_string(percent);
+					panel->SetProgress(overall, temp);
+				}
+				catch (...){}
+			}
+			else {
+				panel->PushLog("[RAW] " + msg.raw);
+			}
+ 		}
 	}
 }
 
