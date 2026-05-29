@@ -51,7 +51,7 @@ void App::Initialize() {
 
 	
 	this->isRunning = true;
-	std::cerr << "App is initialized and running." << std::endl;
+	std::cout << "[DEBUG]: App is initialized and running." << std::endl;
 }
 
 bool App::InitializeSDL() {
@@ -140,10 +140,10 @@ void App::PollBackend() {
 			else if (msg.type == "progress") {
 				float value = j.value("value", 0.0f);
 				String label = j.value("label", "");
-			//	overview->SetProgress(value, label);
+				overview->SetProgress(value, label);
 			}
 			else if (msg.type == "done") {
-				//overview->SetDone();
+				overview->SetDone();
 			}
 			else if (msg.type == "error") {
 				//panel->PushLog("[ERROR] " + j.value("text", "unknown error"));
@@ -151,20 +151,20 @@ void App::PollBackend() {
 			}
 		}
 		catch (const nlohmann::json::exception&){
-			if (msg.raw.find("PROGRESS:") != std::string::npos) {
-				try {
-					int percent = std::stoi(msg.raw.substr(msg.raw.find(":") + 1));
+			//if (msg.raw.find("PROGRESS:") != std::string::npos) {
+			//	try {
+			//		int percent = std::stoi(msg.raw.substr(msg.raw.find(":") + 1));
 
-					float overall = (percent / 100.0f) * 0.25f;
-					String temp = "Phase 1: Capture " + std::to_string(percent);
-				//	overview->SetProgress(overall, temp);
-				}
-				catch (...){}
-			}
-			else {
-				//panel->PushLog("[RAW] " + msg.raw);
-				log->PushLog("[RAW] " + msg.raw);
-			}
+			//		float overall = (percent / 100.0f) * 0.25f;
+			//		String temp = "Phase 1: Capture " + std::to_string(percent);
+			//		overview->SetProgress(overall, temp);
+			//	}
+			//	catch (...){}
+			//}
+			////else {
+			////	//panel->PushLog("[RAW] " + msg.raw);
+			////	log->PushLog("[RAW] " + msg.raw);
+			////}
  		}
 	}
 }

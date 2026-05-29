@@ -18,7 +18,7 @@ public:
 
 	void Draw() override;
 	//void PushLog(const String& line);
-	void SetProgress(float value, String& label);
+	void SetProgress(float value, const String& label);
 	void SetDone();
 	std::filesystem::path GetOutputFolder();
 

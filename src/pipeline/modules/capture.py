@@ -7,6 +7,14 @@ from pathlib import Path
 
 import cv2
 
+# from ipc import send, send_progress, send_log
+# sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
+
+core_path = str(Path(__file__).resolve().parent.parent / "core")
+sys.path.insert(0, core_path)
+
+from ipc import send, send_progress, send_log
+
 MODULE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
@@ -40,6 +48,7 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
     # ==========================================
     if is_image_mode:
         print("[*] Image directory source detected. Copying frames to workspace...")
+        send_log("Image directory source detected. Copying frames...")  
         source_images = sorted(
             [f for f in input_source.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
         )
@@ -79,6 +88,9 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
         )
         print(f"[*] Extracting every {frame_skip} frames directly to PNG...")
 
+        send_log(f"Total Video Frames: {total_frames_in} | Target: {target_min_frames}")
+        send_log(f"Extracting every {frame_skip} frames...")
+
         frame_idx = 0
         saved_count = 0
 
@@ -96,11 +108,18 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
                 print(f"PROGRESS: {int((frame_idx / total_frames_in) * 100)}")
                 sys.stdout.flush()
 
+                send_progress(
+                    frame_idx / total_frames_in,
+                    f"Extracting frame {saved_count} of ~{target_min_frames}"
+                )
+
             frame_idx += 1
 
         print(
             f"[*] Successfully extracted {saved_count} frames to 01_capture directory."
         )
+        send_log(f"Extracted {saved_count} frames.")
+
         cap.release()
         manifest["settings"]["source_type"] = "video"
 
@@ -115,6 +134,8 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
 
     print(f"[*] Total Extraction Time: {total_time:.2f}s")
 
+    send_progress(1.0, "Phase 1: Capture complete")
+    send_log(f"Total Extraction Time: {total_time:.2f}s")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -134,3 +155,4 @@ if __name__ == "__main__":
         is_video_mode=args.video,
         force=args.force,
     )
+    

@@ -1,6 +1,6 @@
 #include "OverviewPanel.h"
 
-OverviewPanel::OverviewPanel(String name, IPCClient& ipc) : UIPanel(UIType::SCAN_PANEL, name), ipc(ipc) {
+OverviewPanel::OverviewPanel(String name, IPCClient& ipc) : UIPanel(UIType::OVERVIEW, name), ipc(ipc) {
 	this->isScanning = false;
 	this->scrollToBottom = true;	
 	this->progress = 0.0f;
@@ -13,7 +13,7 @@ OverviewPanel::OverviewPanel(String name, IPCClient& ipc) : UIPanel(UIType::SCAN
 
 OverviewPanel::~OverviewPanel() {}
 
-void OverviewPanel::SetProgress(float value, String& label) {
+void OverviewPanel::SetProgress(float value, const String& label) {
 	this->progress = value;
 	this->progressLabel = label;
 }
@@ -109,8 +109,8 @@ void OverviewPanel::DrawActions() {
 		//	cmd["fps"] = 10;
 		this->ipc.Send(cmd.dump());
 
-		std::cout << "folder: " << this->folderName << std::endl;
-		std::cout << "file: " << this->fileName << std::endl;
+		std::cout << "[DEBUG]: Output folder: " << this->folderName << std::endl;
+		std::cout << "[DEBUG]: Input file: " << this->fileName << std::endl;
 	}
 
 
@@ -185,8 +185,8 @@ void OverviewPanel::Draw() {
 
 	DrawActions();
 	ImGui::Separator();
-	//DrawProgress();
-	//ImGui::Separator();
+	DrawProgress();
+	ImGui::Separator();
 //	DrawLog();
 	//ImGui::Separator();
 	DrawInputSection();

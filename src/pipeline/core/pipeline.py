@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ipc import send, send_progress, send_log, send_done, send_error
+
 # DIRECTORY RESOLUTION
 SCRIPT_PATH = Path(__file__).resolve()  # /src/pipeline/core/pipeline.py
 PROJECT_ROOT = SCRIPT_PATH.parent.parent.parent.parent
@@ -15,24 +17,6 @@ def _get(args, key, default=None):
     if isinstance(args, dict):
         return args.get(key, default)   # IPC mode
     return getattr(args, key, default)  # CLI mode  
-
-# IPC helpers
-def send(obj: dict):
-    print(json.dumps(obj), flush=True)
-
-def send_progress(value: float, label: str = ""):
-    send({"type": "progress", "value": round(value, 2), "label": label})
-
-def send_log(text: str):
-    send({"type": "log", "text" : text})
-
-def send_done(data: dict = {}):
-    send({"type": "done", "data": data})
-
-def send_error(text: str):
-    send({"type": "error", "text": text})
-
-
 
 def _run_phase(phase_num: int, phase_name: str, cmd: list, ipc_mode: bool):
     result = subprocess.run(cmd)

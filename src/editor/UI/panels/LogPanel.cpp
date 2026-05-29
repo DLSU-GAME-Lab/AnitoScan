@@ -1,6 +1,6 @@
 #include "LogPanel.h"
 
-LogPanel::LogPanel(String name, IPCClient& ipc) : UIPanel(UIType::LOG_PANEL, "Log Panel"), ipc(ipc) {
+LogPanel::LogPanel(String name, IPCClient& ipc) : UIPanel(UIType::LOG_PANEL, name), ipc(ipc) {
 
 }
 
