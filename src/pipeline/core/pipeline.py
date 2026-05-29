@@ -236,9 +236,8 @@ def run_cli_mode():
     parser.add_argument("--max_search", type=int, default=3)
 
     # Tracking defaults
-    parser.add_argument("--iou_threshold", type=float, default=0.35)
+    parser.add_argument("--iou_threshold", type=float, default=0.50)
     parser.add_argument("--drift_limit", type=int, default=200)
-    parser.add_argument("--max_yoloe_failures", type=int, default=2)
     parser.add_argument(
         "--yoloe_model_size", type=str, choices=["n", "s", "m", "l", "x"], default="s"
     )
