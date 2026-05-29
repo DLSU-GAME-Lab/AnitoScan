@@ -1,22 +1,35 @@
-#include "CapturePanel.h"
-#include <iostream>
-#include <stb_image.h>
+#include "FileViewer.h"
 
-CapturePanel::CapturePanel() : UIPanel(UIType::CAPTURE_PANEL, "Capture") {
+FileViewer::FileViewer(String name, Phase phase) : UIPanel(UIType::FILE_VIEWER, name) {
 	this->fileDialog = ImGui::FileBrowser(ImGuiFileBrowserFlags_Embedded | ImGuiFileBrowserFlags_NoModal);
-	this->fileDialog.SetTitle("FileBrowser");
+	//this->fileDialog.SetTitle("FileBrowser");
 	this->fileDialog.SetTypeFilters({ ".png", ".jpg", ".jpeg" });
 	this->previewTexture = NULL;
-
-	fileDialog.SetPwd(std::filesystem::current_path() / "data" / "runs" / "eevee_03" / "01_capture");
+	this->phase = phase;
 }
 
+FileViewer::~FileViewer() {}
 
-CapturePanel::~CapturePanel() {}
+void FileViewer::Draw() {
+	//update timer
+	ImGuiIO& io = ImGui::GetIO();
+	this->refreshTimer += io.DeltaTime;
+	if (this->refreshTimer >= this->refreshInterval) {
+		this->fileDialog.Refresh();
+		this->refreshTimer = 0.0f;
+	}
 
+	ImGui::Begin(this->name.c_str());
 
-// top - file browser | bottom - preview section
-void CapturePanel::DrawDefaultBrowser() {
+	if (hasRootFolder) {
+		DrawDefaultBrowser();
+		//DrawBrowserTable();
+	}
+
+	ImGui::End();
+}
+
+void FileViewer::DrawDefaultBrowser() {
 	ImVec2 windowSize = ImGui::GetContentRegionAvail();
 	float browserH = windowSize.y * 0.6f;
 	float previewH = windowSize.y * 0.4f;
@@ -33,14 +46,13 @@ void CapturePanel::DrawDefaultBrowser() {
 	ImGui::Separator();
 	ImGui::BeginChild("##preview", ImVec2(0, previewH), true);
 	ImVec2 previewBox = ImGui::GetContentRegionAvail();
-	if (this->previewTexture) 
+	if (this->previewTexture)
 		DrawFittedImage(this->previewTexture, this->previewW, this->previewH, previewBox);
-	
+
 	ImGui::EndChild();
 }
 
-// left - file browser | right - preview section
-void CapturePanel::DrawBrowserTable() {
+void FileViewer::DrawBrowserTable() {
 	if (ImGui::BeginTable("layout", 2,
 		ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
 
@@ -65,18 +77,7 @@ void CapturePanel::DrawBrowserTable() {
 	}
 }
 
-
-void CapturePanel::Draw() {
-	ImGui::Begin(this->name.c_str());
-
-	DrawDefaultBrowser();
-	//DrawBrowserTable();
-
-	ImGui::End();
-}
-
-
-void CapturePanel::LoadPreview(const std::string& path) {
+void FileViewer::LoadPreview(const String& path) {
 	if (path == this->lastPreviewPath) return;
 	ClearPreview();
 
@@ -97,7 +98,8 @@ void CapturePanel::LoadPreview(const std::string& path) {
 	this->lastPreviewPath = path;
 }
 
-void CapturePanel::ClearPreview() {
+
+void FileViewer::ClearPreview() {
 	if (this->previewTexture) {
 		glDeleteTextures(1, &this->previewTexture);
 		this->previewTexture = 0;
@@ -107,8 +109,7 @@ void CapturePanel::ClearPreview() {
 }
 
 
-// display 
-void CapturePanel::DrawFittedImage(GLuint texture, int imgW, int imgH, ImVec2 availSpace) {
+void FileViewer::DrawFittedImage(GLuint texture, int imgW, int imgH, ImVec2 availSpace) {
 	float scaleX = availSpace.x / (float)imgW;
 	float scaleY = availSpace.y / (float)imgH;
 	float scale = std::min(scaleX, scaleY);
@@ -121,4 +122,32 @@ void CapturePanel::DrawFittedImage(GLuint texture, int imgW, int imgH, ImVec2 av
 	ImGui::SetCursorPos(ImVec2(cursor.x + offsetX, cursor.y + offsetY));
 
 	ImGui::Image((ImTextureID)(intptr_t)texture, displaySize);
+}
+
+void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
+	if (output.empty()) {
+		std::cerr << "[ERROR] FileViewer::SetRootFolderToView called with empty root" << std::endl;
+		return;
+	}
+
+	this->output = output;
+	this->hasRootFolder = true;
+
+	std::filesystem::path temp;
+	switch(this->phase) {
+		case Phase::CAPTURE: temp = "01_capture"; break;
+		case Phase::MASKING: temp = "02_masking"; break;
+		case Phase::SPATIAL: temp = "03_spatial"; break;
+	}
+
+	std::filesystem::path fullPath = std::filesystem::current_path() / "data" / "runs" / this->output / temp;
+
+	std::error_code ec;
+	if (!std::filesystem::exists(fullPath, ec)) {
+		std::cerr << "[ERROR] Path does not exist: " << fullPath << std::endl;
+		return; 
+	}
+
+	this->fileDialog.SetPwd(fullPath);
+
 }

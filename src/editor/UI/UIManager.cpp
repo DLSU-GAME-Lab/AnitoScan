@@ -34,17 +34,34 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClien
 
 // Create and register the UI Panels
 void UIManager::CreateUIPanels(IPCClient& ipc) {
-	DockSpace* dockSpace = new DockSpace();
+	DockSpace* dockSpace = new DockSpace("DockSpace");
 	this->uiList.push_back(dockSpace);
-	this->uiMap[UIType::DOCKSPACE] = dockSpace;
+	this->uiMap[dockSpace->GetName()] = dockSpace;
 
-	ScanPanel* scanPanel = new ScanPanel(ipc);
-	this->uiList.push_back(scanPanel);
-	this->uiMap[UIType::SCAN_PANEL] = scanPanel;
+	OverviewPanel* overview = new OverviewPanel("Overview", ipc);
+	this->uiList.push_back(overview);
+	this->uiMap[overview->GetName()] = overview;
+
+	FileViewer* captureViewer = new FileViewer("Capture", Phase::CAPTURE);
+	this->uiList.push_back(captureViewer);
+	this->uiMap[captureViewer->GetName()] = captureViewer;
+
+	FileViewer* maskingViewer = new FileViewer("Masking", Phase::MASKING);
+	this->uiList.push_back(maskingViewer);
+	this->uiMap[maskingViewer->GetName()] = maskingViewer;
+
+	//FileViewer* spatialViewer = new FileViewer("Spatial", Phase::SPATIAL);
+	//this->uiList.push_back(spatialViewer);
+	//this->uiMap[spatialViewer->GetName()] = spatialViewer;
+
+	//InputPanel* inputPanel = new InputPanel("Input");
+	//this->uiList.push_back(inputPanel);
+	//this->uiMap[inputPanel->GetName()] = inputPanel;
+
+	LogPanel* logPanel = new LogPanel("Log", ipc);
+	this->uiList.push_back(logPanel);
+	this->uiMap[logPanel->GetName()] = logPanel;
 	
-	CapturePanel* capturePanel = new CapturePanel();
-	this->uiList.push_back(capturePanel);
-	this->uiMap[UIType::CAPTURE_PANEL] = capturePanel;
 }
 
 UIManager* UIManager::GetInstance() {
@@ -79,6 +96,18 @@ void UIManager::EndFrame() {
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
+
+UIPanel* UIManager::GetPanelByName(String name) {
+	UIPanel* ret = nullptr;
+	for (UIPanel* panel : this->uiList) {
+		if (panel->GetName() == name) {
+			ret = panel;
+			break;
+		}
+	}
+	return ret;
+}
+
 UIPanel* UIManager::GetPanelByType(UIType type) {
 	UIPanel* ret = nullptr;
 	for (UIPanel* panel : this->uiList) {
@@ -100,4 +129,14 @@ void UIManager::Shutdown() {
 
 	uiList.clear();
 	uiMap.clear();
+}
+
+// sets the output folder to all file viewer instances (capture, masking, etc)
+void UIManager::SetOutputToFileViewers(std::filesystem::path output) {
+	for (UIPanel* panel : this->uiList) {
+		if (panel->GetType() == UIType::FILE_VIEWER) {
+			FileViewer* temp = static_cast<FileViewer*>(panel);
+			temp->SetOutputFolderToView(output);
+		}
+	}
 }

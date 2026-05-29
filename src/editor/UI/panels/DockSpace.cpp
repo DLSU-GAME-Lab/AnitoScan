@@ -1,6 +1,6 @@
 #include "DockSpace.h"
 
-DockSpace::DockSpace() : UIPanel(UIType::DOCKSPACE, "Dockspace") {
+DockSpace::DockSpace(String name) : UIPanel(UIType::DOCKSPACE, name) {
 
 }
 

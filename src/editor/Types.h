@@ -3,20 +3,40 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <imgui.h>
 
 class UIPanel;
 
 enum class UIType {
 	MENU_BAR,
+	OVERVIEW,
 	DOCKSPACE,
 	SCAN_PANEL,
 	CAPTURE_PANEL,
+	FILE_VIEWER,
+	INPUT_PANEL,
+	LOG_PANEL,
 	UNKNOWN
+};
+
+enum class UIColor {
+	YELLOW,
+	RED,
+	BLUE,
+	GREEN
 };
 
 typedef std::string String;
 typedef std::vector<UIPanel*> UIList;
-typedef std::unordered_map<UIType, UIPanel*> UIMap;
+typedef std::unordered_map<String, UIPanel*> UIMap;
+typedef std::unordered_map<UIColor, ImVec4> UIColorMap;
+
+inline const UIColorMap Color = {
+	{ UIColor::YELLOW, ImVec4(1.0f, 1.0f, 0.0f, 1.0f) },
+	{ UIColor::RED,    ImVec4(1.0f, 0.0f, 0.0f, 1.0f) },
+	{ UIColor::BLUE,   ImVec4(0.0f, 0.0f, 1.0f, 1.0f) },
+	{ UIColor::GREEN,  ImVec4(0.0f, 1.0f, 0.0f, 1.0f) }
+};
 
 struct BackendMessage {
 	String type;

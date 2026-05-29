@@ -116,8 +116,10 @@ bool App::InitializeOpenGL() {
 void App::PollBackend() {
 	std::vector<BackendMessage> messages;
 	this->ipc.Poll(messages);
-	UIPanel* ui = UIManager::GetInstance()->GetPanelByType(UIType::SCAN_PANEL);
-	ScanPanel* panel = static_cast<ScanPanel*>(ui);
+	//UIPanel* ui = UIManager::GetInstance()->GetPanelByType(UIType::SCAN_PANEL);
+	//ScanPanel* panel = static_cast<ScanPanel*>(ui);
+	OverviewPanel* overview = (OverviewPanel*)UIManager::GetInstance()->GetPanelByType(UIType::OVERVIEW);
+	LogPanel* log = (LogPanel*)UIManager::GetInstance()->GetPanelByType(UIType::LOG_PANEL);
 
 	for (BackendMessage& msg : messages) {
 		try {
@@ -125,34 +127,43 @@ void App::PollBackend() {
 
 			if (msg.type == "log") {
 				String text = j.value("text", "");
-				panel->PushLog(text);
+				log->PushLog(text);
+				//panel->PushLog(text);
+			}
+			else if (msg.type == "workspace_ready") {
+				String runName = j.value("run_name", "");
+				std::cout << "[DEBUG] workspace_ready received, run_name: '" << runName << "'" << std::endl;
+				if (!runName.empty()) {
+					UIManager::GetInstance()->SetOutputToFileViewers(runName);
+				}
 			}
 			else if (msg.type == "progress") {
 				float value = j.value("value", 0.0f);
 				String label = j.value("label", "");
-				panel->SetProgress(value, label);
+			//	overview->SetProgress(value, label);
 			}
 			else if (msg.type == "done") {
-				panel->SetDone();
+				//overview->SetDone();
 			}
 			else if (msg.type == "error") {
-				panel->PushLog("[ERROR] " + j.value("text", "unknown error"));
+				//panel->PushLog("[ERROR] " + j.value("text", "unknown error"));
+				log->PushLog("[ERROR] " + j.value("text", "unknown error"));
 			}
 		}
 		catch (const nlohmann::json::exception&){
-			//panel->PushLog("[RAW] " + msg.raw);
 			if (msg.raw.find("PROGRESS:") != std::string::npos) {
 				try {
 					int percent = std::stoi(msg.raw.substr(msg.raw.find(":") + 1));
 
 					float overall = (percent / 100.0f) * 0.25f;
 					String temp = "Phase 1: Capture " + std::to_string(percent);
-					panel->SetProgress(overall, temp);
+				//	overview->SetProgress(overall, temp);
 				}
 				catch (...){}
 			}
 			else {
-				panel->PushLog("[RAW] " + msg.raw);
+				//panel->PushLog("[RAW] " + msg.raw);
+				log->PushLog("[RAW] " + msg.raw);
 			}
  		}
 	}

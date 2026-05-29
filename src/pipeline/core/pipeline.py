@@ -161,6 +161,7 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
 
     send_log(f"Workspace initialized: {base_dir}")
     print(f"[*] Workspace initialized: {base_dir}")
+    send({"type": "workspace_ready", "path": str(base_dir), "run_name": args["name"]})
 
     parent_module_path = Path(__file__).parent.parent / "modules"
 

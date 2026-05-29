@@ -8,9 +8,11 @@
 
 #include "../Types.h"
 #include "UIPanel.h"
-#include "panels/ScanPanel.h"
+#include "panels/OverviewPanel.h"
 #include "panels/DockSpace.h"
-#include "panels/CapturePanel.h"
+#include "panels/FileViewer.h"
+#include "panels/InputPanel.h"
+#include "panels/LogPanel.h"
 
 #include "../IPCClient.h"
 
@@ -22,8 +24,10 @@ public:
 	void BeginNewFrame();
 	void DrawAllUIs();
 	void EndFrame();
+	UIPanel* GetPanelByName(String name);
 	UIPanel* GetPanelByType(UIType type);
 	void Shutdown();
+	void SetOutputToFileViewers(std::filesystem::path output);
 
 private:
 	void CreateUIPanels(IPCClient& ipc);
