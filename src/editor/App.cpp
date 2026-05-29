@@ -140,7 +140,15 @@ void App::PollBackend() {
 			else if (msg.type == "progress") {
 				float value = j.value("value", 0.0f);
 				String label = j.value("label", "");
-				overview->SetProgress(value, label);
+				int phase = j.value("phase", 0);
+				
+				//route to the correct phase bar
+				if (phase >= 1 && phase <= (int)Phase::COUNT) {
+					overview->SetPhaseProgress((Phase)(phase - 1), value, label);
+				}
+				else {		//overall progress bar
+					overview->SetPhaseProgress(overview->GetCurrentPhase(), value, label);
+				}
 			}
 			else if (msg.type == "done") {
 				overview->SetDone();

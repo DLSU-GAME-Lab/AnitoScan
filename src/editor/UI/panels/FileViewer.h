@@ -2,12 +2,7 @@
 
 //#include "../../Types.h"
 #include "../UIPanel.h"
-
-enum class Phase{
-	CAPTURE,
-	MASKING,
-	SPATIAL
-};
+#include "OverviewPanel.h"
 
 class FileViewer : public UIPanel {
 public:

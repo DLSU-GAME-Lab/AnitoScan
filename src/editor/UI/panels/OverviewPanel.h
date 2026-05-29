@@ -11,6 +11,14 @@ enum class InputState {
 	Ready
 };
 
+
+struct PhaseStatus {
+	float progress = 0.0f;
+	String label = "Waiting...";
+	bool completed = false;
+	bool active = false;
+};
+
 class OverviewPanel : public UIPanel {
 public:
 	OverviewPanel(String name, IPCClient& ipc);
@@ -18,24 +26,35 @@ public:
 
 	void Draw() override;
 	//void PushLog(const String& line);
-	void SetProgress(float value, const String& label);
+	//void SetProgress(float value, const String& label);
+	//void SetDone();
+	void SetPhaseProgress(Phase phase, float value, const String& label);
+	void SetPhaseComplete(Phase phase);
 	void SetDone();
+	void SetScanning(bool scanning);
 	std::filesystem::path GetOutputFolder();
+	Phase GetCurrentPhase();
 
 private:
 	void DrawInputSection();
 	void DrawActions();
-	void DrawProgress();
+	void DrawOverallProgress();
+	void DrawPhaseBreakdown();
+	float CalculateOverallProgress();
+	//void DrawProgress();
 	//void DrawLog();
 
 private:
 	IPCClient& ipc;
 	//std::vector<String> logLines;
 //	char inputPath[512] = "";
-	bool isScanning;
+	bool isScanning = false;
 	bool scrollToBottom;
-	float progress;
-	String progressLabel;
+//	float progress;
+//	String progressLabel;
+//	const int totalPhase = 4;
+	PhaseStatus phases[4];
+	Phase currentPhase = Phase::NONE;
 
 	ImGui::FileBrowser fileDialog;
 
@@ -44,7 +63,4 @@ private:
 	std::filesystem::path folderName;
 	InputState inputState = InputState::Browsing;
 	char inputText[256] = "";
-	//bool showInputSection = true;
-	//bool hasSelected = false;
-	//bool hasInput = false;
 };

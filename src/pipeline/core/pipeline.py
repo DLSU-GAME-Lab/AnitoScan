@@ -149,16 +149,16 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
 
     parent_module_path = Path(__file__).parent.parent / "modules"
 
-    send_progress(0.0, "[*] Starting Phase 1: Capture")
+    send_progress(0.0, "[*] Starting Phase 1: Capture", phase=1)
     run_phase1(parent_module_path, manifest_path, args, ipc_mode)
 
-    send_progress(0.25, "[*] Starting Phase 2: Masking")
+    send_progress(0.25, "[*] Starting Phase 2: Masking", phase=2)
     run_phase2(parent_module_path, manifest_path, args, ipc_mode)
 
-    send_progress(0.50, "[*] Starting Phase 3: Spatial")
+    send_progress(0.50, "[*] Starting Phase 3: Spatial", phase=3)
     run_phase3(parent_module_path, manifest_path, args, ipc_mode)
 
-    send_progress(0.75, "[*] Starting Phase 4: Geometry")
+    send_progress(0.75, "[*] Starting Phase 4: Geometry", phase=4)
     run_phase4(parent_module_path, manifest_path, args, ipc_mode)
 
     send_progress(1.0, "[*] Complete")

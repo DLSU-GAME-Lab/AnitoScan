@@ -24,6 +24,17 @@ enum class UIColor {
 	GREEN
 };
 
+
+enum class Phase {
+	NONE = -1,
+	CAPTURE = 0,
+	MASKING = 1,
+	SPATIAL = 2,
+	GEOMETRY = 3,
+	COUNT = 4
+};
+
+
 typedef std::string String;
 typedef std::vector<UIPanel*> UIList;
 typedef std::unordered_map<String, UIPanel*> UIMap;

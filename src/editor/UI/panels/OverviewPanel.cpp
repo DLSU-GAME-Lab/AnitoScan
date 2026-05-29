@@ -1,10 +1,10 @@
 #include "OverviewPanel.h"
 
 OverviewPanel::OverviewPanel(String name, IPCClient& ipc) : UIPanel(UIType::OVERVIEW, name), ipc(ipc) {
-	this->isScanning = false;
+//	this->isScanning = false;
 	this->scrollToBottom = true;	
-	this->progress = 0.0f;
-	this->progressLabel = "Idle";
+//	this->progress = 0.0f;
+	//this->progressLabel = "Idle";
 
 	//file browser
 	this->fileDialog.SetTypeFilters({ ".mp4", ".MOV" });
@@ -13,21 +13,50 @@ OverviewPanel::OverviewPanel(String name, IPCClient& ipc) : UIPanel(UIType::OVER
 
 OverviewPanel::~OverviewPanel() {}
 
-void OverviewPanel::SetProgress(float value, const String& label) {
-	this->progress = value;
-	this->progressLabel = label;
+//void OverviewPanel::SetProgress(float value, const String& label) {
+//	this->progress = value;
+//	this->progressLabel = label;
+//}
+
+void OverviewPanel::SetPhaseProgress(Phase phase, float value, const String& label) {
+	int i = (int)phase;
+	if (i < 0 || i >= (int)Phase::COUNT) return;
+	this->phases[i].progress = value;
+	this->phases[i].label = label;
+	this->phases[i].active = true;
+	this->currentPhase = phase;
+}
+
+void OverviewPanel::SetPhaseComplete(Phase phase) {
+	int i = (int)phase;
+	if (i < 0 || i >= (int)Phase::COUNT) return;
+	this->phases[i].progress = 1.f;
+	this->phases[i].active = false;
+	this->phases[i].completed = true;
+	this->phases[i].label = "Complete";
 }
 
 void OverviewPanel::SetDone() {
-	this->isScanning = false;
-	this->progress = 1.0f;
-	this->progressLabel = "Complete";
+	for (auto& p : phases) {
+		p.progress = 1.0f;
+		p.completed = true;
+		p.active = false;
+		p.label = "Complete";
+	}
+	isScanning = false;
+}
+
+void OverviewPanel::SetScanning(bool scanning) {
+	this->isScanning = scanning;
 }
 
 std::filesystem::path OverviewPanel::GetOutputFolder() {
 	return this->folderName;
 }
 
+Phase OverviewPanel::GetCurrentPhase() {
+	return this->currentPhase;
+}
 
 void OverviewPanel::DrawInputSection() {                                         
 	if (inputState == InputState::Ready) return;
@@ -75,14 +104,14 @@ void OverviewPanel::DrawInputSection() {
 	static std::string input = "";
 	if (inputState == InputState::NamingFolder) {
 		ImGui::SeparatorText("Enter folder name: ");
-		bool confirm = ImGui::InputText("##FolderName", inputText, sizeof(inputText),
+		bool confirm = ImGui::InputText("##FolderName", this->inputText, sizeof(this->inputText),
 										ImGuiInputTextFlags_EnterReturnsTrue);
 
 		ImGui::SameLine();
 		confirm |= ImGui::Button("Enter"); //either Enter key or button click
 
-		if (confirm && inputText[0] != '\0') {
-			folderName = String(inputText);
+		if (confirm && this->inputText[0] != '\0') {
+			folderName = String(this->inputText);
 			inputState = InputState::Ready;
 		}
 	}
@@ -96,8 +125,8 @@ void OverviewPanel::DrawActions() {
 	if (ImGui::Button("Run Pipeline")) {
 	//	UIManager::GetInstance()->SetRootToFileViewers(this->folderName);
 		this->isScanning = true;
-		this->progress = 0.0f;
-		this->progressLabel = "Starting...";
+	//	this->progress = 0.0f;
+	//	this->progressLabel = "Starting...";
 		//this->logLines.clear();
 
 		nlohmann::json cmd;
@@ -171,13 +200,65 @@ void OverviewPanel::DrawActions() {
 }
 
 
-//incomplete
-void OverviewPanel::DrawProgress() {
-	if (this->isScanning && this->progress > 0.0f) {
-		ImGui::ProgressBar(this->progress, ImVec2(-1, 0));
-		ImGui::Text("%.0f%% - %s", this->progress * 100.0f, this->progressLabel.c_str());
+void OverviewPanel::DrawOverallProgress() {
+	float overall = CalculateOverallProgress();
+	ImGui::SeparatorText("Overall Progress");
+	ImGui::ProgressBar(overall, ImVec2(-1, 20));
+	ImGui::Text("%.0f%%", overall * 100.0f);
+}
+
+
+void OverviewPanel::DrawPhaseBreakdown() {
+	const char* phaseNames[]{
+		"Phase 1: Capture",
+		"Phase 2: Masking",
+		"Phase 3: Spatial",
+		"Phase 4: Geometry"
+	};
+
+	for (int i = 0; i < (int)Phase::COUNT; i++) {
+		auto& p = this->phases[i];
+
+		if (p.completed) {
+			HighlightImGuiText(String("[DONE] ") + phaseNames[i], UIColor::GREEN);
+		}
+		else if (p.active) {
+			HighlightImGuiText(String("[ >> ]") + phaseNames[i], UIColor::YELLOW);
+		}
+		else {
+			ImGui::TextDisabled("[    ] %s", phaseNames[i]);
+		}
+
+		String barID = "##phase" + std::to_string(i);
+		ImGui::ProgressBar(p.progress, ImVec2(-1, 12), barID.c_str());
+
+		if(p.active || p.completed) {
+			ImGui::TextDisabled("  %s", p.label.c_str());
+		}
+
+		ImGui::Spacing();
 	}
 }
+
+float OverviewPanel::CalculateOverallProgress() {
+	float total = 0.0f;
+	int partial = (int)Phase::COUNT;
+	for (int i = 0; i < partial; i++) {
+		total += phases[i].progress * partial;
+	}
+	return total;
+}
+
+
+
+
+//incomplete
+//void OverviewPanel::DrawProgress() {
+//	//if (this->isScanning && this->progress > 0.0f) {
+//	//	ImGui::ProgressBar(this->progress, ImVec2(-1, 0));
+//	//	ImGui::Text("%.0f%% - %s", this->progress * 100.0f, this->progressLabel.c_str());
+//	//}
+//}
 
 // MAIN DRAW
 void OverviewPanel::Draw() {
@@ -185,12 +266,12 @@ void OverviewPanel::Draw() {
 
 	DrawActions();
 	ImGui::Separator();
-	DrawProgress();
+
+	DrawOverallProgress();
+	DrawPhaseBreakdown();
 	ImGui::Separator();
-//	DrawLog();
-	//ImGui::Separator();
+
 	DrawInputSection();
-	//DrawTest();
 
 	ImGui::End();
 }
