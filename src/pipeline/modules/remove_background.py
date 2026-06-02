@@ -38,7 +38,7 @@ def calculate_centroid_drift(boxA, boxB):
 
 
 def get_user_selection(img, detector, temp_dir, frame_name, device):
-    """Runs YOLOE, draws uniquely colored candidates with collision avoidance, and gets terminal input.
+    """Runs YOLOE, draws uniquely colored candidates with collision avoidance, pops up a GUI, and gets terminal input.
 
     Returns a tuple: (chosen_box_coordinates or None, elapsed_wait_time_seconds)
     """
@@ -130,24 +130,47 @@ def get_user_selection(img, detector, temp_dir, frame_name, device):
         )
         sys.exit(1)
 
+    # --- GUI Pop-Up Logic ---
+    window_title = f"Selection Required - {frame_name}"
+    cv2.namedWindow(window_title, cv2.WINDOW_NORMAL)
+
+    # Force the window to open at a generous starting size
+    cv2.resizeWindow(window_title, 1280, 720)
+
+    cv2.imshow(window_title, preview_img)
+
     print("\n==================================================")
-    print(f" ACTION REQUIRED: Open {preview_path}")
+    print(" ACTION REQUIRED: Click on the image window to focus it.")
+    print(
+        f" Press the number key (0-{len(valid_boxes) - 1}) corresponding to the correct subject."
+    )
+    print(" Press 's' to skip this frame.")
     print("==================================================")
 
+    # Replace terminal input with an active OpenCV event loop
     while True:
-        try:
-            choice = input(
-                f"Enter the ID of the correct bounding box (0-{len(valid_boxes) - 1}) or 's' to skip: "
-            )
-            if choice.lower() == "s":
-                return None, time.perf_counter() - start_wait
-            idx = int(choice)
+        # waitKey(50) keeps the GUI perfectly responsive by checking for input every 50ms
+        key = cv2.waitKey(50) & 0xFF
+
+        # Failsafe: if the user clicks the 'X' button to manually close the window, treat it as a skip
+        if cv2.getWindowProperty(window_title, cv2.WND_PROP_VISIBLE) < 1:
+            return None, time.perf_counter() - start_wait
+
+        # 's' key to skip
+        if key == ord("s"):
+            cv2.destroyWindow(window_title)
+            cv2.waitKey(1)  # Flush GUI events
+            return None, time.perf_counter() - start_wait
+
+        # Any number key from 0 to 9
+        elif ord("0") <= key <= ord("9"):
+            idx = int(chr(key))
             if 0 <= idx < len(valid_boxes):
+                cv2.destroyWindow(window_title)
+                cv2.waitKey(1)  # Flush GUI events
                 return valid_boxes[idx], time.perf_counter() - start_wait
             else:
-                print("[!] Invalid ID. Try again.")
-        except ValueError:
-            print("[!] Please enter a valid number.")
+                print(f"[!] Invalid ID {idx}. Try again.")
 
 
 def run_remove_background(
@@ -164,6 +187,32 @@ def run_remove_background(
         print(f"[!] Input directory not found: {input_dir}")
         sys.exit(1)
 
+    source_images = sorted(
+        [f for f in input_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
+    )
+    total_frames = len(source_images)
+
+    # --- SKIP LOGIC ---
+    if output_dir.exists() and not force:
+        existing_masks = [f for f in output_dir.iterdir() if f.suffix.lower() == ".png"]
+        # Allow resuming: only skip entirely if we process all frames
+        if len(existing_masks) == total_frames and total_frames > 0:
+            print(
+                f"[*] Found {len(existing_masks)} existing masked frames in {output_dir}."
+            )
+            print("[*] Skipping background removal phase... (Use --force to override)")
+
+            # Ensure the manifest is correctly updated even when skipping
+            manifest["status"]["phase"] = 2
+            if "masking" not in manifest["status"]["completed"]:
+                manifest["status"]["completed"].append("masking")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f, indent=4)
+
+            print("\nPROGRESS: 100")
+            return
+    # -----------------------
+
     if force and output_dir.exists():
         print(f"[!] Force flag detected. Wiping: {output_dir}")
         shutil.rmtree(output_dir)
@@ -171,10 +220,6 @@ def run_remove_background(
     output_dir.mkdir(parents=True, exist_ok=True)
     temp_dir.mkdir(parents=True, exist_ok=True)
 
-    source_images = sorted(
-        [f for f in input_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
-    )
-    total_frames = len(source_images)
     target_min_frames = manifest["settings"].get("minimum_frames", 45)
 
     print("[*] Starting Background Removal Phase.")
@@ -199,13 +244,18 @@ def run_remove_background(
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         for i, img_path in enumerate(source_images):
+            target_path = output_dir / f"{img_path.stem}.png"
+
+            # Allow clean resuming of crashed jobs
+            if target_path.exists() and not force:
+                continue
+
             img = cv2.imread(str(img_path))
             if img is None:
                 continue
 
             h_img, w_img = img.shape[:2]
             img_area = h_img * w_img
-            target_path = output_dir / f"{img_path.stem}.png"
 
             # 1. YOLOE Bounding Box Prediction
             det_results = detector.predict(
@@ -283,7 +333,7 @@ def run_remove_background(
                 source=img, bboxes=[padded_box], device=device, verbose=False
             )[0]
 
-            if sam_results.masks is not None:
+            if sam_results.masks is not None and len(sam_results.masks.data) > 0:
                 mask_np = sam_results.masks.data[0].cpu().numpy()
                 mask_resized = cv2.resize(
                     (mask_np > 0).astype(np.uint8) * 255,
@@ -300,6 +350,7 @@ def run_remove_background(
 
                 executor.submit(cv2.imwrite, str(target_path), bgra)
             else:
+                # If SAM returns an empty array, gracefully treat it as a dropped frame
                 executor.submit(
                     cv2.imwrite,
                     str(target_path),

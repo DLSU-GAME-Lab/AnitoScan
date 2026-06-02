@@ -23,6 +23,26 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
         print(f"[!] Input not found: {input_source}")
         sys.exit(1)
 
+    # --- SKIP LOGIC ---
+    if output_dir.exists() and not force:
+        existing_frames = [
+            f for f in output_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS
+        ]
+        if len(existing_frames) > 0:
+            print(f"[*] Found {len(existing_frames)} existing frames in {output_dir}.")
+            print("[*] Skipping capture phase... (Use --force to override)")
+
+            # Ensure the manifest is correctly updated even when skipping
+            manifest["status"]["phase"] = 1
+            if "capture" not in manifest["status"]["completed"]:
+                manifest["status"]["completed"].append("capture")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f, indent=4)
+
+            print("\nPROGRESS: 100")
+            return
+    # -----------------------
+
     if force and output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

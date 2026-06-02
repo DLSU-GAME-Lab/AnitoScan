@@ -180,11 +180,6 @@ def export_to_2dgs_format(manifest):
             )
             f.write("\n")
 
-            # # COPY THE ORIGINAL MASKED PNG (No resizing, keeps math perfectly aligned)
-            # original_png_path = Path(manifest["paths"]["masked_frames"]) / png_name
-            # if original_png_path.exists():
-            #     shutil.copy2(str(original_png_path), str(image_dir / png_name))
-
             original_png_path = Path(manifest["paths"]["masked_frames"]) / png_name
             target_image_path = image_dir / png_name
 
@@ -200,16 +195,6 @@ def export_to_2dgs_format(manifest):
                     # Soften the edges slightly to prevent aliasing spikes
                     alpha = cv2.GaussianBlur(alpha, (3, 3), 0)
                     alpha_3c = np.expand_dims(alpha, axis=2)
-
-                    # Create a pure black background canvas (zeros)
-                    # black_bg = np.zeros_like(bgr)
-
-                    # # Smoothly composite the object over the black background
-                    # bgr_float = bgr.astype(np.float32)
-                    # composited_bgr = (bgr_float * alpha_3c) + (
-                    #     black_bg * (1.0 - alpha_3c)
-                    # )
-                    # composited_bgr = composited_bgr.astype(np.uint8)
 
                     # Create a pure white background canvas
                     white_bg = np.ones_like(bgr) * 255.0
@@ -229,8 +214,6 @@ def export_to_2dgs_format(manifest):
 
     # 3. Write points3D.txt
     # TARGETED DOWNSAMPLING
-    # 2DGS can easily handle up to 500k starting points.
-    # We only downsample if the dataset is massive, to save RAM.
     MAX_POINTS = 1_000_000
 
     initial_pts = len(pcd.points)
@@ -238,8 +221,6 @@ def export_to_2dgs_format(manifest):
 
     if initial_pts > MAX_POINTS:
         print(f"[*] Cloud too large. Randomly downsampling to {MAX_POINTS:,} points...")
-        # Random downsampling preserves the overall shape much better than large voxels
-        # for thin edges and sparse mono scans.
         indices = np.random.choice(initial_pts, MAX_POINTS, replace=False)
         pcd = pcd.select_by_index(indices)
     else:
@@ -268,7 +249,13 @@ def export_to_2dgs_format(manifest):
 # =====================================================================
 
 
-def run_surface_reconstruction(manifest_path, force=False):
+def run_surface_reconstruction(
+    manifest_path,
+    train_iterations,
+    densify_until_iter,
+    opacity_reset_interval,
+    force=False,
+):
     # 1. Load Manifest
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
@@ -281,36 +268,51 @@ def run_surface_reconstruction(manifest_path, force=False):
     sparse_dir = input_data_path / "sparse" / "0"
     image_dir = input_data_path / "images"
 
-    sparse_dir.mkdir(parents=True, exist_ok=True)
-    image_dir.mkdir(parents=True, exist_ok=True)
+    # --- SPATIAL INITIALIZATION CHECK ---
+    spatial_init_complete = (sparse_dir / "points3D.txt").exists() and (
+        sparse_dir / "cameras.txt"
+    ).exists()
 
-    # 3. Prepare Images (White Background Composite)
-    print("[*] Prepping images for Geometric Solver...")
-    start_time_pycolmap = time.perf_counter()
-    for original_png_path in Path(manifest["paths"]["masked_frames"]).glob("*.png"):
-        target_image_path = image_dir / original_png_path.name
-        img_rgba = cv2.imread(str(original_png_path), cv2.IMREAD_UNCHANGED)
+    if spatial_init_complete and not force:
+        print(
+            f"[*] Found existing spatial initialization in {input_data_path}. Skipping prep and bundle adjustment..."
+        )
+    else:
+        # We need to run spatial init, ensure directories exist fresh
+        if force and input_data_path.exists():
+            shutil.rmtree(input_data_path)
 
-        if img_rgba is not None and img_rgba.shape[2] == 4:
-            bgr = img_rgba[:, :, :3].astype(np.float32)
-            alpha = img_rgba[:, :, 3].astype(np.float32) / 255.0
-            alpha = cv2.GaussianBlur(alpha, (3, 3), 0)
-            alpha_3c = np.expand_dims(alpha, axis=2)
+        sparse_dir.mkdir(parents=True, exist_ok=True)
+        image_dir.mkdir(parents=True, exist_ok=True)
 
-            white_bg = np.ones_like(bgr) * 255.0
-            composited_bgr = (bgr * alpha_3c) + (white_bg * (1.0 - alpha_3c))
-            cv2.imwrite(str(target_image_path), composited_bgr.astype(np.uint8))
+        # 3. Prepare Images (White Background Composite)
+        print("[*] Prepping images for Geometric Solver...")
+        start_time_pycolmap = time.perf_counter()
+        for original_png_path in Path(manifest["paths"]["masked_frames"]).glob("*.png"):
+            target_image_path = image_dir / original_png_path.name
+            img_rgba = cv2.imread(str(original_png_path), cv2.IMREAD_UNCHANGED)
 
-    # 4. RUN BUNDLE ADJUSTMENT
-    run_bundle_adjustment(image_dir, sparse_dir)
+            if img_rgba is not None and img_rgba.shape[2] == 4:
+                bgr = img_rgba[:, :, :3].astype(np.float32)
+                alpha = img_rgba[:, :, 3].astype(np.float32) / 255.0
+                alpha = cv2.GaussianBlur(alpha, (3, 3), 0)
+                alpha_3c = np.expand_dims(alpha, axis=2)
 
-    total_time_pycolmap = time.perf_counter() - start_time_pycolmap
-    print(
-        f"[*] Spatial Initialization via pycolmap Complete. Saved to: {input_data_path}"
-    )
-    print(f"[*] Total Time: {total_time_pycolmap:.2f}s")
+                white_bg = np.ones_like(bgr) * 255.0
+                composited_bgr = (bgr * alpha_3c) + (white_bg * (1.0 - alpha_3c))
+                cv2.imwrite(str(target_image_path), composited_bgr.astype(np.uint8))
 
-    # 5. Training (7k iterations)
+        # 4. RUN BUNDLE ADJUSTMENT
+        run_bundle_adjustment(image_dir, sparse_dir)
+
+        total_time_pycolmap = time.perf_counter() - start_time_pycolmap
+        print(
+            f"[*] Spatial Initialization via pycolmap Complete. Saved to: {input_data_path}"
+        )
+        print(f"[*] Total Time: {total_time_pycolmap:.2f}s")
+    # ------------------------------------
+
+    # 5. Training
     gs_model_dir = output_dir / "vanilla_2dgs"
     if force and gs_model_dir.exists():
         shutil.rmtree(gs_model_dir)
@@ -324,15 +326,13 @@ def run_surface_reconstruction(manifest_path, force=False):
         "-m",
         str(gs_model_dir),
         "--iterations",
-        "7000",
+        str(train_iterations),
         "--densify_from_iter",
         "500",  # default is 500
         "--densify_until_iter",
-        # "7500",  # default is 15000
-        "5000",
+        str(densify_until_iter),
         "--opacity_reset_interval",
-        # "3000",  # default is 3000
-        "1000",
+        str(opacity_reset_interval),
         "--white_background",
         "--lambda_dist",
         "0.0",  # default is 0.0
@@ -342,7 +342,6 @@ def run_surface_reconstruction(manifest_path, force=False):
     ]
 
     # 6. Rendering/Meshing
-    # Uses render.py to perform TSDF fusion and export the mesh
     render_cmd = [
         sys.executable,
         str(GS_PATH / "render.py"),
@@ -353,15 +352,16 @@ def run_surface_reconstruction(manifest_path, force=False):
         "--skip_test",
         "--skip_train",  # Only interested in the mesh
         "--iteration",
-        "7000",  # change depending on number of iterations of train
+        str(train_iterations),
     ]
 
-    print("[*] Starting 2DGS Training (7k iterations)...")
+    print(f"[*] Starting 2DGS Training ({train_iterations} iterations)...")
     start_time = time.perf_counter()
 
     train_checkpoint_exists = (
-        gs_model_dir / "point_cloud" / "iteration_7000"
-    ).exists()  # change depending on number of iterations
+        gs_model_dir / "point_cloud" / f"iteration_{train_iterations}"
+    ).exists()
+
     if train_checkpoint_exists and not force:
         print("[*] Found existing training output. Skipping training...")
     else:
@@ -374,10 +374,11 @@ def run_surface_reconstruction(manifest_path, force=False):
             sys.exit(1)
 
     print("[*] Starting Mesh Extraction (TSDF Fusion)...")
-    mesh_checkpoint_exists = (
-        gs_model_dir / "train" / "ours_7000"
-    ).exists()  # change depending on number of iterations
-    if mesh_checkpoint_exists and not force:
+
+    # Target directory where the mesh generation script places its output
+    mesh_output_dir = gs_model_dir / "train" / f"ours_{train_iterations}"
+
+    if mesh_output_dir.exists() and not force:
         print("[*] Found existing mesh output. Skipping meshing...")
     else:
         try:
@@ -388,9 +389,34 @@ def run_surface_reconstruction(manifest_path, force=False):
             print("[!] Meshing failed.")
             sys.exit(1)
 
-    # 7. Final Logging and Progress
-    total_time = time.perf_counter() - start_time
+    # 7. Final Stage: Expose PLY to the workspace root for Phase 5
+    target_fused_ply = output_dir / "fused_mesh.ply"
 
+    if mesh_output_dir.exists():
+        # Strictly search for the post-processed mesh
+        possible_meshes = list(mesh_output_dir.rglob("*_post.ply"))
+
+        if possible_meshes:
+            # Grab the post-processed mesh (it will be fuse_post.ply or fuse_unbounded_post.ply)
+            best_mesh = possible_meshes[0]
+
+            shutil.copy2(str(best_mesh), str(target_fused_ply))
+            print(f"[*] Base geometry staged for Phase 5 at: {target_fused_ply}")
+        else:
+            print(
+                f"[!] Warning: No *_post.ply files found in {mesh_output_dir}. Export failed."
+            )
+    else:
+        print(f"[!] Warning: Mesh directory {mesh_output_dir} not found.")
+
+    manifest["status"]["phase"] = 4
+    if "geometry" not in manifest["status"]["completed"]:
+        manifest["status"]["completed"].append("geometry")
+
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=4)
+
+    total_time = time.perf_counter() - start_time
     print("PROGRESS: 100")
     print(f"[*] 2DGS Reconstruction Complete. Saved to: {output_dir}")
     print(f"[*] Total Time: {total_time:.2f}s")
@@ -405,5 +431,16 @@ if __name__ == "__main__":
         "--force", action="store_true", help="Overwrite existing geometry data"
     )
 
+    parser.add_argument("--train_iterations", type=int, default=15000)
+    parser.add_argument("--densify_until_iter", type=int, default=7500)
+    parser.add_argument("--opacity_reset_interval", type=int, default=3000)
+
     args = parser.parse_args()
-    run_surface_reconstruction(args.manifest, force=args.force)
+
+    run_surface_reconstruction(
+        args.manifest,
+        train_iterations=args.train_iterations,
+        densify_until_iter=args.densify_until_iter,
+        opacity_reset_interval=args.opacity_reset_interval,
+        force=args.force,
+    )

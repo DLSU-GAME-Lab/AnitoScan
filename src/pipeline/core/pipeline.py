@@ -83,6 +83,42 @@ def run_phase3(parent_module_path, manifest_path, args):
 
 def run_phase4(parent_module_path, manifest_path, args):
     module_path = parent_module_path / "geometry.py"
+
+    # Translate quality preset to geometry parameters
+    if args.quality == "fast":
+        train_iters, densify, opacity = 7000, 5000, 1000
+    elif args.quality == "medium":
+        train_iters, densify, opacity = 15000, 7500, 3000
+    elif args.quality == "detailed":
+        train_iters, densify, opacity = 30000, 15000, 3000
+
+    cmd = [
+        sys.executable,
+        str(module_path),
+        "--manifest",
+        str(manifest_path),
+        "--train_iterations",
+        str(train_iters),
+        "--densify_until_iter",
+        str(densify),
+        "--opacity_reset_interval",
+        str(opacity),
+    ]
+
+    if args.force:
+        cmd.append("--force")
+
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(
+            f"[!] Pipeline failed at Phase 4 (Geometry Generation). Exit code: {e.returncode}"
+        )
+        sys.exit(e.returncode)
+
+
+def run_phase5(parent_module_path, manifest_path, args):
+    module_path = parent_module_path / "export.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
     if args.force:
         cmd.append("--force")
@@ -90,7 +126,7 @@ def run_phase4(parent_module_path, manifest_path, args):
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
         print(
-            f"[!] Pipeline failed at Phase 4 (Geometry Generation). Exit code: {e.returncode}"
+            f"[!] Pipeline failed at Phase 5 (Export & Baking). Exit code: {e.returncode}"
         )
         sys.exit(e.returncode)
 
@@ -112,7 +148,6 @@ def run_pipeline():
         help="Path to folder or a specific media file",
     )
 
-    # Swapped --fps for --minimum_frames
     parser.add_argument(
         "--minimum_frames",
         type=int,
@@ -141,6 +176,15 @@ def run_pipeline():
         "--yoloe_model_size", type=str, choices=["n", "s", "m", "l", "x"], default="s"
     )
 
+    # Geometry defaults
+    parser.add_argument(
+        "--quality",
+        type=str,
+        choices=["fast", "medium", "detailed"],
+        default="fast",
+        help="Quality preset for 2DGS generation (controls iterations, densification, and opacity resets)",
+    )
+
     args = parser.parse_args()
 
     base_dir = (WORKSPACE_DIR / args.name).resolve()
@@ -149,12 +193,15 @@ def run_pipeline():
     spatial_dir = base_dir / "03_spatial"
     geometry_dir = base_dir / "04_geometry"
 
+    export_dir = Path(PROJECT_ROOT / "data" / "output" / args.name).resolve()
+
     manifest_path = base_dir / "manifest.json"
 
     capture_dir.mkdir(parents=True, exist_ok=True)
     mask_dir.mkdir(parents=True, exist_ok=True)
     spatial_dir.mkdir(parents=True, exist_ok=True)
     geometry_dir.mkdir(parents=True, exist_ok=True)
+    export_dir.mkdir(parents=True, exist_ok=True)
 
     input_path = Path(PROJECT_ROOT / "data" / "input" / Path(args.input)).resolve()
 
@@ -172,6 +219,7 @@ def run_pipeline():
             "proxy_width": args.proxy_width,
             "jpg_quality": args.jpg_quality,
             "max_search": args.max_search,
+            "quality": args.quality,
         },
         "status": {
             "phase": 1,
@@ -183,6 +231,7 @@ def run_pipeline():
             "masked_frames": str(mask_dir),
             "spatial": str(spatial_dir),
             "geometry": str(geometry_dir),
+            "export": str(export_dir),
         },
     }
 
@@ -198,6 +247,7 @@ def run_pipeline():
     run_phase2(parent_module_path, manifest_path, args)
     run_phase3(parent_module_path, manifest_path, args)
     run_phase4(parent_module_path, manifest_path, args)
+    run_phase5(parent_module_path, manifest_path, args)
 
 
 if __name__ == "__main__":
