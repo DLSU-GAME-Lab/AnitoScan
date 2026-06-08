@@ -132,7 +132,7 @@ void App::PollBackend() {
 			}
 			else if (msg.type == "workspace_ready") {
 				String runName = j.value("run_name", "");
-				std::cout << "[DEBUG] workspace_ready received, run_name: '" << runName << "'" << std::endl;
+				std::cout << "[DEBUG]: workspace_ready received, run_name: '" << runName << "'" << std::endl;
 				if (!runName.empty()) {
 					UIManager::GetInstance()->SetOutputToFileViewers(runName);
 				}
@@ -145,10 +145,21 @@ void App::PollBackend() {
 				//route to the correct phase bar
 				if (phase >= 1 && phase <= (int)Phase::COUNT) {
 					overview->SetPhaseProgress((Phase)(phase - 1), value, label);
+					if (value == 1.f) {
+						overview->SetPhaseComplete((Phase)(phase - 1));
+						std::cout << "[DEBUG]: " << label << std::endl;
+					}
 				}
 				else {		//overall progress bar
 					overview->SetPhaseProgress(overview->GetCurrentPhase(), value, label);
 				}
+			}
+			else if (msg.type == "action_required") { //pass the image index
+				std::cout << "recieved" << std::endl;
+				int index = j.value("index", 0);
+				std::cout << "index: " << index << std::endl;
+				MaskingPopup* popup = (MaskingPopup*)UIManager::GetInstance()->GetPanelByType(UIType::MASKING_MODAL);
+				popup->ShowPopup();
 			}
 			else if (msg.type == "done") {
 				overview->SetDone();

@@ -54,13 +54,13 @@ void UIManager::CreateUIPanels(IPCClient& ipc) {
 	//this->uiList.push_back(spatialViewer);
 	//this->uiMap[spatialViewer->GetName()] = spatialViewer;
 
-	//InputPanel* inputPanel = new InputPanel("Input");
-	//this->uiList.push_back(inputPanel);
-	//this->uiMap[inputPanel->GetName()] = inputPanel;
-
 	LogPanel* logPanel = new LogPanel("Log", ipc);
 	this->uiList.push_back(logPanel);
 	this->uiMap[logPanel->GetName()] = logPanel;
+
+	MaskingPopup* maskingPopup = new MaskingPopup("Masking Popup");
+	this->uiList.push_back(maskingPopup);
+	this->uiMap[maskingPopup->GetName()] = maskingPopup;
 	
 }
 

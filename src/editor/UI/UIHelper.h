@@ -13,3 +13,9 @@ inline void RightAlignElement(const char* text) {
 	ImGui::SameLine();
 	ImGui::SetCursorPosX(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x);
 }
+
+inline void UpdateImGuiProgressBar(float value, ImVec2 barSize, UIColor colorCode) {
+	ImGui::PushStyleColor(ImGuiCol_PlotHistogram, Color.at(colorCode));
+	ImGui::ProgressBar(value, barSize);
+	ImGui::PopStyleColor();
+}

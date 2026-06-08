@@ -11,8 +11,8 @@
 #include "panels/OverviewPanel.h"
 #include "panels/DockSpace.h"
 #include "panels/FileViewer.h"
-#include "panels/InputPanel.h"
 #include "panels/LogPanel.h"
+#include "panels/MaskingPopup.h"
 
 #include "../IPCClient.h"
 

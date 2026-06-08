@@ -12,6 +12,11 @@ import torch
 from ultralytics.models.sam import SAM
 from ultralytics.models.yolo import YOLOE
 
+core_path = str(Path(__file__).resolve().parent.parent / "core")
+sys.path.insert(0, core_path)
+
+from ipc import send
+
 # DIRECTORY RESOLUTION
 MODULE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
@@ -134,6 +139,8 @@ def get_user_selection(img, detector, temp_dir, frame_name, device):
     print(f" ACTION REQUIRED: Open {preview_path}")
     print("==================================================")
 
+    send({"type": "action_required", "index": idx})
+
     while True:
         try:
             choice = input(
@@ -151,7 +158,7 @@ def get_user_selection(img, detector, temp_dir, frame_name, device):
 
 
 def run_remove_background(
-    manifest_path, yoloe_model_size, iou_threshold, drift_limit, force=False
+    manifest_path, yoloe_model_size, iou_threshold, drift_limit, force=False, ipc_mode=False
 ):
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
@@ -340,6 +347,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--iou_threshold", type=float, required=True)
     parser.add_argument("--drift_limit", type=int, required=True)
+    parser.add_argument("--ipc", action="store_true")
 
     args = parser.parse_args()
 
@@ -349,4 +357,5 @@ if __name__ == "__main__":
         iou_threshold=args.iou_threshold,
         drift_limit=args.drift_limit,
         force=args.force,
+        ipc_mode=args.ipc
     )

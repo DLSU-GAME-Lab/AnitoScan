@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ipc import send, send_progress, send_log, send_done, send_error
+from ipc import send, send_progress, send_log, send_done, send_error, is_ipc_mode
 
 # DIRECTORY RESOLUTION
 SCRIPT_PATH = Path(__file__).resolve()  # /src/pipeline/core/pipeline.py
@@ -31,6 +31,9 @@ def _run_phase(phase_num: int, phase_name: str, cmd: list, ipc_mode: bool):
 
 
 def run_phase1(parent_module_path, manifest_path, args, ipc_mode=False):
+    # if not ipc_mode:
+    #     ipc_mode = bool(_get(args, "ipc", False))
+
     # 1. Launch Phase 1: Capture
     module_path = parent_module_path / "capture.py"
     cmd = [
@@ -50,6 +53,9 @@ def run_phase1(parent_module_path, manifest_path, args, ipc_mode=False):
     if _get(args, "force"): cmd.append("--force")
     if _get(args, "image"): cmd.append("--image")
     if _get(args, "video"): cmd.append("--video")
+
+    if ipc_mode: cmd.append("--ipc")
+
     _run_phase(1, "Capture", cmd, ipc_mode)
 
 
@@ -64,14 +70,16 @@ def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False):
         str(_get(args, "iou_threshold", 0.15)), 
         "--drift_limit",
         str(_get(args, "drift_limit", 500)),
-        "--max_yoloe_failures",
-        str(_get(args, "max_yoloe_failures", 2)),
+       # "--max_yoloe_failures",
+       # str(_get(args, "max_yoloe_failures", 2)),
         "--yoloe_model_size",
         str(_get(args, "yoloe_model_size", "s")),
     ]
 
-    if args.get("force"):
-        cmd.append("--force")
+    if _get(args, "force"): cmd.append("--force")
+
+    if ipc_mode: cmd.append("--ipc")
+
     _run_phase(2, "Masking", cmd, ipc_mode)
 
 
@@ -79,7 +87,7 @@ def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False):
 def run_phase3(parent_module_path, manifest_path, args, ipc_mode=False):
     module_path = parent_module_path / "spatial.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
-    if args.get("force"):
+    if _get(args, "force"):
         cmd.append("--force")
     _run_phase(3, "Spatial Initialization", cmd, ipc_mode)
 
@@ -87,7 +95,7 @@ def run_phase3(parent_module_path, manifest_path, args, ipc_mode=False):
 def run_phase4(parent_module_path, manifest_path, args, ipc_mode=False):
     module_path = parent_module_path / "geometry.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
-    if args.get("force"):
+    if _get(args, "force"):
         cmd.append("--force")
     _run_phase(4, "Geometry Generation", cmd, ipc_mode)
 
@@ -143,30 +151,34 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=4)
 
-    send_log(f"Workspace initialized: {base_dir}")
     print(f"[*] Workspace initialized: {base_dir}")
-    send({"type": "workspace_ready", "path": str(base_dir), "run_name": args["name"]})
+
+    if is_ipc_mode():
+        send_log(f"Workspace initialized: {base_dir}")
+        send({"type": "workspace_ready", "path": str(base_dir), "run_name": args["name"]})
 
     parent_module_path = Path(__file__).parent.parent / "modules"
 
-    send_progress(0.0, "[*] Starting Phase 1: Capture", phase=1)
+    if is_ipc_mode(): send_progress(0.0, "[*] Starting Phase 1: Capture", phase=1)
     run_phase1(parent_module_path, manifest_path, args, ipc_mode)
 
-    send_progress(0.25, "[*] Starting Phase 2: Masking", phase=2)
+    if is_ipc_mode(): send_progress(0.25, "[*] Starting Phase 2: Masking", phase=2)
     run_phase2(parent_module_path, manifest_path, args, ipc_mode)
 
-    send_progress(0.50, "[*] Starting Phase 3: Spatial", phase=3)
+    if is_ipc_mode(): send_progress(0.50, "[*] Starting Phase 3: Spatial", phase=3)
     run_phase3(parent_module_path, manifest_path, args, ipc_mode)
 
-    send_progress(0.75, "[*] Starting Phase 4: Geometry", phase=4)
+    if is_ipc_mode(): send_progress(0.75, "[*] Starting Phase 4: Geometry", phase=4)
     run_phase4(parent_module_path, manifest_path, args, ipc_mode)
 
-    send_progress(1.0, "[*] Complete")
+    if is_ipc_mode(): send_progress(1.0, "[*] Complete")
     send_done({"run_name": name, "output": str(base_dir)})
 
 
 def run_ipc_mode():
     send_log("Backend ready")
+    send_log(is_ipc_mode().__str__())
+    
 
     for raw_line in sys.stdin:
         raw_line = raw_line.strip()

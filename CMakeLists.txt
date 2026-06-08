@@ -51,9 +51,9 @@ add_executable(${PROJECT_NAME}
     src/editor/UI/UIPanel.cpp
     src/editor/UI/panels/DockSpace.cpp
     src/editor/UI/panels/OverviewPanel.cpp
-    src/editor/UI/panels/InputPanel.cpp
     src/editor/UI/panels/FileViewer.cpp
     src/editor/UI/panels/LogPanel.cpp
+    src/editor/UI/panels/MaskingPopup.cpp
     # Add your other .cpp files here
 
     ${imgui_SOURCE_DIR}/imgui.cpp
@@ -75,6 +75,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${nlohmann_json_SOURCE_DIR}/include"
     "${CMAKE_SOURCE_DIR}/vendor/stb"
     "${CMAKE_SOURCE_DIR}/vendor/imgui/src"
+    "${CMAKE_SOURCE_DIR}/vendor/imfilebrowser"
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

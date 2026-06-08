@@ -33,6 +33,7 @@ public:
 	void SetDone();
 	void SetScanning(bool scanning);
 	std::filesystem::path GetOutputFolder();
+	std::filesystem::path GetInputFilename();
 	Phase GetCurrentPhase();
 
 private:

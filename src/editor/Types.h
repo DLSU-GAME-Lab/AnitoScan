@@ -12,12 +12,13 @@ enum class UIType {
 	OVERVIEW,
 	DOCKSPACE,
 	FILE_VIEWER,
-	INPUT_PANEL,
 	LOG_PANEL,
+	MASKING_MODAL,
 	UNKNOWN
 };
 
 enum class UIColor {
+	NONE,
 	YELLOW,
 	RED,
 	BLUE,
@@ -41,6 +42,7 @@ typedef std::unordered_map<String, UIPanel*> UIMap;
 typedef std::unordered_map<UIColor, ImVec4> UIColorMap;
 
 inline const UIColorMap Color = {
+	{ UIColor::NONE,   ImVec4(0.0f, 0.0f, 0.0f, 0.0f) },
 	{ UIColor::YELLOW, ImVec4(1.0f, 1.0f, 0.0f, 1.0f) },
 	{ UIColor::RED,    ImVec4(1.0f, 0.0f, 0.0f, 1.0f) },
 	{ UIColor::BLUE,   ImVec4(0.0f, 0.0f, 1.0f, 1.0f) },
