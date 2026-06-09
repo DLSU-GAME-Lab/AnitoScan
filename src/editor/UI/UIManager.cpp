@@ -58,7 +58,7 @@ void UIManager::CreateUIPanels(IPCClient& ipc) {
 	this->uiList.push_back(logPanel);
 	this->uiMap[logPanel->GetName()] = logPanel;
 
-	MaskingPopup* maskingPopup = new MaskingPopup("Masking Popup");
+	MaskingPopup* maskingPopup = new MaskingPopup("Masking Popup", ipc);
 	this->uiList.push_back(maskingPopup);
 	this->uiMap[maskingPopup->GetName()] = maskingPopup;
 	

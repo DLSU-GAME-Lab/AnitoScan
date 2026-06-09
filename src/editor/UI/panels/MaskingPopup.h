@@ -7,24 +7,33 @@
 
 class MaskingPopup : public UIPanel {
 public:
-	MaskingPopup(String name);
+	MaskingPopup(String name, IPCClient& ipc);
 	~MaskingPopup();
 
 	void Draw() override;
 	void ShowPopup();
-	void InitializeEntryFiles();
-	void SetImagePreview(int index);
+	void ShowCandidates(String previewPath, String frame, int count);
 
 private:
 	void LoadPreview(const String& path);
 	void ClearPreview();
-	void DrawFittedImage(GLuint texture, int imgW, int imgH, ImVec2 availSpace);
+	void DisplayPreview();
+	void DisplayCandidatesButton();
+	void DisplaySkipButton();
 
 private:
-	bool showPopup;
+	IPCClient& ipc;
+	bool showPopup, isWaiting;
 	GLuint previewTexture;
 	String lastPreviewPath;
 	int previewW = 0, previewH = 0;
-	int imageIndex = 0;
-	std::vector<std::filesystem::path> entryFiles;
+	String previewPath, frame;
+	int count;
+
+//zoom
+private:
+	float  zoom = 1.0f;
+	ImVec2 panOffset = ImVec2(0, 0);
+	bool   isPanning = false;
+	ImVec2 lastMouse = ImVec2(0, 0);
 };

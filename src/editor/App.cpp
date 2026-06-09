@@ -155,11 +155,13 @@ void App::PollBackend() {
 				}
 			}
 			else if (msg.type == "action_required") { //pass the image index
-				std::cout << "recieved" << std::endl;
-				int index = j.value("index", 0);
-				std::cout << "index: " << index << std::endl;
+				std::string previewPath = j.value("preview", "");
+				std::string frame = j.value("frame", "");
+				int count = j.value("count", 0);
+				std::cout << "[DEBUG] action_required: " << previewPath << std::endl;
+
 				MaskingPopup* popup = (MaskingPopup*)UIManager::GetInstance()->GetPanelByType(UIType::MASKING_MODAL);
-				popup->ShowPopup();
+				popup->ShowCandidates(previewPath, frame, count);
 			}
 			else if (msg.type == "done") {
 				overview->SetDone();

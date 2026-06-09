@@ -15,7 +15,7 @@ from ultralytics.models.yolo import YOLOE
 core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
-from ipc import send
+from ipc import send, send_log
 
 # DIRECTORY RESOLUTION
 MODULE_PATH = Path(__file__).resolve()
@@ -42,7 +42,7 @@ def calculate_centroid_drift(boxA, boxB):
     return np.linalg.norm(centerA - centerB)
 
 
-def get_user_selection(img, detector, temp_dir, frame_name, device):
+def get_user_selection(img, detector, temp_dir, frame_name, device, input_callback=None):
     """Runs YOLOE, draws uniquely colored candidates with collision avoidance, and gets terminal input.
 
     Returns a tuple: (chosen_box_coordinates or None, elapsed_wait_time_seconds)
@@ -135,30 +135,39 @@ def get_user_selection(img, detector, temp_dir, frame_name, device):
         )
         sys.exit(1)
 
-    print("\n==================================================")
-    print(f" ACTION REQUIRED: Open {preview_path}")
-    print("==================================================")
+    if input_callback is not None:
+        # IPC mode - send to editor and wait for response
+        choice = input_callback(str(preview_path), len(valid_boxes), frame_name)
+        if choice is None:
+            return None, time.perf_counter() - start_wait
+        if 0 <= choice < len(valid_boxes):
+            return valid_boxes[choice], time.perf_counter() - start_wait
+        return None, time.perf_counter() - start_wait
+    else:
+        print("\n==================================================")
+        print(f" ACTION REQUIRED: Open {preview_path}")
+        print("==================================================") 
 
-    send({"type": "action_required", "index": idx})
+        while True:
+            try:
+                choice = input(
+                    f"Enter the ID of the correct bounding box (0-{len(valid_boxes) - 1}) or 's' to skip: "
+                )
+                if choice.lower() == "s":
+                    return None, time.perf_counter() - start_wait
+                idx = int(choice)
+                if 0 <= idx < len(valid_boxes):
+                    return valid_boxes[idx], time.perf_counter() - start_wait
+                else:
+                    print("[!] Invalid ID. Try again.")
+            except ValueError:
+                print("[!] Please enter a valid number.")
 
-    while True:
-        try:
-            choice = input(
-                f"Enter the ID of the correct bounding box (0-{len(valid_boxes) - 1}) or 's' to skip: "
-            )
-            if choice.lower() == "s":
-                return None, time.perf_counter() - start_wait
-            idx = int(choice)
-            if 0 <= idx < len(valid_boxes):
-                return valid_boxes[idx], time.perf_counter() - start_wait
-            else:
-                print("[!] Invalid ID. Try again.")
-        except ValueError:
-            print("[!] Please enter a valid number.")
-
+   
 
 def run_remove_background(
-    manifest_path, yoloe_model_size, iou_threshold, drift_limit, force=False, ipc_mode=False
+    manifest_path, yoloe_model_size, iou_threshold, drift_limit,
+    force=False, ipc_mode=False, input_callback=None
 ):
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
@@ -232,7 +241,8 @@ def run_remove_background(
             if prev_box is None:
                 # First frame initialization anchor configuration
                 chosen_box, wait_time = get_user_selection(
-                    img, detector, temp_dir, img_path.stem, device
+                    img, detector, temp_dir, img_path.stem, device,
+                    input_callback=input_callback
                 )
                 total_user_time += wait_time
             elif valid_boxes:
@@ -255,12 +265,14 @@ def run_remove_background(
                         f"\n[!] Tracking signature broke on {img_path.name} (Strict limits violated)."
                     )
                     chosen_box, wait_time = get_user_selection(
-                        img, detector, temp_dir, img_path.stem, device
+                        img, detector, temp_dir, img_path.stem, device,
+                        input_callback=input_callback
                     )
                     total_user_time += wait_time
             else:
                 chosen_box, wait_time = get_user_selection(
-                    img, detector, temp_dir, img_path.stem, device
+                    img, detector, temp_dir, img_path.stem, device,
+                    input_callback=input_callback
                 )
                 total_user_time += wait_time
 

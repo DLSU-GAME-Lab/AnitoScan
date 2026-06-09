@@ -12,11 +12,39 @@ PROJECT_ROOT = SCRIPT_PATH.parent.parent.parent.parent
 WORKSPACE_DIR = PROJECT_ROOT / "data" / "runs"  # /data/runs/
 MODULES_DIR = SCRIPT_PATH.parent.parent / "modules"  # /src/pipeline/modules/
 
+sys.path.insert(0, str(MODULES_DIR))
+from remove_background import run_remove_background
+
 
 def _get(args, key, default=None):
     if isinstance(args, dict):
         return args.get(key, default)   # IPC mode
-    return getattr(args, key, default)  # CLI mode  
+    return getattr(args, key, default)  # CLI mode 
+
+def make_ipc_input_callback():
+    def callback(preview_path: str, count: int, frame_name: str) -> int | None: 
+        send({
+            "type":     "action_required",
+            "frame":    frame_name,
+            "preview":  preview_path,
+            "count":    count,
+        })
+
+        for raw_line in sys.stdin:
+            raw_line = raw_line.strip()
+            if not raw_line:
+                continue
+            try:
+                response = json.loads(raw_line)
+                if response.get("type") == "selection":
+                    choice = response.get("choice")
+                    if choice == "skip":
+                        return None
+                    return int(choice)
+            except (json.JSONDecodeError, ValueError):
+                continue
+        return None
+    return callback
 
 def _run_phase(phase_num: int, phase_name: str, cmd: list, ipc_mode: bool):
     result = subprocess.run(cmd)
@@ -60,28 +88,44 @@ def run_phase1(parent_module_path, manifest_path, args, ipc_mode=False):
 
 
 def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False):
-    module_path = parent_module_path / "remove_background.py"
-    cmd = [
-        sys.executable,
-        str(module_path),
-        "--manifest",
-        str(manifest_path),
-        "--iou_threshold",
-        str(_get(args, "iou_threshold", 0.15)), 
-        "--drift_limit",
-        str(_get(args, "drift_limit", 500)),
-       # "--max_yoloe_failures",
-       # str(_get(args, "max_yoloe_failures", 2)),
-        "--yoloe_model_size",
-        str(_get(args, "yoloe_model_size", "s")),
-    ]
+    if ipc_mode:
+        send_log("Starting Phase 2: Masking")
+        send_progress(0.0, "Phase 2: Masking starting...", phase=2)
+        try:
+            run_remove_background(
+                manifest_path = manifest_path,
+                yoloe_model_size = _get(args, "yoloe_model_size", "s"),
+                iou_threshold = _get(args, "iou_threshold", 0.50),
+                drift_limit = _get(args, "drift_limit", 200),
+                force = _get(args, "force", False),
+                ipc_mode = True,
+                input_callback = make_ipc_input_callback(),
+            )
+            send_progress(1.0, "Phase 2: Masking complete", phase=2)
+        except Exception as e:
+            raise RuntimeError(f"Pipeline failed at Phase 2 (Masking): {e}")
+    else:
+        module_path = parent_module_path / "remove_background.py"
+        cmd = [
+            sys.executable,
+            str(module_path),
+            "--manifest",
+            str(manifest_path),
+            "--iou_threshold",
+            str(_get(args, "iou_threshold", 0.15)), 
+            "--drift_limit",
+            str(_get(args, "drift_limit", 500)),
+        # "--max_yoloe_failures",
+        # str(_get(args, "max_yoloe_failures", 2)),
+            "--yoloe_model_size",
+            str(_get(args, "yoloe_model_size", "s")),
+        ]
 
-    if _get(args, "force"): cmd.append("--force")
+        if _get(args, "force"): cmd.append("--force")
 
-    if ipc_mode: cmd.append("--ipc")
+        if ipc_mode: cmd.append("--ipc")
 
-    _run_phase(2, "Masking", cmd, ipc_mode)
-
+        _run_phase(2, "Masking", cmd, ipc_mode)
 
 
 def run_phase3(parent_module_path, manifest_path, args, ipc_mode=False):
@@ -153,25 +197,25 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
 
     print(f"[*] Workspace initialized: {base_dir}")
 
-    if is_ipc_mode():
-        send_log(f"Workspace initialized: {base_dir}")
-        send({"type": "workspace_ready", "path": str(base_dir), "run_name": args["name"]})
+
+    send_log(f"Workspace initialized: {base_dir}")
+    send({"type": "workspace_ready", "path": str(base_dir), "run_name": args["name"]})
 
     parent_module_path = Path(__file__).parent.parent / "modules"
 
-    if is_ipc_mode(): send_progress(0.0, "[*] Starting Phase 1: Capture", phase=1)
+    send_progress(0.0, "[*] Starting Phase 1: Capture", phase=1)
     run_phase1(parent_module_path, manifest_path, args, ipc_mode)
 
-    if is_ipc_mode(): send_progress(0.25, "[*] Starting Phase 2: Masking", phase=2)
+    send_progress(0.25, "[*] Starting Phase 2: Masking", phase=2)
     run_phase2(parent_module_path, manifest_path, args, ipc_mode)
 
-    if is_ipc_mode(): send_progress(0.50, "[*] Starting Phase 3: Spatial", phase=3)
+    send_progress(0.50, "[*] Starting Phase 3: Spatial", phase=3)
     run_phase3(parent_module_path, manifest_path, args, ipc_mode)
 
-    if is_ipc_mode(): send_progress(0.75, "[*] Starting Phase 4: Geometry", phase=4)
+    send_progress(0.75, "[*] Starting Phase 4: Geometry", phase=4)
     run_phase4(parent_module_path, manifest_path, args, ipc_mode)
 
-    if is_ipc_mode(): send_progress(1.0, "[*] Complete")
+    send_progress(1.0, "[*] Complete")
     send_done({"run_name": name, "output": str(base_dir)})
 
 

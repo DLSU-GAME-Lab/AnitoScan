@@ -11,7 +11,8 @@
                 "vendor/mast3r/dust3r",
                 "vendor/NeuS2",
                 "vendor/2d-gaussian-splatting",
-                "src/pipeline/core"
+                "src/pipeline/core",
+                "src/pipeline/modules"
             ],
         },
     ],

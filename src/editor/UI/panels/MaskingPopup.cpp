@@ -1,61 +1,67 @@
 #include "MaskingPopup.h"
 
-MaskingPopup::MaskingPopup(String name) : UIPanel(UIType::MASKING_MODAL, name, false) {
+MaskingPopup::MaskingPopup(String name, IPCClient& ipc) : UIPanel(UIType::MASKING_MODAL, name, false), ipc(ipc) {
 	this->lastPreviewPath = "";
 	this->previewTexture = NULL;
 	this->showPopup = activeSelf;
+	this->isWaiting = true;
 }
 
 MaskingPopup::~MaskingPopup() {}
 
+
 void MaskingPopup::Draw() {
-	if (this->showPopup) {
-		ImGui::OpenPopup(this->GetName().c_str());
-		this->showPopup = false;
-		//this->activeSelf 
-	}
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(0, 0));
 
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground |
+        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
 
-	ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove;
-	ImVec2 size = ImVec2(1000, 700.0f);
+    ImGui::Begin("##masking_popup_host", nullptr, flags);
+    if (this->showPopup) {
+        ImGui::OpenPopup(this->GetName().c_str());
+        this->showPopup = false;
+    }
 
-	ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-	ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-	ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	if (ImGui::BeginPopupModal(this->GetName().c_str(), nullptr, flags)) {
-		//ImGui::Dummy(ImVec2(300.0f, 0.0f));
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(1000, 700), ImGuiCond_Always);
 
-		// 2. Pass the ImGuiWindowFlags_NoResize flag into Begin()
-		ImGui::Image((ImTextureID)(intptr_t)this->previewTexture, size);
+    ImGuiWindowFlags popupflags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+    if (ImGui::BeginPopupModal(this->GetName().c_str(), nullptr, popupflags)) {
+        ImGui::Text("Frame: %s", this->frame.c_str());
+        ImGui::Text("Select the correct subject:");
+        ImGui::Separator();
 
-		if (ImGui::Button("Close")) {
-			ImGui::CloseCurrentPopup();
-		}
+        if (this->previewTexture) {
+            DisplayPreview();
+        }
+        else {
+            ImGui::TextDisabled("Loading preview...");
+        }
 
-		ImGui::EndPopup();
-	}
+        ImGui::Separator();
 
-	//ImGui::End();
+        // candidates button
+        DisplayCandidatesButton();
 
+        //skip button
+        DisplaySkipButton();
+
+        ImGui::EndPopup();
+    }
+
+    ImGui::End(); 
 }
 
-void MaskingPopup::InitializeEntryFiles() {
-	OverviewPanel* panel = (OverviewPanel*)UIManager::GetInstance()->GetPanelByType(UIType::OVERVIEW);
-	std::filesystem::path path = std::filesystem::current_path() / "data" / "runs" / panel->GetOutputFolder() / "02_masking" / "temp";
 
-	if (std::filesystem::exists(path) && std::filesystem::is_directory(path)) {
-		for (const auto& entry : std::filesystem::directory_iterator(path)) {
-			if (entry.is_regular_file()) {
-				this->entryFiles.push_back(entry.path());
-			}
-		}
-	}
-}
-
-void MaskingPopup::SetImagePreview(int index) {
-	if (index < this->entryFiles.size()) {
-		LoadPreview(this->entryFiles[index].string());
-	}
+void MaskingPopup::ShowCandidates(String previewPath, String frame, int count) {
+	this->count = count;
+	this->frame = frame;
+	this->isWaiting = true;
+    ShowPopup();
+	LoadPreview(previewPath);
 }
 
 void MaskingPopup::ShowPopup() {
@@ -84,28 +90,87 @@ void MaskingPopup::LoadPreview(const String& path) {
 	this->lastPreviewPath = path;
 }
 
-
 void MaskingPopup::ClearPreview() {
-	if (this->previewTexture) {
-		glDeleteTextures(1, &this->previewTexture);
-		this->previewTexture = 0;
-	}
-	this->previewW = this->previewH = 0;
-	this->lastPreviewPath.clear();
+    if (this->previewTexture) {
+        glDeleteTextures(1, &this->previewTexture);
+        this->previewTexture = 0;
+    }
+    this->previewW = this->previewH = 0;
+    this->lastPreviewPath.clear();
 }
 
 
-void MaskingPopup::DrawFittedImage(GLuint texture, int imgW, int imgH, ImVec2 availSpace) {
-	float scaleX = availSpace.x / (float)imgW;
-	float scaleY = availSpace.y / (float)imgH;
-	float scale = std::min(scaleX, scaleY);
+void MaskingPopup::DisplayPreview() {
+    ImVec2 availSize = ImVec2(960, 540);
+    float aspect = (float)this->previewH / (float)this->previewW;
+    float baseW = availSize.x;
+    float baseH = baseW * aspect;
+    if (baseH > availSize.y) {
+        baseH = availSize.y;
+        baseW = baseH / aspect;
+        ;
+    }
 
-	ImVec2 displaySize(imgW * scale, imgH * scale);
+    ImVec2 displaySize(baseW * this->zoom, baseH * this->zoom);
 
-	ImVec2 cursor = ImGui::GetCursorPos();
-	float offsetX = (availSpace.x - displaySize.x) * 0.5f;
-	float offsetY = (availSpace.y - displaySize.y) * 0.5f;
-	ImGui::SetCursorPos(ImVec2(cursor.x + offsetX, cursor.y + offsetY));
+    ImGui::BeginChild("##preview_zoom", availSize, false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
-	ImGui::Image((ImTextureID)(intptr_t)texture, displaySize);
+    ImVec2 childPos = ImGui::GetCursorScreenPos();
+    ImVec2 centerOff = ImVec2((availSize.x - displaySize.x) * 0.5f + this->panOffset.x,
+        (availSize.y - displaySize.y) * 0.5f + this->panOffset.y);
+
+    ImGui::SetCursorPos(centerOff);
+    ImGui::Image((ImTextureID)(intptr_t)this->previewTexture, displaySize);
+
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
+        float wheel = ImGui::GetIO().MouseWheel;
+        if (wheel != 0.0f) {
+            float zoomFactor = 1.0f +
+                wheel * 0.1f;
+            this->zoom = std::clamp(this->zoom * zoomFactor, 0.5f, 5.0f);
+        }
+
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            ImVec2 delta = ImGui::GetIO().MouseDelta;
+            this->panOffset.x += delta.x;
+            this->panOffset.y += delta.y;
+        }
+    }
+    ImGui::EndChild();
+
+    ImGui::Text("Zoom: %.0f%%", this->zoom * 100.0f);
+    ImGui::SameLine();
+    if (ImGui::Button("Reset")) {
+        this->zoom = 1.0f;
+        this->panOffset = ImVec2(0, 0);
+        ;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(scroll to zoom, drag to pan)");
+}
+
+void MaskingPopup::DisplayCandidatesButton() {
+    for (int i = 0; i < this->count; i++) {
+        String label = "  " + std::to_string(i) + "  ";
+        if (ImGui::Button(label.c_str(), ImVec2(60, 36))) {
+            nlohmann::json response;
+            response["type"] = "selection";
+            response["choice"] = std::to_string(i);
+            this->ipc.Send(response.dump());
+            this->isWaiting = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+    }
+}
+
+void MaskingPopup::DisplaySkipButton() {
+    if (ImGui::Button("Skip", ImVec2(60, 36))) {
+        nlohmann::json response;
+        response["type"] = "selection";
+        response["choice"] = "skip";
+        this->ipc.Send(response.dump());
+        this->isWaiting = false;
+        ImGui::CloseCurrentPopup();
+    }
 }
