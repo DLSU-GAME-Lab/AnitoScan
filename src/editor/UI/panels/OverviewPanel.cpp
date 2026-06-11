@@ -18,6 +18,7 @@ void OverviewPanel::SetPhaseProgress(Phase phase, float value, const String& lab
 	this->phases[i].active = true;
 	this->currentPhase = phase;
 
+	std::cout << "Output: " << this->phases[i].progress << std::endl;
 	//std::cout << value << std::endl;
 }
 

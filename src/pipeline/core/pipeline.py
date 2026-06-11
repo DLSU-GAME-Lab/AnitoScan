@@ -30,6 +30,8 @@ def make_ipc_input_callback():
             "count":    count,
         })
 
+        send_log(f"Opened {frame_name} preview: {preview_path}")
+
         for raw_line in sys.stdin:
             raw_line = raw_line.strip()
             if not raw_line:
@@ -39,7 +41,9 @@ def make_ipc_input_callback():
                 if response.get("type") == "selection":
                     choice = response.get("choice")
                     if choice == "skip":
+                        send_log(f"Skipped boundary selection")
                         return None
+                    send_log(f"Selected {int(choice)} for {frame_name}")
                     return int(choice)
             except (json.JSONDecodeError, ValueError):
                 continue
@@ -220,9 +224,7 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
 
 
 def run_ipc_mode():
-    send_log("Backend ready")
-    send_log(is_ipc_mode().__str__())
-    
+    send_log("Backend ready")    
 
     for raw_line in sys.stdin:
         raw_line = raw_line.strip()

@@ -41,7 +41,7 @@ void MaskingPopup::Draw() {
             ImGui::TextDisabled("Loading preview...");
         }
 
-        ImGui::Separator();
+        ImGui::Separator(); 
 
         // candidates button
         DisplayCandidatesButton();

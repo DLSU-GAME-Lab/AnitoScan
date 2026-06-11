@@ -15,7 +15,7 @@ from ultralytics.models.yolo import YOLOE
 core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
-from ipc import send, send_log
+from ipc import send, send_log, send_progress
 
 # DIRECTORY RESOLUTION
 MODULE_PATH = Path(__file__).resolve()
@@ -213,121 +213,133 @@ def run_remove_background(
     total_user_time = 0.0  # Tracks elapsed human intervention overhead
     prev_box = None
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        for i, img_path in enumerate(source_images):
-            img = cv2.imread(str(img_path))
-            if img is None:
-                continue
+    #with ThreadPoolExecutor(max_workers=4) as executor:
+    for i, img_path in enumerate(source_images):
+        if ipc_mode:
+            current_frame_number = i + 1
+            progress_fraction = current_frame_number / total_frames
 
-            h_img, w_img = img.shape[:2]
-            img_area = h_img * w_img
-            target_path = output_dir / f"{img_path.stem}.png"
+            send_progress(
+                value=progress_fraction,
+                label=f"Processing frame {current_frame_number} of {total_frames}"
+            )
 
-            # 1. YOLOE Bounding Box Prediction
-            det_results = detector.predict(
-                source=img, conf=0.25, device=device, verbose=False
-            )[0]
-            valid_boxes = []
+        img = cv2.imread(str(img_path))
+        if img is None:
+            continue
 
-            if det_results.boxes is not None:
-                for box in det_results.boxes:
-                    coords = box.xyxy[0].cpu().numpy()
-                    box_area = (coords[2] - coords[0]) * (coords[3] - coords[1])
-                    if (box_area / img_area) < 0.70:
-                        valid_boxes.append(coords.tolist())
+        h_img, w_img = img.shape[:2]
+        img_area = h_img * w_img
+        target_path = output_dir / f"{img_path.stem}.png"
 
-            # 2. Strict Math Validation Heuristics (IoU & Drift Boundary Gates)
-            chosen_box = None
-            if prev_box is None:
-                # First frame initialization anchor configuration
+        # 1. YOLOE Bounding Box Prediction
+        det_results = detector.predict(
+            source=img, conf=0.25, device=device, verbose=False
+        )[0]
+        valid_boxes = []
+
+        if det_results.boxes is not None:
+            for box in det_results.boxes:
+                coords = box.xyxy[0].cpu().numpy()
+                box_area = (coords[2] - coords[0]) * (coords[3] - coords[1])
+                if (box_area / img_area) < 0.70:
+                    valid_boxes.append(coords.tolist())
+
+        # 2. Strict Math Validation Heuristics (IoU & Drift Boundary Gates)
+        chosen_box = None
+        if prev_box is None:
+            # First frame initialization anchor configuration
+            chosen_box, wait_time = get_user_selection(
+                img, detector, temp_dir, img_path.stem, device,
+                input_callback=input_callback
+            )
+            total_user_time += wait_time
+        elif valid_boxes:
+            best_iou = -1.0
+            best_match = None
+
+            for candidate in valid_boxes:
+                iou = calculate_iou(prev_box, candidate)
+                drift = calculate_centroid_drift(prev_box, candidate)
+
+                if iou > iou_threshold and drift < drift_limit:
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_match = candidate
+
+            if best_match is not None:
+                chosen_box = best_match
+            else:
+                print(
+                    f"\n[!] Tracking signature broke on {img_path.name} (Strict limits violated)."
+                )
                 chosen_box, wait_time = get_user_selection(
                     img, detector, temp_dir, img_path.stem, device,
                     input_callback=input_callback
                 )
                 total_user_time += wait_time
-            elif valid_boxes:
-                best_iou = -1.0
-                best_match = None
+        else:
+            chosen_box, wait_time = get_user_selection(
+                img, detector, temp_dir, img_path.stem, device,
+                input_callback=input_callback
+            )
+            total_user_time += wait_time
 
-                for candidate in valid_boxes:
-                    iou = calculate_iou(prev_box, candidate)
-                    drift = calculate_centroid_drift(prev_box, candidate)
+        # If skipped or failed, write zeroed blank structural mask frame matching target shape
+        if chosen_box is None:
+            # executor.submit(
+            #     cv2.imwrite,
+            #     str(target_path),
+            #     np.zeros((h_img, w_img, 4), dtype=np.uint8),
+            # )
+            cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
+            prev_box = None
+            continue
 
-                    if iou > iou_threshold and drift < drift_limit:
-                        if iou > best_iou:
-                            best_iou = iou
-                            best_match = candidate
+        prev_box = chosen_box
 
-                if best_match is not None:
-                    chosen_box = best_match
-                else:
-                    print(
-                        f"\n[!] Tracking signature broke on {img_path.name} (Strict limits violated)."
-                    )
-                    chosen_box, wait_time = get_user_selection(
-                        img, detector, temp_dir, img_path.stem, device,
-                        input_callback=input_callback
-                    )
-                    total_user_time += wait_time
-            else:
-                chosen_box, wait_time = get_user_selection(
-                    img, detector, temp_dir, img_path.stem, device,
-                    input_callback=input_callback
-                )
-                total_user_time += wait_time
+        # 3. Static Segment Anything Model Extraction
+        box_w, box_h = chosen_box[2] - chosen_box[0], chosen_box[3] - chosen_box[1]
+        pad_x, pad_y = box_w * 0.08, box_h * 0.08
+        padded_box = [
+            max(0, chosen_box[0] - pad_x),
+            max(0, chosen_box[1] - pad_y),
+            min(w_img, chosen_box[2] + pad_x),
+            min(h_img, chosen_box[3] + pad_y),
+        ]
 
-            # If skipped or failed, write zeroed blank structural mask frame matching target shape
-            if chosen_box is None:
-                executor.submit(
-                    cv2.imwrite,
-                    str(target_path),
-                    np.zeros((h_img, w_img, 4), dtype=np.uint8),
-                )
-                prev_box = None
-                continue
+        sam_results = segmenter.predict(
+            source=img, bboxes=[padded_box], device=device, verbose=False
+        )[0]
 
-            prev_box = chosen_box
+        if sam_results.masks is not None:
+            mask_np = sam_results.masks.data[0].cpu().numpy()
+            mask_resized = cv2.resize(
+                (mask_np > 0).astype(np.uint8) * 255,
+                (w_img, h_img),
+                interpolation=cv2.INTER_NEAREST,
+            )
 
-            # 3. Static Segment Anything Model Extraction
-            box_w, box_h = chosen_box[2] - chosen_box[0], chosen_box[3] - chosen_box[1]
-            pad_x, pad_y = box_w * 0.08, box_h * 0.08
-            padded_box = [
-                max(0, chosen_box[0] - pad_x),
-                max(0, chosen_box[1] - pad_y),
-                min(w_img, chosen_box[2] + pad_x),
-                min(h_img, chosen_box[3] + pad_y),
-            ]
+            bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+            bgra[:, :, :3] = cv2.bitwise_and(
+                bgra[:, :, :3], bgra[:, :, :3], mask=mask_resized
+            )
+            bgra[mask_resized == 0, :3] = 255
+            bgra[:, :, 3] = mask_resized
 
-            sam_results = segmenter.predict(
-                source=img, bboxes=[padded_box], device=device, verbose=False
-            )[0]
+            # executor.submit(cv2.imwrite, str(target_path), bgra)
+            cv2.imwrite(str(target_path), bgra)
+        else:
+            # executor.submit(
+            #     cv2.imwrite,
+            #     str(target_path),
+            #     np.zeros((h_img, w_img, 4), dtype=np.uint8),
+            # )
+            cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
+            prev_box = None  # Tear down tracking anchor path if extraction completely drops
 
-            if sam_results.masks is not None:
-                mask_np = sam_results.masks.data[0].cpu().numpy()
-                mask_resized = cv2.resize(
-                    (mask_np > 0).astype(np.uint8) * 255,
-                    (w_img, h_img),
-                    interpolation=cv2.INTER_NEAREST,
-                )
-
-                bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
-                bgra[:, :, :3] = cv2.bitwise_and(
-                    bgra[:, :, :3], bgra[:, :, :3], mask=mask_resized
-                )
-                bgra[mask_resized == 0, :3] = 255
-                bgra[:, :, 3] = mask_resized
-
-                executor.submit(cv2.imwrite, str(target_path), bgra)
-            else:
-                executor.submit(
-                    cv2.imwrite,
-                    str(target_path),
-                    np.zeros((h_img, w_img, 4), dtype=np.uint8),
-                )
-                prev_box = None  # Tear down tracking anchor path if extraction completely drops
-
-            sys.stdout.write(f"\r[*] Processed {i + 1}/{total_frames} frames")
-            sys.stdout.flush()
+        sys.stdout.write(f"\r[*] Processed {i + 1}/{total_frames} frames")
+        sys.stdout.flush()
 
     total_time = time.perf_counter() - start_perf
     processing_time = total_time - total_user_time
@@ -350,6 +362,7 @@ def run_remove_background(
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=str, required=True)
     parser.add_argument("--force", action="store_true")
