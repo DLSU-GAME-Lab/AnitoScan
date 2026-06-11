@@ -14,6 +14,11 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import KDTree
 from sklearn.neighbors import NearestNeighbors
 
+core_path = str(Path(__file__).resolve().parent.parent / "core")
+sys.path.insert(0, core_path)
+
+from ipc import send_log, send_progress
+
 # DIRECTORY RESOLUTION
 MODULE_PATH = Path(__file__).resolve()  # /src/pipeline/modules/spatial.py
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
@@ -381,7 +386,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--force", action="store_true", help="Overwrite existing spatial data"
     )
+    parser.add_argument("--ipc", action="store_true")
 
     args = parser.parse_args()
     # run_spatial_reconstruction(args.manifest, force=args.force)
+    if(args.ipc):
+        send_log("Skipping MASt3R phase...")
+        send_progress(1.0, "Phase 3: Spatial complete", phase=3)
     print("Skipping MASt3R phase")
+

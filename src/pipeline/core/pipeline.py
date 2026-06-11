@@ -50,6 +50,7 @@ def make_ipc_input_callback():
         return None
     return callback
 
+
 def _run_phase(phase_num: int, phase_name: str, cmd: list, ipc_mode: bool):
     result = subprocess.run(cmd)
     if result.returncode != 0:
@@ -137,6 +138,7 @@ def run_phase3(parent_module_path, manifest_path, args, ipc_mode=False):
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
     if _get(args, "force"):
         cmd.append("--force")
+    if ipc_mode: cmd.append("--ipc")
     _run_phase(3, "Spatial Initialization", cmd, ipc_mode)
 
 
@@ -145,6 +147,7 @@ def run_phase4(parent_module_path, manifest_path, args, ipc_mode=False):
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
     if _get(args, "force"):
         cmd.append("--force")
+    if ipc_mode: cmd.append("--ipc")
     _run_phase(4, "Geometry Generation", cmd, ipc_mode)
 
 

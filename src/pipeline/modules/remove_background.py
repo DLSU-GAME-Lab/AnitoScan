@@ -180,6 +180,45 @@ def run_remove_background(
         print(f"[!] Input directory not found: {input_dir}")
         sys.exit(1)
 
+    # if force and output_dir.exists():
+    #     print(f"[!] Force flag detected. Wiping: {output_dir}")
+    #     shutil.rmtree(output_dir)
+
+    # output_dir.mkdir(parents=True, exist_ok=True)
+    # temp_dir.mkdir(parents=True, exist_ok=True)
+
+    source_images = sorted(
+        [f for f in input_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
+    )
+    total_frames = len(source_images)
+
+
+    # --- SKIP LOGIC ---
+    if output_dir.exists() and not force:
+        existing_masks = [f for f in output_dir.iterdir() if f.suffix.lower() == ".png"]
+        # Allow resuming: only skip entirely if we process all frames
+        if len(existing_masks) == total_frames and total_frames > 0:
+            print(
+                f"[*] Found {len(existing_masks)} existing masked frames in {output_dir}."
+            )
+            print("[*] Skipping background removal phase... (Use --force to override)")
+
+            if ipc_mode:
+                send_log(f"Found {len(existing_masks)} existing masked frames in {output_dir}.")
+                send_log(f"Skipping background removal phase...")
+
+            # Ensure the manifest is correctly updated even when skipping
+            manifest["status"]["phase"] = 2
+            if "masking" not in manifest["status"]["completed"]:
+                manifest["status"]["completed"].append("masking")
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f, indent=4)
+
+            print("\nPROGRESS: 100")
+
+            return
+    # -----------------------
+
     if force and output_dir.exists():
         print(f"[!] Force flag detected. Wiping: {output_dir}")
         shutil.rmtree(output_dir)
@@ -187,10 +226,6 @@ def run_remove_background(
     output_dir.mkdir(parents=True, exist_ok=True)
     temp_dir.mkdir(parents=True, exist_ok=True)
 
-    source_images = sorted(
-        [f for f in input_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
-    )
-    total_frames = len(source_images)
     target_min_frames = manifest["settings"].get("minimum_frames", 45)
 
     print("[*] Starting Background Removal Phase.")
