@@ -1,2 +1,60 @@
-# GAMELab-RepoTemplate-C
-Git repo template for C-based and C++ projects
+# AnitoScan
+**An Automated 3D Reconstruction Pipeline**
+
+AnitoScan is a hybrid 3D reconstruction system designed for the DLSU GAME Lab.
+
+## Prerequisites
+
+Instead of manually managing Python versions, this project uses `uv` for reproducible toolchain management.
+
+1. Install uv:
+   - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+2. C++ Build Tools:
+   - CMake
+
+## Getting Started
+
+### 1. Initialize the environment
+
+`uv` will automatically detect the `.python-version` file, download the correct Python interpreter, and sync all dependencies into a local virtual environment. This handles Python library packages as well as the 2D Gaussian Splatting (2DGS) backend engine requirements.
+
+```DOS
+uv sync
+
+```
+
+### 2. Build C++ Extensions (CUROPE)
+
+Navigate to the `mast3r` vendor directory to compile the hardware-accelerated extensions.
+
+**If on Windows (x64 Visual Studio Command Prompt):**
+
+```DOS
+cd "vendor\mast3r\dust3r\croco\models\curope"
+
+set CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4
+set DISTUTILS_USE_SDK=1
+$env:PLATFORM = "x64"
+
+uv run python setup.py build_ext --inplace
+cd ../../../../../..
+
+```
+
+**Update: pycolmap is now used in favor of MASt3R**
+
+## Running the tool
+
+1. Place video input or image folders inside `data/input/`.
+2. Execute the pipeline:
+
+```powershell
+uv run src\pipeline\core\pipeline.py --name <run_name> --input <file_or_dir> --minimum_frames <target_count>
+
+```
+
+## 🛠 Maintenance & Development
+*   **Adding Dependencies**: `uv add <package_name>`
+*   **Updating Environment**: If the `uv.lock` or `pyproject.toml` changes (e.g., after a `git pull`), simply run `uv sync` to align your local environment.
+*   **Python Version**: The project is pinned to **Python 3.12**. To change this, use `uv python pin <version>`.

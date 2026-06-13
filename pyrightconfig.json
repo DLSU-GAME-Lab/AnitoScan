@@ -1,0 +1,22 @@
+{
+    "venvPath": ".",
+    "venv": ".venv",
+    "include": ["src/pipeline"],
+    "executionEnvironments": [
+        {
+            "root": "src/pipeline",
+            "extraPaths": [
+                ".",
+                "vendor/mast3r",
+                "vendor/mast3r/dust3r",
+                "vendor/NeuS2",
+                "vendor/2d-gaussian-splatting",
+            ],
+        },
+    ],
+    "typeCheckingMode": "basic",
+    "reportUnknownMemberType": "none",
+    "reportUnknownVariableType": "none",
+    "reportUnknownArgumentType": "none",
+    "reportUnusedCallResult": "none",
+}

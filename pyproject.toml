@@ -1,0 +1,53 @@
+[project]
+name = "anitoscan"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11.8"
+dependencies = [
+    "commentjson~=0.9.0",
+    "einops>=0.8.2",
+    "gradio>=6.14.0",
+    "huggingface-hub[torch]>=1.13.0",
+    "imageio>=2.16.0",
+    "lpips>=0.1.4",
+    "matplotlib<3.9",
+    "mediapy>=1.1.2",
+    "numpy>=2.1.0",
+    "numpy-quaternion>=2024.0.13",
+    "open3d>=0.18.0",
+    "opencv-python==4.10.0.84",
+    "plyfile>=1.1.3",
+    "poselib>=2.0.5",
+    "pybind11~=2.7.1",
+    "pycolmap>=4.0.4",
+    "pyglet>=1.5.31,<2",
+    "roma>=1.5.6",
+    "scikit-image>=0.21.0",
+    "scikit-learn>=1.8.0",
+    "scipy>=1.17.1",
+    "tensorboard>=2.20.0",
+    "torch==2.6.0+cu124",
+    "torchvision==0.21.0+cu124",
+    "tqdm>=4.67.3",
+    "trimesh>=4.12.2",
+    "ultralytics>=8.4.46,<9.0.0",
+    "diff-surfel-rasterization",
+    "simple-knn",
+    "pymeshlab>=2025.7.post1",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
+diff-surfel-rasterization = { path = "vendor/2d-gaussian-splatting/submodules/diff-surfel-rasterization" }
+simple-knn = { path = "vendor/2d-gaussian-splatting/submodules/simple-knn" }
+
+[tool.uv.extra-build-dependencies]
+diff_surfel_rasterization = ["torch"]
+simple_knn = ["torch"]
