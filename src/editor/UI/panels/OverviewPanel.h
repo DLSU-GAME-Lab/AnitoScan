@@ -25,9 +25,6 @@ public:
 	~OverviewPanel();
 
 	void Draw() override;
-	//void PushLog(const String& line);
-	//void SetProgress(float value, const String& label);
-	//void SetDone();
 	void SetPhaseProgress(Phase phase, float value, const String& label);
 	void SetPhaseComplete(Phase phase);
 	void SetDone();
@@ -42,19 +39,12 @@ private:
 	void DrawOverallProgress();
 	void DrawPhaseBreakdown();
 	float CalculateOverallProgress();
-	//void DrawProgress();
-	//void DrawLog();
 
 private:
 	IPCClient& ipc;
-	//std::vector<String> logLines;
-//	char inputPath[512] = "";
 	bool isScanning = false;
 	bool scrollToBottom;
-//	float progress;
-//	String progressLabel;
-//	const int totalPhase = 4;
-	PhaseStatus phases[4];
+	PhaseStatus phases[5];
 	Phase currentPhase = Phase::NONE;
 
 	ImGui::FileBrowser fileDialog;

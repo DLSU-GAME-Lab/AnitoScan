@@ -3,6 +3,7 @@
 OverviewPanel::OverviewPanel(String name, IPCClient& ipc) : UIPanel(UIType::OVERVIEW, name), ipc(ipc) {
 	this->scrollToBottom = true;	
 
+	std::memset(this->inputText, 0, sizeof(this->inputText));
 	//file browser
 	this->fileDialog.SetTypeFilters({ ".mp4", ".MOV" });
 	this->fileDialog.SetPwd(std::filesystem::current_path() / "data" / "input");
@@ -18,7 +19,7 @@ void OverviewPanel::SetPhaseProgress(Phase phase, float value, const String& lab
 	this->phases[i].active = true;
 	this->currentPhase = phase;
 
-	std::cout << "Output: " << this->phases[i].progress << std::endl;
+	//std::cout << "Output: " << this->phases[i].progress << std::endl;
 	//std::cout << value << std::endl;
 }
 
@@ -129,6 +130,8 @@ void OverviewPanel::DrawActions() {
 		cmd["action"] = "run_pipeline";
 		cmd["name"] = this->folderName;
 		cmd["input"] = this->fileName;
+		cmd["minimum_frames"] = 300;
+		cmd["quality"] = "fast";
 		cmd["ipc"] = true;
 
 		//	cmd["fps"] = 10;
@@ -165,7 +168,8 @@ void OverviewPanel::DrawActions() {
 		HighlightImGuiText("No Input yet...", UIColor::RED);
 	}
 	else {
-		HighlightImGuiText(this->fileName.string().c_str(), UIColor::GREEN);
+		String fileNameStr = this->fileName.string();
+		HighlightImGuiText(fileNameStr.c_str(), UIColor::GREEN);
 		ImGui::SameLine();
 		RightAlignElement("Change##1");
 		if (ImGui::Button("Change##1")) {
@@ -180,12 +184,13 @@ void OverviewPanel::DrawActions() {
 		HighlightImGuiText("No Input yet...", UIColor::RED);
 	}
 	else {
-		HighlightImGuiText(this->folderName.string().c_str(), UIColor::GREEN);
+		String folderStr = this->folderName.string();
+		HighlightImGuiText(folderStr.c_str(), UIColor::GREEN);
 		ImGui::SameLine();
 		RightAlignElement("Change##2");
 		if (ImGui::Button("Change##2")) {
+			std::memset(this->inputText, 0, sizeof(this->inputText));
 			inputState = InputState::NamingFolder;
-			
 		}
 	}
 }
@@ -205,7 +210,8 @@ void OverviewPanel::DrawPhaseBreakdown() {
 		"Phase 1: Capture",
 		"Phase 2: Masking",
 		"Phase 3: Spatial",
-		"Phase 4: Geometry"
+		"Phase 4: Geometry",
+		"Phase 5: Export"
 	};
 
 	for (int i = 0; i < (int)Phase::COUNT; i++) {
@@ -222,7 +228,8 @@ void OverviewPanel::DrawPhaseBreakdown() {
 			barColor = UIColor::YELLOW;
 		}
 		else {
-			ImGui::TextDisabled("[    ] %s", phaseNames[i]);
+			if (!p.label.empty())
+				ImGui::TextDisabled("[    ] %s", phaseNames[i]);
 			//barColor = UIColor::
 		}
 

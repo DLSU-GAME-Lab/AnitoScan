@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import time
+import re
 from pathlib import Path
 
 import cv2
@@ -13,6 +14,12 @@ import numpy as np
 import open3d as o3d
 import pycolmap
 from scipy.spatial.transform import Rotation as R
+
+
+core_path = str(Path(__file__).resolve().parent.parent / "core")
+sys.path.insert(0, core_path)
+
+from ipc import send_log, send_progress, send_error
 
 # =====================================================================
 # DIRECTORY RESOLUTION
@@ -255,6 +262,7 @@ def run_surface_reconstruction(
     densify_until_iter,
     opacity_reset_interval,
     force=False,
+    ipc_mode=False
 ):
     # 1. Load Manifest
     with open(manifest_path, "r") as f:
@@ -287,8 +295,13 @@ def run_surface_reconstruction(
 
         # 3. Prepare Images (White Background Composite)
         print("[*] Prepping images for Geometric Solver...")
+        if ipc_mode: send_progress(0.0, "Phase 4: Preparing images...", phase=4)
+        
         start_time_pycolmap = time.perf_counter()
-        for original_png_path in Path(manifest["paths"]["masked_frames"]).glob("*.png"):
+        masked_frames = list(Path(manifest["paths"]["masked_frames"]).glob("*.png"))
+        total_frames = len(masked_frames)
+
+        for i, original_png_path in enumerate(masked_frames):
             target_image_path = image_dir / original_png_path.name
             img_rgba = cv2.imread(str(original_png_path), cv2.IMREAD_UNCHANGED)
 
@@ -302,15 +315,24 @@ def run_surface_reconstruction(
                 composited_bgr = (bgr * alpha_3c) + (white_bg * (1.0 - alpha_3c))
                 cv2.imwrite(str(target_image_path), composited_bgr.astype(np.uint8))
 
+            if ipc_mode and total_frames > 0 and i % 10 == 0:
+                send_progress(
+                    (i / total_frames) * 0.15,
+                    f"Preparing image {i + 1} of {total_frames}",
+                    phase=4
+                )
+        
         # 4. RUN BUNDLE ADJUSTMENT
+        if ipc_mode: send_progress(0.15, "Phase 4: Running Bundle Adjustment...", phase=4)
         run_bundle_adjustment(image_dir, sparse_dir)
 
         total_time_pycolmap = time.perf_counter() - start_time_pycolmap
-        print(
-            f"[*] Spatial Initialization via pycolmap Complete. Saved to: {input_data_path}"
-        )
+        print(f"[*] Spatial Initialization via pycolmap Complete. Saved to: {input_data_path}")
         print(f"[*] Total Time: {total_time_pycolmap:.2f}s")
-    # ------------------------------------
+
+        if ipc_mode:
+            send_log(f"Spatial Initialization via pycolmap Complete. Saved to: {input_data_path}")
+            send_log(f"Total Time: {total_time_pycolmap:.2f}s")
 
     # 5. Training
     gs_model_dir = output_dir / "vanilla_2dgs"
@@ -352,46 +374,97 @@ def run_surface_reconstruction(
         "--skip_test",
         "--skip_train",  # Only interested in the mesh
         "--iteration",
-        str(train_iterations),
     ]
 
     print(f"[*] Starting 2DGS Training ({train_iterations} iterations)...")
+    if ipc_mode: 
+        send_progress(0.30, "Phase 4: Training 2DG...", phase=4)
+        send_log("Starting 2DGS Training ({train_iterations} iterations)...")
+    total_time = 0
     start_time = time.perf_counter()
 
     train_checkpoint_exists = (
         gs_model_dir / "point_cloud" / f"iteration_{train_iterations}"
-    ).exists()
+    ).exists()  # change depending on number of iterations
 
     if train_checkpoint_exists and not force:
         print("[*] Found existing training output. Skipping training...")
+        if ipc_mode: send_log("Found existing training output. Skipping training...")
     else:
-        try:
-            subprocess.run(
-                train_cmd, cwd=str(GS_PATH), env=os.environ.copy(), check=True
-            )
-        except subprocess.CalledProcessError:
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        process = subprocess.Popen(
+            train_cmd, cwd=str(GS_PATH), env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1
+        )
+        assert process.stdout is not None
+
+        TRAIN_START = 0.30
+        TRAIN_END = 0.85    
+        TRAIN_RANGE = TRAIN_END - TRAIN_START
+
+        for line in process.stdout:
+            line = line.rstrip()
+            print(f"\r{line}", end="", flush=True)
+            #print(line)
+            if ipc_mode:
+                match = re.search(r'(\d+)\s*/\s*(\d+)', line)
+                if match:
+                    current = int(match.group(1))
+                    total = int(match.group(2))
+
+                    progress = TRAIN_START + (current / total) * TRAIN_RANGE
+                    send_log("")
+                    send_progress(
+                        progress,
+                        f"Training {current}/{total} iterations",
+                        phase=4
+                    )
+                else:   
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("("):
+                        send_log(f"[train] {stripped}")
+
+        process.wait()
+        if process.returncode != 0:
             print("[!] Training failed.")
+            if ipc_mode:
+                send_error("Phase 4: Training failed")
             sys.exit(1)
 
     print("[*] Starting Mesh Extraction (TSDF Fusion)...")
-
-    # Target directory where the mesh generation script places its output
+    if ipc_mode:
+        send_progress(0.85, "Phase 4: Extracting mesh...", phase=4)
+        send_log("Phase 4: Extracting mesh...")
     mesh_output_dir = gs_model_dir / "train" / f"ours_{train_iterations}"
 
     if mesh_output_dir.exists() and not force:
         print("[*] Found existing mesh output. Skipping meshing...")
+        if ipc_mode: send_log("Found existing mesh output. Skipping meshing...")
     else:
-        try:
-            subprocess.run(
-                render_cmd, cwd=str(GS_PATH), env=os.environ.copy(), check=True
-            )
-        except subprocess.CalledProcessError:
-            print("[!] Meshing failed.")
-            sys.exit(1)
+        process = subprocess.Popen(
+            render_cmd, cwd=str(GS_PATH), env=os.environ.copy(),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            line = line.rstrip()
+            print(f"\r{line}", end="", flush=True)
+            if ipc_mode and line.strip():
+                send_log(f"[render] {line}")
+        process.wait()
+        if process.returncode != 0:
+            print("[!] Meshing failed")
+            if ipc_mode: 
+                send_error("Phase 4: Meshing failed")
+                send_log("Phase 4: Meshing failed")
+            sys.exit()
 
     # 7. Final Stage: Expose PLY to the workspace root for Phase 5
     target_fused_ply = output_dir / "fused_mesh.ply"
-
+    
     if mesh_output_dir.exists():
         # Strictly search for the post-processed mesh
         possible_meshes = list(mesh_output_dir.rglob("*_post.ply"))
@@ -402,12 +475,13 @@ def run_surface_reconstruction(
 
             shutil.copy2(str(best_mesh), str(target_fused_ply))
             print(f"[*] Base geometry staged for Phase 5 at: {target_fused_ply}")
+            if ipc_mode: send_log(f"Base geometry staged for Phase 5: {target_fused_ply}")
         else:
-            print(
-                f"[!] Warning: No *_post.ply files found in {mesh_output_dir}. Export failed."
-            )
+            print(f"[!] Warning: No *_post.ply files found in {mesh_output_dir}.")
+            if ipc_mode: send_log(f"[!] Warning: No *_post.ply found in {mesh_output_dir}")
     else:
         print(f"[!] Warning: Mesh directory {mesh_output_dir} not found.")
+        if ipc_mode: send_log(f"[!] Warning: Mesh directory not found: {mesh_output_dir}")
 
     manifest["status"]["phase"] = 4
     if "geometry" not in manifest["status"]["completed"]:
@@ -420,6 +494,11 @@ def run_surface_reconstruction(
     print("PROGRESS: 100")
     print(f"[*] 2DGS Reconstruction Complete. Saved to: {output_dir}")
     print(f"[*] Total Time: {total_time:.2f}s")
+
+    if ipc_mode:
+        send_progress(1.0, "Phase 4: Geometry complete", phase=4)
+        send_log(f"2DGS Reconstruction complete. Output: {output_dir}")
+
 
 
 if __name__ == "__main__":
@@ -434,6 +513,8 @@ if __name__ == "__main__":
     parser.add_argument("--train_iterations", type=int, default=15000)
     parser.add_argument("--densify_until_iter", type=int, default=7500)
     parser.add_argument("--opacity_reset_interval", type=int, default=3000)
+    
+    parser.add_argument("--ipc", action="store_true")
 
     args = parser.parse_args()
 
@@ -443,4 +524,5 @@ if __name__ == "__main__":
         densify_until_iter=args.densify_until_iter,
         opacity_reset_interval=args.opacity_reset_interval,
         force=args.force,
+        ipc_mode=args.ipc
     )

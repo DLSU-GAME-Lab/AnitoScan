@@ -32,22 +32,23 @@ enum class Phase {
 	MASKING = 1,
 	SPATIAL = 2,
 	GEOMETRY = 3,
-	COUNT = 4
+	EXPORT = 4,
+	COUNT = 5
 };
 
 
 typedef std::string String;
 typedef std::vector<UIPanel*> UIList;
 typedef std::unordered_map<String, UIPanel*> UIMap;
-typedef std::unordered_map<UIColor, ImVec4> UIColorMap;
-
-inline const UIColorMap Color = {
-	{ UIColor::NONE,   ImVec4(0.0f, 0.0f, 0.0f, 0.0f) },
-	{ UIColor::YELLOW, ImVec4(1.0f, 1.0f, 0.0f, 1.0f) },
-	{ UIColor::RED,    ImVec4(1.0f, 0.0f, 0.0f, 1.0f) },
-	{ UIColor::BLUE,   ImVec4(0.0f, 0.0f, 1.0f, 1.0f) },
-	{ UIColor::GREEN,  ImVec4(0.0f, 1.0f, 0.0f, 1.0f) }
-};
+//typedef std::unordered_map<UIColor, ImVec4> UIColorMap;
+//
+//inline const UIColorMap Color = {
+//	{ UIColor::NONE,   ImVec4(0.0f, 0.0f, 0.0f, 0.0f) },
+//	{ UIColor::YELLOW, ImVec4(1.0f, 1.0f, 0.0f, 1.0f) },
+//	{ UIColor::RED,    ImVec4(1.0f, 0.0f, 0.0f, 1.0f) },
+//	{ UIColor::BLUE,   ImVec4(0.0f, 0.0f, 1.0f, 1.0f) },
+//	{ UIColor::GREEN,  ImVec4(0.0f, 1.0f, 0.0f, 1.0f) }
+//};
 
 struct BackendMessage {
 	String type;

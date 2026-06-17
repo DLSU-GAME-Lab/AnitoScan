@@ -254,9 +254,11 @@ def run_remove_background(
             current_frame_number = i + 1
             progress_fraction = current_frame_number / total_frames
 
+            send_log("") 
             send_progress(
                 value=progress_fraction,
-                label=f"Processing frame {current_frame_number} of {total_frames}"
+                label=f"Processing frame {current_frame_number} of {total_frames}",
+                phase=2
             )
 
         img = cv2.imread(str(img_path))
