@@ -10,11 +10,9 @@ public:
 
 	void Draw() override;
 	void PushLog(const String& line);
-	//void SetProgress(float value, String& label);
-	//void SetDone();
 
 private:
-	void DrawLog();
+	void DrawLogLines();
 
 private:
 	IPCClient& ipc;

@@ -32,7 +32,7 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClien
 	return true;
 }
 
-// Create and register the UI Panels
+// create and register the UI Panels
 void UIManager::CreateUIPanels(IPCClient& ipc) {
 	DockSpace* dockSpace = new DockSpace("DockSpace");
 	this->uiList.push_back(dockSpace);

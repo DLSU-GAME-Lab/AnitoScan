@@ -6,12 +6,6 @@ UIPanel::UIPanel(String name) {
 	this->activeSelf = true;
 }
 
-//UIPanel::UIPanel(UIType type) {
-//	this->type = type;
-//	this->name = "";
-//	this->activeSelf = true;
-//}
-//
 UIPanel::UIPanel(UIType type, String name) {
 	this->type = type;
 	this->name = name;

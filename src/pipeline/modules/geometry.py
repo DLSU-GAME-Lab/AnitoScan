@@ -374,6 +374,7 @@ def run_surface_reconstruction(
         "--skip_test",
         "--skip_train",  # Only interested in the mesh
         "--iteration",
+        str(train_iterations),
     ]
 
     print(f"[*] Starting 2DGS Training ({train_iterations} iterations)...")

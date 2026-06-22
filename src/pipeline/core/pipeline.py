@@ -237,22 +237,27 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
 
     parent_module_path = Path(__file__).parent.parent / "modules"
 
-    if ipc_mode: send_progress(0.0, "[*] Starting Phase 1: Capture")
+    #if ipc_mode: send_progress(0.0, "[*] Starting Phase 1: Capture")
+    send_log("Starting Phase 1: Capture")
     run_phase1(parent_module_path, manifest_path, args, ipc_mode)
 
-    if ipc_mode: send_progress(0.20, "[*] Starting Phase 2: Masking")
+    #if ipc_mode: send_progress(0.20, "[*] Starting Phase 2: Masking")
+    send_log("Starting Phase 2: Masking")
     run_phase2(parent_module_path, manifest_path, args, ipc_mode)
 
-    if ipc_mode: send_progress(0.40, "[*] Starting Phase 3: Spatial")
+    #if ipc_mode: send_progress(0.40, "[*] Starting Phase 3: Spatial")
+    send_log("Starting Phase 3: Spatial")
     run_phase3(parent_module_path, manifest_path, args, ipc_mode)
 
-    if ipc_mode: send_progress(0.60, "[*] Starting Phase 4: Geometry")
+    #if ipc_mode: send_progress(0.60, "[*] Starting Phase 4: Geometry")
+    send_log("Starting Phase 4: Geometry")
     run_phase4(parent_module_path, manifest_path, args, ipc_mode)
 
     #if ipc_mode: send_progress(0.80, "[*] Starting Phase 5: Export", phase=5)
-    #run_phase5(parent_module_path, manifest_path, args, ipc_mode)
+    send_log("Starting Phase 5: Export")
+    run_phase5(parent_module_path, manifest_path, args, ipc_mode)
 
-    if ipc_mode: send_progress(1.0, "[*] Complete")
+    #if ipc_mode: send_progress(1.0, "[*] Complete")
     send_done({"run_name": name, "output": str(base_dir)})
 
 

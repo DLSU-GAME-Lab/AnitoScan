@@ -36,12 +36,6 @@ void App::Initialize() {
 		return;
 	}
 
-	////IPC - dummy
-	//if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/dummy.py")) {
-	//	std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
-	//	return;
-	//}
-
 	//IPC - pipeline.py
 	if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc")) {
 		std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
@@ -71,15 +65,6 @@ bool App::InitializeSDL() {
 	float dpiScale = 1.25f;  
 	int logicalW = static_cast<int>(this->screenWidth / dpiScale);   
 	int logicalH = static_cast<int>(this->screenHeight / dpiScale);  
-
-	// create the window
-	//window = SDL_CreateWindow(
-	//	"AnitoScan",
-	//	SDL_WINDOWPOS_CENTERED,
-	//	SDL_WINDOWPOS_CENTERED,
-	//	this->screenWidth, this->screenHeight,
-	//	SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
-	//);
 
 	window = SDL_CreateWindow(
 		"AnitoScan",

@@ -17,15 +17,6 @@ enum class UIType {
 	UNKNOWN
 };
 
-enum class UIColor {
-	NONE,
-	YELLOW,
-	RED,
-	BLUE,
-	GREEN
-};
-
-
 enum class Phase {
 	NONE = -1,
 	CAPTURE = 0,

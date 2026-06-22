@@ -130,7 +130,7 @@ void OverviewPanel::DrawActions() {
 		cmd["action"] = "run_pipeline";
 		cmd["name"] = this->folderName;
 		cmd["input"] = this->fileName;
-		cmd["minimum_frames"] = 300;
+		cmd["minimum_frames"] = 250; 
 		cmd["quality"] = "fast";
 		cmd["ipc"] = true;
 

@@ -13,10 +13,13 @@ FileViewer::~FileViewer() {}
 void FileViewer::Draw() {
 	//update timer
 	ImGuiIO& io = ImGui::GetIO();
-	this->refreshTimer += io.DeltaTime;
-	if (this->refreshTimer >= this->refreshInterval) {
-		this->fileDialog.Refresh();
-		this->refreshTimer = 0.0f;
+
+	if (isRefreshing) {
+		this->refreshTimer += io.DeltaTime;
+		if (this->refreshTimer >= this->refreshInterval) {
+			this->fileDialog.Refresh();
+			this->refreshTimer = 0.0f;
+		}
 	}
 
 	ImGui::Begin(this->name.c_str());
@@ -29,6 +32,7 @@ void FileViewer::Draw() {
 	ImGui::End();
 }
 
+// displays the directory and preview panel in a vertical layout
 void FileViewer::DrawDefaultBrowser() {
 	ImVec2 windowSize = ImGui::GetContentRegionAvail();
 	float browserH = windowSize.y * 0.6f;
@@ -52,6 +56,7 @@ void FileViewer::DrawDefaultBrowser() {
 	ImGui::EndChild();
 }
 
+// displays the directory and preview panel side-by-side
 void FileViewer::DrawBrowserTable() {
 	if (ImGui::BeginTable("layout", 2,
 		ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
@@ -150,4 +155,8 @@ void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 
 	this->fileDialog.SetPwd(fullPath);
 
+}
+
+void FileViewer::ToggleRefresh(bool isRefreshing) {
+	this->isRefreshing = isRefreshing;
 }

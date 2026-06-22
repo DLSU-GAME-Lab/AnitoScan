@@ -122,6 +122,7 @@ void MaskingPopup::DisplayPreview() {
     ImGui::SetCursorPos(centerOff);
     ImGui::Image((ImTextureID)(intptr_t)this->previewTexture, displaySize);
 
+    //zoom function
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
         float wheel = ImGui::GetIO().MouseWheel;
         if (wheel != 0.0f) {

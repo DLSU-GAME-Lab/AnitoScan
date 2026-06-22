@@ -11,6 +11,7 @@ public:
 
 	void Draw() override;
 	void SetOutputFolderToView(std::filesystem::path root);
+	void ToggleRefresh(bool isRefreshing);
 
 private:
 	void DrawDefaultBrowser();
@@ -25,8 +26,9 @@ private:
 	GLuint previewTexture;
 	String lastPreviewPath;
 	int previewW = 0, previewH = 0;
+	bool isRefreshing = true;
 	float refreshTimer = 0.0f;
-	const float refreshInterval = 2.0f;
+	const float refreshInterval = 0.3f;
 	std::filesystem::path output;
 	Phase phase;
 	bool hasRootFolder = false;
