@@ -20,7 +20,6 @@ void OverviewPanel::SetPhaseProgress(Phase phase, float value, const String& lab
 	this->currentPhase = phase;
 
 	//std::cout << "Output: " << this->phases[i].progress << std::endl;
-	//std::cout << value << std::endl;
 }
 
 void OverviewPanel::SetPhaseComplete(Phase phase) {
