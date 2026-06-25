@@ -119,6 +119,7 @@ UIPanel* UIManager::GetPanelByType(UIType type) {
 	return ret;
 }
 
+// Clean up
 void UIManager::Shutdown() {
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
@@ -131,7 +132,7 @@ void UIManager::Shutdown() {
 	uiMap.clear();
 }
 
-// sets the output folder to all file viewer instances (capture, masking, etc)
+// Sets the output folder to all file viewer instances (capture, masking, etc)
 void UIManager::SetOutputToFileViewers(std::filesystem::path output) {
 	for (UIPanel* panel : this->uiList) {
 		if (panel->GetType() == UIType::FILE_VIEWER) {

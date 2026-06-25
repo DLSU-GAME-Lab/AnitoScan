@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+#include <glad/gl.h>
 #include <SDL.h>
 #include <SDL_opengl.h>
 #include <backends/imgui_impl_sdl2.h>
@@ -9,6 +10,7 @@
 
 #include "IPCClient.h"
 #include "Types.h"
+#include "render/Scene.h"
 
 class IPCClient;
 
@@ -35,5 +37,7 @@ private:
 	int screenHeight;
 
 	IPCClient ipc;
+	std::unique_ptr<Scene> scene;
+	bool mouseDragging = false;
 
 };

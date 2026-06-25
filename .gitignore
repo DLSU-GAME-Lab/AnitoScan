@@ -63,6 +63,8 @@ Thumbs.db
 /vendor/imgui/
 /vendor/SDL2/
 /vendor/nlohmann_json/
+/vendor/tinyobjloader/
+/vendor/glm/
 
 /vendor/NeuS2/configs/nerf/**.json
 /vendor/2d-gaussian-splatting/

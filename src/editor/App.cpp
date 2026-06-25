@@ -1,10 +1,6 @@
 #include "App.h"
 #include "UI/UIManager.h"
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-
-
 App::App(int width, int height) {
 	this->isRunning = false;
 	this->window = nullptr;
@@ -41,7 +37,9 @@ void App::Initialize() {
 		std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
 		return;
 	}
-
+	
+	this->scene = std::make_unique<Scene>();
+	scene->LoadModel("data/output/GROOT_CHECK/groot.obj");
 
 	
 	this->isRunning = true;
@@ -93,6 +91,11 @@ bool App::InitializeOpenGL() {
 
 	// enable v-sync
 	SDL_GL_SetSwapInterval(1);
+
+	if (!gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress)) {
+		std::cerr << "[ERROR]: Failed to initialize glad." << std::endl;
+		return false;
+	}
 
 	return true;
 }
@@ -175,24 +178,58 @@ void App::PollBackend() {
 	}
 }
 
+
 void App::Run()
 {
 	// main loop
 	SDL_Event event;
 	while (this->isRunning) {
-
 		// handle window/input events
 		while (SDL_PollEvent(&event)) {
 			ImGui_ImplSDL2_ProcessEvent(&event);
-
 			if (event.type == SDL_QUIT) {
 				this->isRunning = false;
 			}
+
+			ImGuiIO& io = ImGui::GetIO();
+			if (!io.WantCaptureMouse) {
+				if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
+					mouseDragging = true;
+
+					SDL_SetRelativeMouseMode(SDL_TRUE);
+				}
+				else if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT) {
+					mouseDragging = false;
+					SDL_SetRelativeMouseMode(SDL_FALSE);
+				}
+				else if (event.type == SDL_MOUSEMOTION && mouseDragging) {
+					scene->GetCamera().ProcessMouseDrag(
+						static_cast<float>(event.motion.xrel),
+						static_cast<float>(event.motion.yrel)
+					);
+				}
+				else if (event.type == SDL_MOUSEWHEEL) {
+					scene->GetCamera().ProcessScroll(static_cast<float>(event.wheel.y));
+				}
+			}
+
+			//safety net
+			if (event.type == SDL_WINDOWEVENT &&
+				(event.window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+					event.window.event == SDL_WINDOWEVENT_LEAVE)) {
+				mouseDragging = false;
+				SDL_SetRelativeMouseMode(SDL_FALSE);
+			}
 		}
 
-		this->PollBackend();
+		PollBackend();
 
-		// ImGui draw/render
+		int drawableW, drawableH;
+		SDL_GL_GetDrawableSize(this->window, &drawableW, &drawableH);
+		scene->Update(0.0f);
+		scene->Render(drawableW, drawableH);
+
+		 //ImGui draw/render
 		UIManager::GetInstance()->BeginNewFrame();
 		UIManager::GetInstance()->DrawAllUIs();
 		UIManager::GetInstance()->EndFrame();
