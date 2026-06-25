@@ -11,6 +11,7 @@
 #include "IPCClient.h"
 #include "Types.h"
 #include "render/Scene.h"
+#include "UI/panels//ViewportPanel.h"
 
 class IPCClient;
 
@@ -39,5 +40,7 @@ private:
 	IPCClient ipc;
 	std::unique_ptr<Scene> scene;
 	bool mouseDragging = false;
+
+	ViewportPanel* viewportPanel;
 
 };

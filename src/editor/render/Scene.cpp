@@ -108,6 +108,10 @@ void Scene::Render(int width, int height) {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+GLuint Scene::GetColorTexture() {
+	return this->colorTexture;
+}
+
 Camera& Scene::GetCamera() {
 	return this->camera;
 }

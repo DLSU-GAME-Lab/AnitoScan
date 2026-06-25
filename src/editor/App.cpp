@@ -26,8 +26,9 @@ void App::Initialize() {
 		return;
 	}
 
+	this->scene = std::make_unique<Scene>();
 	//IMGUI
-	if (!UIManager::GetInstance()->Initialize(this->window, this->glContext, this->ipc)) {
+	if (!UIManager::GetInstance()->Initialize(this->window, this->glContext, this->ipc, *this->scene)) {
 		std::cerr << "[ERROR]: ImGui initialization failed: " << std::endl;
 		return;
 	}
@@ -38,8 +39,8 @@ void App::Initialize() {
 		return;
 	}
 	
-	this->scene = std::make_unique<Scene>();
-	scene->LoadModel("data/output/GROOT_CHECK/groot.obj");
+	this->viewportPanel = (ViewportPanel*)UIManager::GetInstance()->GetPanelByType(UIType::VIEWPORT);
+	//scene->LoadModel("data/output/GROOT_CHECK/groot.obj");	
 
 	
 	this->isRunning = true;
@@ -191,45 +192,48 @@ void App::Run()
 				this->isRunning = false;
 			}
 
-			ImGuiIO& io = ImGui::GetIO();
-			if (!io.WantCaptureMouse) {
-				if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
-					mouseDragging = true;
-
-					SDL_SetRelativeMouseMode(SDL_TRUE);
-				}
-				else if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT) {
-					mouseDragging = false;
-					SDL_SetRelativeMouseMode(SDL_FALSE);
-				}
-				else if (event.type == SDL_MOUSEMOTION && mouseDragging) {
-					scene->GetCamera().ProcessMouseDrag(
-						static_cast<float>(event.motion.xrel),
-						static_cast<float>(event.motion.yrel)
-					);
-				}
-				else if (event.type == SDL_MOUSEWHEEL) {
-					scene->GetCamera().ProcessScroll(static_cast<float>(event.wheel.y));
-				}
+			bool canStartOrbit = this->viewportPanel && this->viewportPanel->IsHovered();
+			// hold mouse
+			if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT && canStartOrbit) {
+				mouseDragging = true;
+				SDL_SetRelativeMouseMode(SDL_TRUE);
+			}
+			// release mouse hold
+			else if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT) {
+				mouseDragging = false;
+				SDL_SetRelativeMouseMode(SDL_FALSE);
+			}
+			// adjust camera when dragging mouse
+			else if (event.type == SDL_MOUSEMOTION && mouseDragging) {
+				scene->GetCamera().ProcessMouseDrag(
+					static_cast<float>(event.motion.xrel),
+					static_cast<float>(event.motion.yrel)
+				);
+			}
+			// mouse wheel function
+			else if (event.type == SDL_MOUSEWHEEL && (canStartOrbit || mouseDragging)) {
+				scene->GetCamera().ProcessScroll(static_cast<float>(event.wheel.y));
 			}
 
 			//safety net
 			if (event.type == SDL_WINDOWEVENT &&
 				(event.window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
-					event.window.event == SDL_WINDOWEVENT_LEAVE)) {
+				 event.window.event == SDL_WINDOWEVENT_LEAVE)) {
 				mouseDragging = false;
 				SDL_SetRelativeMouseMode(SDL_FALSE);
 			}
 		}
 
+		// Receiver and action decoder from python backend
 		PollBackend();
 
+		// model render
 		int drawableW, drawableH;
 		SDL_GL_GetDrawableSize(this->window, &drawableW, &drawableH);
 		scene->Update(0.0f);
 		scene->Render(drawableW, drawableH);
 
-		 //ImGui draw/render
+		//ImGui draw/render
 		UIManager::GetInstance()->BeginNewFrame();
 		UIManager::GetInstance()->DrawAllUIs();
 		UIManager::GetInstance()->EndFrame();

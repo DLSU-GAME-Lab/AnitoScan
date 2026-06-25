@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SDL_opengl.h>
+#include <glad/gl.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <iostream>

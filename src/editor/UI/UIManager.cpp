@@ -2,7 +2,7 @@
 
 UIManager* UIManager::sharedInstance = nullptr;
 
-bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClient& ipc) {
+bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClient& ipc, Scene& scene) {
 	sharedInstance = new UIManager();
 
 	// create ImGui context and IO
@@ -27,13 +27,13 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClien
 		return false;
 	}
 
-	sharedInstance->CreateUIPanels(ipc);
+	sharedInstance->CreateUIPanels(ipc, scene);
 
 	return true;
 }
 
 // create and register the UI Panels
-void UIManager::CreateUIPanels(IPCClient& ipc) {
+void UIManager::CreateUIPanels(IPCClient& ipc, Scene& scene) {
 	DockSpace* dockSpace = new DockSpace("DockSpace");
 	this->uiList.push_back(dockSpace);
 	this->uiMap[dockSpace->GetName()] = dockSpace;
@@ -61,6 +61,10 @@ void UIManager::CreateUIPanels(IPCClient& ipc) {
 	MaskingPopup* maskingPopup = new MaskingPopup("Masking Popup", ipc);
 	this->uiList.push_back(maskingPopup);
 	this->uiMap[maskingPopup->GetName()] = maskingPopup;
+
+	ViewportPanel* viewport = new ViewportPanel("Model Viewer", scene);
+	this->uiList.push_back(viewport);
+	this->uiMap[viewport->GetName()] = viewport;
 	
 }
 

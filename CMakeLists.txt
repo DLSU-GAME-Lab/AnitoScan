@@ -77,6 +77,7 @@ add_executable(${PROJECT_NAME}
     src/editor/main.cpp
     src/editor/App.cpp
     src/editor/IPCClient.cpp 
+
     src/editor/UI/UIManager.cpp 
     src/editor/UI/UIPanel.cpp
     src/editor/UI/panels/DockSpace.cpp
@@ -84,6 +85,8 @@ add_executable(${PROJECT_NAME}
     src/editor/UI/panels/FileViewer.cpp
     src/editor/UI/panels/LogPanel.cpp
     src/editor/UI/panels/MaskingPopup.cpp
+    src/editor/UI/panels/ViewportPanel.cpp
+
     src/editor/render/Shader.cpp
     src/editor/render/Mesh.cpp
     src/editor/render/Model.cpp
@@ -136,3 +139,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    IMGUI_IMPL_OPENGL_LOADER_GLAD2
+)

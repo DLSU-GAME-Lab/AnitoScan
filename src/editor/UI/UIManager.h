@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <glad/gl.h>
 #include <SDL.h>
 #include <SDL_opengl.h>
 #include <backends/imgui_impl_sdl2.h>
@@ -13,13 +14,15 @@
 #include "panels/FileViewer.h"
 #include "panels/LogPanel.h"
 #include "panels/MaskingPopup.h"
+#include "panels/ViewportPanel.h"
 
 #include "../IPCClient.h"
+#include "../render/Scene.h"
 
 class UIManager {
 public:
 	static UIManager* GetInstance();
-	static bool Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClient& ipc);
+	static bool Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClient& ipc, Scene& scene);
 
 	void BeginNewFrame();
 	void DrawAllUIs();
@@ -30,7 +33,7 @@ public:
 	void SetOutputToFileViewers(std::filesystem::path output);
 
 private:
-	void CreateUIPanels(IPCClient& ipc);
+	void CreateUIPanels(IPCClient& ipc, Scene& scene);
 
 private:
 	UIManager();

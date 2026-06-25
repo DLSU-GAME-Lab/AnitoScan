@@ -14,6 +14,7 @@ enum class UIType {
 	FILE_VIEWER,
 	LOG_PANEL,
 	MASKING_MODAL,
+	VIEWPORT,
 	UNKNOWN
 };
 
