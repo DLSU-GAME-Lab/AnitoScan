@@ -4,6 +4,11 @@ import sys
 import time
 from pathlib import Path
 
+core_path = str(Path(__file__).resolve().parent.parent / "core")
+sys.path.insert(0, core_path)
+
+from ipc import send_log, send_progress, send_error, status_error, status_update
+
 try:
     import pymeshlab
 except ImportError:
@@ -11,7 +16,7 @@ except ImportError:
     sys.exit(1)
 
 
-def run_export_and_baking(manifest_path, force=False):
+def run_export_and_baking(manifest_path, force=False, ipc_mode=False):
     # 1. Load Manifest Context
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
@@ -25,9 +30,7 @@ def run_export_and_baking(manifest_path, force=False):
     input_ply = geometry_dir / "fused_mesh.ply"
 
     if not input_ply.exists():
-        print(
-            f"[!] Error: Could not find raw geometry at {input_ply}. Did Phase 4 complete?"
-        )
+        status_error(f"Could not find raw geometry at {input_ply}. Did Phase 4 complete?")
         sys.exit(1)
 
     export_dir.mkdir(parents=True, exist_ok=True)
@@ -40,20 +43,31 @@ def run_export_and_baking(manifest_path, force=False):
 
     # --- SKIP LOGIC ---
     if final_obj_path.exists() and not force:
-        print(f"[*] Found existing exported asset: {final_obj_path}")
-        print("[*] Skipping Phase 5 (Export & Baking)... (Use --force to override)")
-        print("PROGRESS: 100")
+        status_update(f"Found existing exported asset: {final_obj_path}",
+                      progress=1.0,
+                      progress_msg="Phase 5: Export complete (cached)", 
+                      phase=5)
+        status_update("Skipping Phase 5 (Export & Baking)...")
+        print("PROGRESS: 100") 
+        
         return
     # ------------------
 
     start_time = time.perf_counter()
-    print("\n[*] Starting Automated Retopology and Texture Baking Phase...")
+    print("\n")
+    status_update("Starting Automated Retopology and Texture Baking Phase...",
+                  progress=0.0,
+                  progress_msg="Phase 5: Loading mesh...",
+                  phase=5)
 
     try:
         ms = pymeshlab.MeshSet()  # type: ignore
         ms.load_new_mesh(str(input_ply))
 
-        print("[*] Mesh loaded. Cleaning raw topology...")
+        status_update("Mesh loaded. Cleaning raw topology...",
+                      progress=0.05,
+                      progress_msg="Phase 5: Cleaning topology...",
+                      phase=5)
         ms.meshing_remove_unreferenced_vertices()
         ms.meshing_remove_duplicate_faces()
         ms.meshing_repair_non_manifold_edges()
@@ -65,7 +79,12 @@ def run_export_and_baking(manifest_path, force=False):
             quality_preset, 300000
         )
 
-        print(f"[*] Decimating and smoothing mesh to {target_faces:,} faces...")
+        # DECIMATION
+        status_update(f"Decimating and smoothing mesh to {target_faces:,} faces...",
+                      progress=0.15,
+                      progress_msg=f"Phase 5: Decimating to {target_faces:,} faces...",
+                      phase=5)
+
         ms.meshing_decimation_quadric_edge_collapse(
             targetfacenum=target_faces,
             preservenormal=True,
@@ -73,29 +92,46 @@ def run_export_and_baking(manifest_path, force=False):
             preservetopology=True,
         )
 
-        print("[*] Generating smooth surface normals...")
+        # COMPUTE NORMALS
+        status_update("Generating smooth surface normals...",
+                      progress=0.45,
+                      progress_msg="Phase 5: Computing normals...",
+                      phase=5)
         ms.compute_normal_per_vertex()
 
-        print("[*] Unwrapping UV Coordinates...")
+        # UNWRAP UVs
+        status_update("Unwrapping UV Coordinates...",
+                      progress=0.50,
+                      progress_msg="Phase 5: Unwrapping UVs...",
+                      phase=5)
         try:
             # Primary Strategy: Voronoi Atlas
-            print("    -> Attempting Voronoi Atlas parameterization...")
+            status_update("Attempting Voronoi Atlas parameterization...")
             ms.compute_texcoord_parametrization_voronoi_atlas()
         except Exception as uv_error:
             # Fallback Strategy: Trivial Per-Wedge
-            print(f"    [!] Voronoi failed. Falling back to Trivial Unwrapping...")
+            status_update("Voronoi failed. Falling back to Trivial Unwrapping...")
             ms.compute_texcoord_parametrization_triangle_trivial_per_wedge(textdim=4096)
 
-        print(f"[*] Baking vertex colors to {final_texture_name} (4K Resolution)...")
+        # BAKING
+        status_update(f"Baking vertex colors to {final_texture_name} (4K Resolution)...",
+                      progress=0.80,
+                      progress_msg="Phase 5: Baking 4K texture...",
+                      phase=5)
         ms.transfer_attributes_to_texture_per_vertex(
             textname=final_texture_name, textw=4096, texth=4096
         )
 
-        print(f"[*] Exporting final optimized OBJ package to {export_dir}...")
+        # EXPORT
+        status_update(f"Exporting final optimized OBJ package to {export_dir}...",
+                      progress=0.95,
+                      progress_msg="Phase 5: Exporting OBJ...",
+                      phase=5)
         ms.save_current_mesh(str(final_obj_path))
 
     except Exception as e:
-        print(f"\n[!] A fatal error occurred during mesh processing: {e}")
+        print("\n")
+        status_error(f"A fatal error occurred during mesh processing: {e}")
         sys.exit(1)
 
     total_time = time.perf_counter() - start_time
@@ -108,8 +144,9 @@ def run_export_and_baking(manifest_path, force=False):
         json.dump(manifest, f, indent=4)
 
     print("\nPROGRESS: 100")
-    print(f"[*] Export Phase Complete. Final textured asset ready: {final_obj_path}")
-    print(f"[*] Phase 5 Total Time: {total_time:.2f}s")
+    status_update(f"Export Phase Complete. Final textured asset ready: {final_obj_path}")
+    status_update(f"Phase 5 Total Time: {total_time:.2f}s")
+    if ipc_mode: send_progress(1.0, "Phase 5: Export complete", phase=5)
 
 
 if __name__ == "__main__":
@@ -120,7 +157,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--force", action="store_true", help="Overwrite existing export data"
     )
+    parser.add_argument("--ipc", action="store_true")
 
     args = parser.parse_args()
 
-    run_export_and_baking(manifest_path=args.manifest, force=args.force)
+    run_export_and_baking(manifest_path=args.manifest, force=args.force, ipc_mode=args.ipc)

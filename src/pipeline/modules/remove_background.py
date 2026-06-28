@@ -12,6 +12,11 @@ import torch
 from ultralytics.models.sam import SAM
 from ultralytics.models.yolo import YOLOE
 
+core_path = str(Path(__file__).resolve().parent.parent / "core")
+sys.path.insert(0, core_path)
+
+from ipc import send, send_log, send_progress, status_update, status_error
+
 # DIRECTORY RESOLUTION
 MODULE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
@@ -37,17 +42,18 @@ def calculate_centroid_drift(boxA, boxB):
     return np.linalg.norm(centerA - centerB)
 
 
-def get_user_selection(img, detector, temp_dir, frame_name, device):
+def get_user_selection(img, detector, temp_dir, frame_name, device, input_callback=None):
     """Runs YOLOE, draws uniquely colored candidates with collision avoidance, pops up a GUI, and gets terminal input.
 
     Returns a tuple: (chosen_box_coordinates or None, elapsed_wait_time_seconds)
     """
     start_wait = time.perf_counter()
-    print(f"\n[*] Running YOLOE-26 on {frame_name}...")
+    print("\n")
+    status_update(f"Running YOLOE-26 on {frame_name}...")
     results = detector.predict(source=img, conf=0.35, device=device, verbose=False)[0]
 
     if results.boxes is None or len(results.boxes) == 0:
-        print("[!] YOLOE found no valid subjects in this frame.")
+        status_error("YOLOE found no valid subjects in this frame.")
         return None, time.perf_counter() - start_wait
 
     h_img, w_img = img.shape[:2]
@@ -125,56 +131,66 @@ def get_user_selection(img, detector, temp_dir, frame_name, device):
 
     write_success = cv2.imwrite(str(preview_path), preview_img)
     if not write_success:
-        print(
-            f"\n[!] CRITICAL ERROR: OpenCV failed to write the preview image to: {preview_path}"
-        )
+        print("\n")
+        status_error(f"OpenCV failed to write the preview image to: {preview_path}")
         sys.exit(1)
 
-    # --- GUI Pop-Up Logic ---
-    window_title = f"Selection Required - {frame_name}"
-    cv2.namedWindow(window_title, cv2.WINDOW_NORMAL)
-
-    # Force the window to open at a generous starting size
-    cv2.resizeWindow(window_title, 1280, 720)
-
-    cv2.imshow(window_title, preview_img)
-
-    print("\n==================================================")
-    print(" ACTION REQUIRED: Click on the image window to focus it.")
-    print(
-        f" Press the number key (0-{len(valid_boxes) - 1}) corresponding to the correct subject."
-    )
-    print(" Press 's' to skip this frame.")
-    print("==================================================")
-
-    # Replace terminal input with an active OpenCV event loop
-    while True:
-        # waitKey(50) keeps the GUI perfectly responsive by checking for input every 50ms
-        key = cv2.waitKey(50) & 0xFF
-
-        # Failsafe: if the user clicks the 'X' button to manually close the window, treat it as a skip
-        if cv2.getWindowProperty(window_title, cv2.WND_PROP_VISIBLE) < 1:
+    if input_callback is not None:
+        # IPC mode - send to editor and wait for response
+        choice = input_callback(str(preview_path), len(valid_boxes), frame_name)
+        if choice is None:
             return None, time.perf_counter() - start_wait
+        if 0 <= choice < len(valid_boxes):
+            return valid_boxes[choice], time.perf_counter() - start_wait
+        return None, time.perf_counter() - start_wait
+    else:
+        # --- GUI Pop-Up Logic ---
+        window_title = f"Selection Required - {frame_name}"
+        cv2.namedWindow(window_title, cv2.WINDOW_NORMAL)
 
-        # 's' key to skip
-        if key == ord("s"):
-            cv2.destroyWindow(window_title)
-            cv2.waitKey(1)  # Flush GUI events
-            return None, time.perf_counter() - start_wait
+        # Force the window to open at a generous starting size
+        cv2.resizeWindow(window_title, 1280, 720)
 
-        # Any number key from 0 to 9
-        elif ord("0") <= key <= ord("9"):
-            idx = int(chr(key))
-            if 0 <= idx < len(valid_boxes):
+        cv2.imshow(window_title, preview_img)
+
+        print("\n==================================================")
+        print(" ACTION REQUIRED: Click on the image window to focus it.")
+        print(
+            f" Press the number key (0-{len(valid_boxes) - 1}) corresponding to the correct subject."
+        )
+        print(" Press 's' to skip this frame.")
+        print("==================================================")
+
+        # Replace terminal input with an active OpenCV event loop
+        while True:
+            # waitKey(50) keeps the GUI perfectly responsive by checking for input every 50ms
+            key = cv2.waitKey(50) & 0xFF
+
+            # Failsafe: if the user clicks the 'X' button to manually close the window, treat it as a skip
+            if cv2.getWindowProperty(window_title, cv2.WND_PROP_VISIBLE) < 1:
+                return None, time.perf_counter() - start_wait
+
+            # 's' key to skip
+            if key == ord("s"):
                 cv2.destroyWindow(window_title)
                 cv2.waitKey(1)  # Flush GUI events
-                return valid_boxes[idx], time.perf_counter() - start_wait
-            else:
-                print(f"[!] Invalid ID {idx}. Try again.")
+                return None, time.perf_counter() - start_wait
 
+            # Any number key from 0 to 9
+            elif ord("0") <= key <= ord("9"):
+                idx = int(chr(key))
+                if 0 <= idx < len(valid_boxes):
+                    cv2.destroyWindow(window_title)
+                    cv2.waitKey(1)  # Flush GUI events
+                    return valid_boxes[idx], time.perf_counter() - start_wait
+                else:
+                    print(f"[!] Invalid ID {idx}. Try again.")
+
+   
 
 def run_remove_background(
-    manifest_path, yoloe_model_size, iou_threshold, drift_limit, force=False
+    manifest_path, yoloe_model_size, iou_threshold, drift_limit,
+    force=False, ipc_mode=False, input_callback=None
 ):
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
@@ -184,7 +200,7 @@ def run_remove_background(
     temp_dir = output_dir / "temp"
 
     if not input_dir.exists():
-        print(f"[!] Input directory not found: {input_dir}")
+        status_error(f"Input directory not found: {input_dir}")
         sys.exit(1)
 
     source_images = sorted(
@@ -192,15 +208,15 @@ def run_remove_background(
     )
     total_frames = len(source_images)
 
+
     # --- SKIP LOGIC ---
     if output_dir.exists() and not force:
         existing_masks = [f for f in output_dir.iterdir() if f.suffix.lower() == ".png"]
         # Allow resuming: only skip entirely if we process all frames
         if len(existing_masks) == total_frames and total_frames > 0:
-            print(
-                f"[*] Found {len(existing_masks)} existing masked frames in {output_dir}."
-            )
-            print("[*] Skipping background removal phase... (Use --force to override)")
+            # use --force to override
+            status_update(f"Found {len(existing_masks)} existing masked frames in {output_dir}.")
+            status_update("Skipping background removal phase...")
 
             # Ensure the manifest is correctly updated even when skipping
             manifest["status"]["phase"] = 2
@@ -210,11 +226,12 @@ def run_remove_background(
                 json.dump(manifest, f, indent=4)
 
             print("\nPROGRESS: 100")
+
             return
     # -----------------------
 
     if force and output_dir.exists():
-        print(f"[!] Force flag detected. Wiping: {output_dir}")
+        status_update(f"Force flag detected. Wiping: {output_dir}")
         shutil.rmtree(output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -222,10 +239,8 @@ def run_remove_background(
 
     target_min_frames = manifest["settings"].get("minimum_frames", 45)
 
-    print("[*] Starting Background Removal Phase.")
-    print(
-        f"[*] Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})"
-    )
+    status_update("Starting Background Removal Phase.")
+    status_update(f"[*] Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})")
 
     device = (
         "cuda"
@@ -242,124 +257,124 @@ def run_remove_background(
     total_user_time = 0.0  # Tracks elapsed human intervention overhead
     prev_box = None
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        for i, img_path in enumerate(source_images):
-            target_path = output_dir / f"{img_path.stem}.png"
+    #with ThreadPoolExecutor(max_workers=4) as executor:
+    for i, img_path in enumerate(source_images):
+        if ipc_mode:
+            current_frame_number = i + 1
+            progress_fraction = current_frame_number / total_frames
 
-            # Allow clean resuming of crashed jobs
-            if target_path.exists() and not force:
-                continue
+            send_log("") 
+            send_progress(
+                value=progress_fraction,
+                label=f"Processing frame {current_frame_number} of {total_frames}",
+                phase=2
+            )
 
-            img = cv2.imread(str(img_path))
-            if img is None:
-                continue
+        img = cv2.imread(str(img_path))
+        if img is None:
+            continue
 
-            h_img, w_img = img.shape[:2]
-            img_area = h_img * w_img
+        h_img, w_img = img.shape[:2]
+        img_area = h_img * w_img
+        target_path = output_dir / f"{img_path.stem}.png"
 
-            # 1. YOLOE Bounding Box Prediction
-            det_results = detector.predict(
-                source=img, conf=0.25, device=device, verbose=False
-            )[0]
-            valid_boxes = []
+        # 1. YOLOE Bounding Box Prediction
+        det_results = detector.predict(
+            source=img, conf=0.25, device=device, verbose=False
+        )[0]
+        valid_boxes = []
 
-            if det_results.boxes is not None:
-                for box in det_results.boxes:
-                    coords = box.xyxy[0].cpu().numpy()
-                    box_area = (coords[2] - coords[0]) * (coords[3] - coords[1])
-                    if (box_area / img_area) < 0.70:
-                        valid_boxes.append(coords.tolist())
+        if det_results.boxes is not None:
+            for box in det_results.boxes:
+                coords = box.xyxy[0].cpu().numpy()
+                box_area = (coords[2] - coords[0]) * (coords[3] - coords[1])
+                if (box_area / img_area) < 0.70:
+                    valid_boxes.append(coords.tolist())
 
-            # 2. Strict Math Validation Heuristics (IoU & Drift Boundary Gates)
-            chosen_box = None
-            if prev_box is None:
-                # First frame initialization anchor configuration
+        # 2. Strict Math Validation Heuristics (IoU & Drift Boundary Gates)
+        chosen_box = None
+        if prev_box is None:
+            # First frame initialization anchor configuration
+            chosen_box, wait_time = get_user_selection(
+                img, detector, temp_dir, img_path.stem, device,
+                input_callback=input_callback
+            )
+            total_user_time += wait_time
+        elif valid_boxes:
+            best_iou = -1.0
+            best_match = None
+
+            for candidate in valid_boxes:
+                iou = calculate_iou(prev_box, candidate)
+                drift = calculate_centroid_drift(prev_box, candidate)
+
+                if iou > iou_threshold and drift < drift_limit:
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_match = candidate
+
+            if best_match is not None:
+                chosen_box = best_match
+            else:
+                print("\n")
+                status_error(f"Tracking signature broke on {img_path.name} (Strict limits violated).")
                 chosen_box, wait_time = get_user_selection(
-                    img, detector, temp_dir, img_path.stem, device
+                    img, detector, temp_dir, img_path.stem, device,
+                    input_callback=input_callback
                 )
                 total_user_time += wait_time
-            elif valid_boxes:
-                best_iou = -1.0
-                best_match = None
+        else:
+            chosen_box, wait_time = get_user_selection(
+                img, detector, temp_dir, img_path.stem, device,
+                input_callback=input_callback
+            )
+            total_user_time += wait_time
 
-                for candidate in valid_boxes:
-                    iou = calculate_iou(prev_box, candidate)
-                    drift = calculate_centroid_drift(prev_box, candidate)
+        # If skipped or failed, write zeroed blank structural mask frame matching target shape
+        if chosen_box is None:
+            cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
+            prev_box = None
+            continue
 
-                    if iou > iou_threshold and drift < drift_limit:
-                        if iou > best_iou:
-                            best_iou = iou
-                            best_match = candidate
+        prev_box = chosen_box
 
-                if best_match is not None:
-                    chosen_box = best_match
-                else:
-                    print(
-                        f"\n[!] Tracking signature broke on {img_path.name} (Strict limits violated)."
-                    )
-                    chosen_box, wait_time = get_user_selection(
-                        img, detector, temp_dir, img_path.stem, device
-                    )
-                    total_user_time += wait_time
-            else:
-                chosen_box, wait_time = get_user_selection(
-                    img, detector, temp_dir, img_path.stem, device
-                )
-                total_user_time += wait_time
+        # 3. Static Segment Anything Model Extraction
+        box_w, box_h = chosen_box[2] - chosen_box[0], chosen_box[3] - chosen_box[1]
+        pad_x, pad_y = box_w * 0.08, box_h * 0.08
+        padded_box = [
+            max(0, chosen_box[0] - pad_x),
+            max(0, chosen_box[1] - pad_y),
+            min(w_img, chosen_box[2] + pad_x),
+            min(h_img, chosen_box[3] + pad_y),
+        ]
 
-            # If skipped or failed, write zeroed blank structural mask frame matching target shape
-            if chosen_box is None:
-                executor.submit(
-                    cv2.imwrite,
-                    str(target_path),
-                    np.zeros((h_img, w_img, 4), dtype=np.uint8),
-                )
-                prev_box = None
-                continue
+        sam_results = segmenter.predict(
+            source=img, bboxes=[padded_box], device=device, verbose=False
+        )[0]
 
-            prev_box = chosen_box
+        if sam_results.masks is not None:
+            mask_np = sam_results.masks.data[0].cpu().numpy()
+            mask_resized = cv2.resize(
+                (mask_np > 0).astype(np.uint8) * 255,
+                (w_img, h_img),
+                interpolation=cv2.INTER_NEAREST,
+            )
 
-            # 3. Static Segment Anything Model Extraction
-            box_w, box_h = chosen_box[2] - chosen_box[0], chosen_box[3] - chosen_box[1]
-            pad_x, pad_y = box_w * 0.08, box_h * 0.08
-            padded_box = [
-                max(0, chosen_box[0] - pad_x),
-                max(0, chosen_box[1] - pad_y),
-                min(w_img, chosen_box[2] + pad_x),
-                min(h_img, chosen_box[3] + pad_y),
-            ]
+            bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+            bgra[:, :, :3] = cv2.bitwise_and(
+                bgra[:, :, :3], bgra[:, :, :3], mask=mask_resized
+            )
+            bgra[mask_resized == 0, :3] = 255
+            bgra[:, :, 3] = mask_resized
 
-            sam_results = segmenter.predict(
-                source=img, bboxes=[padded_box], device=device, verbose=False
-            )[0]
+            # executor.submit(cv2.imwrite, str(target_path), bgra)
+            cv2.imwrite(str(target_path), bgra)
+        else:
+            cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
+            prev_box = None  # Tear down tracking anchor path if extraction completely drops
 
-            if sam_results.masks is not None and len(sam_results.masks.data) > 0:
-                mask_np = sam_results.masks.data[0].cpu().numpy()
-                mask_resized = cv2.resize(
-                    (mask_np > 0).astype(np.uint8) * 255,
-                    (w_img, h_img),
-                    interpolation=cv2.INTER_NEAREST,
-                )
-
-                bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
-                bgra[:, :, :3] = cv2.bitwise_and(
-                    bgra[:, :, :3], bgra[:, :, :3], mask=mask_resized
-                )
-                bgra[mask_resized == 0, :3] = 255
-                bgra[:, :, 3] = mask_resized
-
-                executor.submit(cv2.imwrite, str(target_path), bgra)
-            else:
-                # If SAM returns an empty array, gracefully treat it as a dropped frame
-                executor.submit(
-                    cv2.imwrite,
-                    str(target_path),
-                    np.zeros((h_img, w_img, 4), dtype=np.uint8),
-                )
-                prev_box = None  # Tear down tracking anchor path if extraction completely drops
-
-            sys.stdout.write(f"\r[*] Processed {i + 1}/{total_frames} frames")
-            sys.stdout.flush()
+        sys.stdout.write(f"\r[*] Processed {i + 1}/{total_frames} frames")
+        sys.stdout.flush()
 
     total_time = time.perf_counter() - start_perf
     processing_time = total_time - total_user_time
@@ -375,13 +390,15 @@ def run_remove_background(
     if temp_dir.exists():
         shutil.rmtree(temp_dir)
 
-    print(f"\n[*] Complete. Filtered segmentation masks saved to: {output_dir}")
-    print(f"[*] Total Gross Session Duration: {total_time:.2f}s")
-    print(f"[*] Total User Interaction Hold Time: {total_user_time:.2f}s")
-    print(f"[*] Pure AI Processing Execution Speed: {processing_time:.2f}s")
+    print("\n")
+    status_update(f"Complete. Filtered segmentation masks saved to: {output_dir}")
+    status_update(f"[*] Total Gross Session Duration: {total_time:.2f}s")
+    status_update(f"Total User Interaction Hold Time: {total_user_time:.2f}s")
+    status_update(f"Pure AI Processing Execution Speed: {processing_time:.2f}s")
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=str, required=True)
     parser.add_argument("--force", action="store_true")
@@ -391,6 +408,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--iou_threshold", type=float, required=True)
     parser.add_argument("--drift_limit", type=int, required=True)
+    parser.add_argument("--ipc", action="store_true")
 
     args = parser.parse_args()
 
@@ -400,4 +418,5 @@ if __name__ == "__main__":
         iou_threshold=args.iou_threshold,
         drift_limit=args.drift_limit,
         force=args.force,
+        ipc_mode=args.ipc
     )
