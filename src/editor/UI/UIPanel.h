@@ -10,12 +10,9 @@
 #include "../Types.h"
 #include "UIHelper.h"
 
-class UIManager;
-
 class UIPanel {
 public:
 	UIPanel(String name);
-	//UIPanel(UIType type);
 	UIPanel(UIType type, String name);
 	UIPanel(UIType type, String name, bool isActive);
 	~UIPanel();

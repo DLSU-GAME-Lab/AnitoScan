@@ -26,6 +26,7 @@ public:
 
 	glm::vec3 GetBoundsCenter();
 	float GetBoundsRadius();
+	glm::vec3 GetCenter();
 
 private:
 	std::vector<Mesh> meshes;
@@ -35,6 +36,7 @@ private:
 
 	glm::vec3 boundsMin{ 0.0f };
 	glm::vec3 boundsMax{ 0.0f };
+	glm::vec3 center{ 0.0f };
 
 	String directory;
 	void LoadOBJ(const String& path);

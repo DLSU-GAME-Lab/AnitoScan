@@ -2,6 +2,7 @@
 
 UIManager* UIManager::sharedInstance = nullptr;
 
+// Creates and initializes ImGui context
 bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClient& ipc, Scene& scene) {
 	sharedInstance = new UIManager();
 
@@ -32,7 +33,7 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClien
 	return true;
 }
 
-// create and register the UI Panels
+// Create and register the UI Panels
 void UIManager::CreateUIPanels(IPCClient& ipc, Scene& scene) {
 	DockSpace* dockSpace = new DockSpace("DockSpace");
 	this->uiList.push_back(dockSpace);
@@ -65,7 +66,10 @@ void UIManager::CreateUIPanels(IPCClient& ipc, Scene& scene) {
 	ViewportPanel* viewport = new ViewportPanel("Model Viewer", scene);
 	this->uiList.push_back(viewport);
 	this->uiMap[viewport->GetName()] = viewport;
-	
+
+	InputWindow* input = new InputWindow("Input Window");
+	this->uiList.push_back(input);
+	this->uiMap[input->GetName()] = input;
 }
 
 UIManager* UIManager::GetInstance() {
@@ -102,14 +106,7 @@ void UIManager::EndFrame() {
 
 
 UIPanel* UIManager::GetPanelByName(String name) {
-	UIPanel* ret = nullptr;
-	for (UIPanel* panel : this->uiList) {
-		if (panel->GetName() == name) {
-			ret = panel;
-			break;
-		}
-	}
-	return ret;
+	return this->uiMap[name];
 }
 
 UIPanel* UIManager::GetPanelByType(UIType type) {
@@ -121,6 +118,10 @@ UIPanel* UIManager::GetPanelByType(UIType type) {
 		}
 	}
 	return ret;
+}
+
+void UIManager::OpenUI(UIType type) {
+	GetPanelByType(type)->SetActive(true);
 }
 
 // Clean up

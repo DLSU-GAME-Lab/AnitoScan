@@ -14,6 +14,7 @@ public:
 	void ProcessMouseDrag(float dx, float dy);
 
 	void ProcessScroll(float delta);
+	void ProcessPan(float dx, float dy);
 
 	void SetTarget(glm::vec3 target);
 	void SetDistance(float distance);
@@ -31,6 +32,7 @@ private:
 
 	float orbitSensitivity = 0.3f;
 	float zoomSensitivity = 0.5f;
+	float panSensitivity = 0.003f;
 	float minDistance = 0.5f;
 	float maxDistance = 50.0f;
 };

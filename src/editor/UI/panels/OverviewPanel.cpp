@@ -1,13 +1,7 @@
 #include "OverviewPanel.h"
 
-OverviewPanel::OverviewPanel(String name, IPCClient& ipc) : UIPanel(UIType::OVERVIEW, name), ipc(ipc) {
-	this->scrollToBottom = true;	
-
-	std::memset(this->inputText, 0, sizeof(this->inputText));
-	//file browser
-	this->fileDialog.SetTypeFilters({ ".mp4", ".MOV" });
-	this->fileDialog.SetPwd(std::filesystem::current_path() / "data" / "input");
-}
+OverviewPanel::OverviewPanel(String name, IPCClient& ipc)
+	: UIPanel(UIType::OVERVIEW, name), ipc(ipc) {}
 
 OverviewPanel::~OverviewPanel() {}
 
@@ -45,99 +39,76 @@ void OverviewPanel::SetScanning(bool scanning) {
 	this->isScanning = scanning;
 }
 
-std::filesystem::path OverviewPanel::GetOutputFolder() {
-	return this->folderName;
+void OverviewPanel::SetInput(String input, String output, int minFrames, String quality) {
+	this->inputFile = input;
+	this->outputFolder = output;
+	this->minFrames = minFrames;
+	this->quality = quality;
+	inputReady = true;
 }
 
-std::filesystem::path OverviewPanel::GetInputFilename() {
-	return this->fileName;
+String OverviewPanel::GetExportQuality() {
+	return this->quality;
 }
 
 Phase OverviewPanel::GetCurrentPhase() {
 	return this->currentPhase;
 }
 
-void OverviewPanel::DrawInputSection() {                                         
-	if (inputState == InputState::Ready) return;
+void OverviewPanel::DrawInputSection() {
+	InputWindow* input = static_cast<InputWindow*>(UIManager::GetInstance()->GetPanelByType(UIType::INPUT));
 
-	ImGui::BeginChild("##Input", ImVec2(0, 0), true);
-
-	if (inputState == InputState::Browsing) {
-		ImGui::SeparatorText("Select Input Video");
-		if (ImGui::Button("Open File Browser")) {
-			this->fileDialog.Open();
+	if (!inputReady) {
+		if (ImGui::Button("Open input window")) {	
+			input->ShowWindow();
 		}
 	}
-
-	this->fileDialog.Display();
-
-	// INPUT: select video
-	if (this->fileDialog.HasSelected() && inputState == InputState::Browsing) {
-		tempPath = this->fileDialog.GetSelected();
-		inputState = InputState::Confirming;
-	//	std::cout << this->inputPath.filename().string() << std::endl;
-	}
-
-	if (inputState == InputState::Confirming) {
-		ImGui::Text("Selected: "); ImGui::SameLine();
-		String file = tempPath.filename().string();
-		HighlightImGuiText(file, UIColor::YELLOW);
-
-		//confirmation section
-		ImGui::NewLine();
-		ImGui::SeparatorText("Proceed with this input?");
-		if (ImGui::Button("Yes")) {
-			inputState = InputState::NamingFolder;
-			this->fileName = file;
+	else {
+		if (ImGui::Button("Modify Input")) {
+			input->ShowWindow();
 		}
+		ImGui::Spacing();
 
+		ImGui::Text("Selected: ");
 		ImGui::SameLine();
-		if (ImGui::Button("No")) {
-			inputState = InputState::Browsing;
-			this->fileDialog.ClearSelected();
-			tempPath = "";
-		}
-	}
+		HighlightImGuiText(this->inputFile, UIColor::GREEN);
 
-	//INPUT: name the folder where the output will be stored
-	static std::string input = "";
-	if (inputState == InputState::NamingFolder) {
-		ImGui::SeparatorText("Enter folder name: ");
-		bool confirm = ImGui::InputText("##FolderName", this->inputText, sizeof(this->inputText),
-										ImGuiInputTextFlags_EnterReturnsTrue);
-
+		ImGui::Text("Output folder: ");
 		ImGui::SameLine();
-		confirm |= ImGui::Button("Enter"); //either Enter key or button click
+		HighlightImGuiText(this->outputFolder, UIColor::GREEN);
 
-		if (confirm && this->inputText[0] != '\0') {
-			folderName = String(this->inputText);
-			inputState = InputState::Ready;
-		}
+		ImGui::Text("Minimum Frames: ");
+		ImGui::SameLine();
+		HighlightImGuiText(std::to_string(this->minFrames), UIColor::GREEN);
+
+		ImGui::Text("Quality");
+		ImGui::SameLine();
+		HighlightImGuiText(this->quality, UIColor::GREEN);
+
 	}
-	//std::cout << input.c_str() << std::endl;
-	ImGui::EndChild();
 }
+
 
 
 // upper section of the overview panel
 void OverviewPanel::DrawActions() {
-	ImGui::BeginDisabled(!this->isScanning && inputState != InputState::Ready);
+	ImGui::BeginDisabled(!this->isScanning && !inputReady);
 	if (ImGui::Button("Run Pipeline")) {
 		this->isScanning = true;
 
 		nlohmann::json cmd;
 		cmd["action"] = "run_pipeline";
-		cmd["name"] = this->folderName;
-		cmd["input"] = this->fileName;
-		cmd["minimum_frames"] = 250; 
-		cmd["quality"] = "fast";
+		cmd["name"] = this->outputFolder;
+		cmd["input"] = this->inputFile;
+		cmd["minimum_frames"] = this->minFrames; 
+		cmd["quality"] = this->quality;
 		cmd["ipc"] = true;
 
 		//	cmd["fps"] = 10;
 		this->ipc.Send(cmd.dump());
 
-		std::cout << "[DEBUG]: Output folder: " << this->folderName << std::endl;
-		std::cout << "[DEBUG]: Input file: " << this->fileName << std::endl;
+		std::cout << "[DEBUG]: Output folder: " << this->outputFolder << std::endl;
+		std::cout << "[DEBUG]: Input file: " << this->inputFile << std::endl;
 	}
 
 
@@ -153,45 +124,12 @@ void OverviewPanel::DrawActions() {
 	if (ImGui::Button("Cancel")) {
 		this->isScanning = false;
 		this->ipc.Shutdown();
-		this->ipc.Start(".venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc");
+		//this->inputReady = false;	
+		//this->ipc.Start(".venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc");
 		//this->ipc.Start(".venv\\Scripts\\python.exe", "src/pipeline/core/dummy.py");
 	}
 	ImGui::EndDisabled();
-
-
-
-	//INPUT
-	ImGui::Text("Selected: "); 
-	ImGui::SameLine();
-	if (inputState == InputState::Browsing || inputState == InputState::Confirming) {
-		HighlightImGuiText("No Input yet...", UIColor::RED);
-	}
-	else {
-		String fileNameStr = this->fileName.string();
-		HighlightImGuiText(fileNameStr.c_str(), UIColor::GREEN);
-		ImGui::SameLine();
-		RightAlignElement("Change##1");
-		if (ImGui::Button("Change##1")) {
-			inputState = InputState::Browsing;
-			this->fileDialog.ClearSelected();
-		}
-	}
-
-	ImGui::Text("Folder Name: ");
-	ImGui::SameLine();
-	if (inputState != InputState::Ready) {
-		HighlightImGuiText("No Input yet...", UIColor::RED);
-	}
-	else {
-		String folderStr = this->folderName.string();
-		HighlightImGuiText(folderStr.c_str(), UIColor::GREEN);
-		ImGui::SameLine();
-		RightAlignElement("Change##2");
-		if (ImGui::Button("Change##2")) {
-			std::memset(this->inputText, 0, sizeof(this->inputText));
-			inputState = InputState::NamingFolder;
-		}
-	}
+	ImGui::Spacing();
 }
 
 // overall progress bar
@@ -260,11 +198,9 @@ void OverviewPanel::Draw() {
 
 	DrawActions();
 	ImGui::Separator();
-
-	if(inputState != InputState::Ready) {
-		DrawInputSection();
-	}
-	else {
+	DrawInputSection();
+	
+	if(isScanning) {
 		DrawOverallProgress();
 		DrawPhaseBreakdown();
 	}

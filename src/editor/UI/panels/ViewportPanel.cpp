@@ -2,7 +2,6 @@
 
 ViewportPanel::ViewportPanel(String name, Scene& scene) 
 	: UIPanel(UIType::VIEWPORT, name), scene(scene) {
-    this->scene.LoadModel("data/output/GROOT_CHECK/groot.obj"); //PLACEHOLDER
 }
 
 ViewportPanel::~ViewportPanel() {}
@@ -31,6 +30,11 @@ void ViewportPanel::Draw() {
 
     ImGui::End();
     ImGui::PopStyleVar();
+}
+
+void ViewportPanel::LoadOutputModel(String outputName, String quality) {
+    String modelPath = "data/output/" + outputName + "/" + outputName + "_" + quality + ".obj";
+    this->scene.LoadModel(modelPath);
 }
 
 bool ViewportPanel::IsHovered() {

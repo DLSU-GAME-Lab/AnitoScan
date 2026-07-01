@@ -132,6 +132,27 @@ void Model::LoadOBJ(const String& objPath) {
 	}
 
 	std::cout << "Loaded (" << objPath << ") size: " << meshes.size() << std::endl;
+
+
+
+	//bounding box
+	glm::vec3 boundsMin(FLT_MAX), boundsMaxLocal(-FLT_MAX);
+	glm::dvec3 sum(0.0);
+	size_t vertCount = attrib.vertices.size() / 3;
+	for (size_t i = 0; i < attrib.vertices.size(); i += 3) {
+		glm::vec3 v(attrib.vertices[i], attrib.vertices[i + 1], attrib.vertices[i + 2]);
+		boundsMin = glm::min(boundsMin, v);
+		boundsMaxLocal = glm::max(boundsMaxLocal, v);
+		sum += glm::dvec3(v);
+	}
+
+	this->boundsMin = boundsMin;
+	this->boundsMax = boundsMaxLocal;
+	this->GetCenter() = vertCount > 0 ? glm::vec3(sum / static_cast<double>(vertCount)) : glm::vec3(0.0f);
+
+	//std::cout << "[Model] Bounding box min(" << boundsMin.x << ", " << boundsMin.y << ", " << boundsMin.z
+	//	<< ") max(" << boundsMaxLocal.x << ", " << boundsMaxLocal.y << ", " << boundsMaxLocal.z << ")\n";
+	//std::cout << "[Model] Centroid (" << center.x << ", " << center.y << ", " << center.z << ")\n";
 }
 
 GLuint Model::LoadTexture(const String& filename) {
@@ -207,4 +228,8 @@ glm::vec3 Model::GetBoundsCenter() {
 
 float Model::GetBoundsRadius() {
 	return glm::length(this->boundsMax - this->boundsMin) * 0.5f;
+}
+
+glm::vec3 Model::GetCenter() {
+	return this->center;
 }

@@ -4,8 +4,7 @@
 #include <iostream>
 
 // Initializes the scene with a default camera position  and creates the default shader used for rendering.
-Scene::Scene() 
-	: camera(glm::vec3(0.0f, 0.0f, 3.0f), 5.0f) {
+Scene::Scene() : camera(glm::vec3(0.0f, 0.0f, 3.0f), 5.0f) {
 	shader = std::make_unique<Shader>("shaders/default.vert", "shaders/default.frag");
 }
 
@@ -14,17 +13,22 @@ Scene::~Scene() {}
 // Loads a 3D model from file and adjustments on camera
 void Scene::LoadModel(const String& objPath) {
 	model = std::make_unique<Model>(objPath);
+	Recenter();
+}
 
-	glm::vec3 center = model->GetBoundsCenter();
+void Scene::Recenter() {
+	if (!model) return;
+
+	glm::vec3 center = model->GetCenter();
 	float radius = model->GetBoundsRadius();
 
 	float fovRadians = glm::radians(45.0f);
 	float distance = (radius / std::sin(fovRadians * 0.5f)) * 1.5f;
-
+	
 	camera.SetTarget(center);
 	camera.SetDistance(distance);
 
-	std::cout << "[Scene] Framed camera: target(" << center.x << ", " << center.y << ", " << center.z
+	std::cout << "[Scene] Recentered camera: target(" << center.x << ", " << center.y << ", " << center.z
 		<< ") distance(" << distance << ")\n";
 }
 

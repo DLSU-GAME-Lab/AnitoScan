@@ -4,31 +4,24 @@ MaskingPopup::MaskingPopup(String name, IPCClient& ipc) : UIPanel(UIType::MASKIN
 	this->lastPreviewPath = "";
 	this->previewTexture = NULL;
 	this->showPopup = activeSelf;
-	this->isWaiting = true;
 }
 
 MaskingPopup::~MaskingPopup() {}
 
-
 void MaskingPopup::Draw() {
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2(0, 0));
-
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground |
-        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
-        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
-
-    ImGui::Begin("##masking_popup_host", nullptr, flags);
     if (this->showPopup) {
         ImGui::OpenPopup(this->GetName().c_str());
         this->showPopup = false;
     }
 
+    // center the window
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(1000, 700), ImGuiCond_Always);
 
-    ImGuiWindowFlags popupflags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+    ImGuiWindowFlags popupflags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove;
+
+    // draw window
     if (ImGui::BeginPopupModal(this->GetName().c_str(), nullptr, popupflags)) {
         ImGui::Text("Frame: %s", this->frame.c_str());
         ImGui::Text("Select the correct subject:");
@@ -41,25 +34,23 @@ void MaskingPopup::Draw() {
             ImGui::TextDisabled("Loading preview...");
         }
 
-        ImGui::Separator(); 
+        ImGui::Separator();
 
         // candidates button
         DisplayCandidatesButton();
 
-        //skip button
+        // skip button
         DisplaySkipButton();
 
         ImGui::EndPopup();
     }
-
-    ImGui::End(); 
 }
 
 
 void MaskingPopup::ShowCandidates(String previewPath, String frame, int count) {
 	this->count = count;
 	this->frame = frame;
-	this->isWaiting = true;
+
     ShowPopup();
 	LoadPreview(previewPath);
 }
@@ -108,7 +99,6 @@ void MaskingPopup::DisplayPreview() {
     if (baseH > availSize.y) {
         baseH = availSize.y;
         baseW = baseH / aspect;
-        ;
     }
 
     ImVec2 displaySize(baseW * this->zoom, baseH * this->zoom);
@@ -158,7 +148,6 @@ void MaskingPopup::DisplayCandidatesButton() {
             response["type"] = "selection";
             response["choice"] = std::to_string(i);
             this->ipc.Send(response.dump());
-            this->isWaiting = false;
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
@@ -171,7 +160,6 @@ void MaskingPopup::DisplaySkipButton() {
         response["type"] = "selection";
         response["choice"] = "skip";
         this->ipc.Send(response.dump());
-        this->isWaiting = false;
         ImGui::CloseCurrentPopup();
     }
 }

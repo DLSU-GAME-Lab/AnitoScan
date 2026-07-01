@@ -20,8 +20,8 @@ glm::vec3 Camera::GetPosition() {
 glm::mat4 Camera::GetViewMatrix() {
 	glm::vec3 position = GetPosition();
 
-	glm::vec3 forward = orientation * glm::vec3(0, 0, -1);
-	glm::vec3 up = orientation * glm::vec3(0, 1, 0);
+	glm::vec3 forward = orientation * glm::vec3(0.0f, 0.0f, -1.0f);
+	glm::vec3 up = orientation * glm::vec3(0.0f, 1.0f, 0.0f);
 
 	return glm::lookAt(position, position + forward, up);
 }
@@ -38,19 +38,32 @@ void Camera::ProcessMouseDrag(float dx, float dy) {
 	float yawAngle = glm::radians(dx * orbitSensitivity);
 	float pitchAngle = glm::radians(-dy * orbitSensitivity);
 
-	glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
-	glm::vec3 right = orientation * glm::vec3(1, 0, 0);
+	glm::vec3 localRight = orientation * glm::vec3(1.0f, 0.0f, 0.0f);
+	glm::vec3 localUp = orientation * glm::vec3(0.0f, 1.0f, 0.0f);
 
-	glm::quat yawRot = glm::angleAxis(yawAngle, worldUp);
-	glm::quat pitchRot = glm::angleAxis(pitchAngle, right);
+	glm::vec3 combinedAxisAngle = localUp * yawAngle + localRight * pitchAngle;
+	float angle = glm::length(combinedAxisAngle);
 
-	orientation = glm::normalize(yawRot * pitchRot * orientation);
+	if (angle > 0.0f) {
+		glm::vec3 axis = combinedAxisAngle / angle;
+		glm::quat rotation = glm::angleAxis(angle, axis);
+		orientation = glm::normalize(rotation * orientation);
+	}
 }
 
 // Adjusts distance from the model
 void Camera::ProcessScroll(float delta) {
 	distance -= delta * zoomSensitivity;
 	distance = std::clamp(distance, minDistance, maxDistance);
+}
+
+void Camera::ProcessPan(float dx, float dy) {
+	glm::vec3 localRight = orientation * glm::vec3(1.0f, 0.0f, 0.0f);
+	glm::vec3 localUp = orientation * glm::vec3(0.0f, 1.0f, 0.0f);
+
+	float scale = distance * panSensitivity;
+
+	target += (-dx * localRight + dy * localUp) * scale;
 }
 
 void Camera::SetTarget(glm::vec3 target) {

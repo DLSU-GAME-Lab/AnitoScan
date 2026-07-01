@@ -12,6 +12,7 @@ public:
 	~Scene();
 
 	void LoadModel(const String& objPath);
+	void Recenter();
 	
 	void Update(float deltaTime);
 	void Render(int viewportWidth, int viewportHeight);
