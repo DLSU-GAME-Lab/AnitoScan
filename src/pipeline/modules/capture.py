@@ -10,7 +10,7 @@ import cv2
 core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
-from ipc import send, send_progress, send_log
+from ipc import send, send_progress, send_log, status_update, status_error
 
 MODULE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
@@ -25,7 +25,7 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
     output_dir = Path(manifest["paths"]["raw_frames"]).resolve()
 
     if not input_source.exists():
-        print(f"[!] Input not found: {input_source}")
+        status_error(f"Input not found: {input_source}")
         sys.exit(1)
 
     # --- SKIP LOGIC ---
@@ -34,12 +34,8 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
             f for f in output_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS
         ]
         if len(existing_frames) > 0:
-            print(f"[*] Found {len(existing_frames)} existing frames in {output_dir}.")
-            print("[*] Skipping capture phase... (Use --force to override)")
-
-            if ipc_mode:
-                send_log(f"Found {len(existing_frames)} existing frames in {output_dir}.")
-                send_log(f"Skipping capture phase...")
+            status_update(f"Found {len(existing_frames)} existing frames in {output_dir}.")
+            status_update("Skipping capture phase...")
 
             # Ensure the manifest is correctly updated even when skipping
             manifest["status"]["phase"] = 1
@@ -49,7 +45,7 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
                 json.dump(manifest, f, indent=4)
 
             print("\nPROGRESS: 100")
-            if ipc_mode: send_progress(1.0, "Phase 1: Capture complete", phase=1)
+            status_update("Phase 1: Capture complete", progress=1.0, phase=1)
 
             return
     # -----------------------
@@ -70,17 +66,14 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
     # IMAGE MODE LOGIC
     # ==========================================
     if is_image_mode:
-        print("[*] Image directory source detected. Copying frames to workspace...")
-
-        if ipc_mode:
-            send_log("Image directory source detected. Copying frames...")  
+        status_update("Image directory source detected. Copying frames to workspace...")
 
         source_images = sorted(
             [f for f in input_source.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
         )
 
         if len(source_images) == 0:
-            print(f"[!] Error: No valid images found in {input_source}")
+            status_error(f"Error: No valid images found in {input_source}")
             sys.exit(1)
 
         for i, img_path in enumerate(source_images):
@@ -88,11 +81,9 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
             shutil.copy2(img_path, target_path)
 
         manifest["settings"]["source_type"] = "image"
-        print(f"[*] Transferred {len(source_images)} frames to 01_capture.")
+        status_update(f"Transferred {len(source_images)} frames to capture directory.")
         if len(source_images) < target_min_frames:
-            print(
-                f"[!] WARNING: Dataset size ({len(source_images)}) is lower than requested minimum ({target_min_frames})."
-            )
+            status_error(f"[!] WARNING: Dataset size ({len(source_images)}) is lower than requested minimum ({target_min_frames}).")
         print("PROGRESS: 100")
 
     # ==========================================
@@ -101,7 +92,7 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
     elif is_video_mode:
         cap = cv2.VideoCapture(str(input_source))
         if not cap.isOpened():
-            print(f"[!] Could not open video file: {input_source}")
+            status_error(f"Could not open video file: {input_source}")
             sys.exit(1)
 
         total_frames_in = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -109,14 +100,8 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
         # Calculate optimal skip index step based on required target frame constraint
         frame_skip = max(1, total_frames_in // target_min_frames)
 
-        print(
-            f"[*] Total Video Frames: {total_frames_in} | Targeted Minimum Dataset: {target_min_frames}"
-        )
-        print(f"[*] Extracting every {frame_skip} frames directly to PNG...")
-
-        if ipc_mode:
-            send_log(f"Total Video Frames: {total_frames_in} | Target: {target_min_frames}")
-            send_log(f"Extracting every {frame_skip} frames...")
+        status_update(f"Total Video Frames: {total_frames_in} | Targeted Minimum Dataset: {target_min_frames}")
+        status_update(f"Extracting every {frame_skip} frames directly to PNG...")
 
         frame_idx = 0
         saved_count = 0
@@ -144,12 +129,7 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
 
             frame_idx += 1
 
-        print(
-            f"[*] Successfully extracted {saved_count} frames to 01_capture directory."
-        )
-
-        if ipc_mode:
-            send_log(f"Extracted {saved_count} frames.")
+        status_update(f"Successfully extracted {saved_count} frames to capture directory.")
 
         cap.release()
         manifest["settings"]["source_type"] = "video"
@@ -163,11 +143,11 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=4)
 
-    print(f"[*] Total Extraction Time: {total_time:.2f}s")
+    status_update(f"Total Extraction Time: {total_time:.2f}s",
+                    1.0,
+                    "Phase 1: Capture complete",
+                    phase=1)
 
-    if ipc_mode:
-        send_progress(1.0, "Phase 1: Capture complete", phase=1)
-        send_log(f"Total Extraction Time: {total_time:.2f}s")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

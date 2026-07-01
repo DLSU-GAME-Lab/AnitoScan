@@ -2,6 +2,17 @@
 
 #include "../Types.h"
 
+enum class UIType {
+	MENU_BAR,
+	OVERVIEW,
+	DOCKSPACE,
+	FILE_VIEWER,
+	LOG_PANEL,
+	MASKING_MODAL,
+	VIEWPORT,
+	INPUT,
+	UNKNOWN
+};
 
 enum class UIColor {
 	NONE,

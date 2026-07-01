@@ -11,7 +11,7 @@ UIPanel::UIPanel(UIType type, String name) {
 	this->name = name;
 	this->activeSelf = true;
 }
-//
+
 UIPanel::UIPanel(UIType type, String name, bool isActive) {
 	this->type = type;
 	this->name = name;

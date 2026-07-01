@@ -2,13 +2,15 @@
 
 #include <iostream>
 
+#include <glad/gl.h>
 #include <SDL.h>
 #include <SDL_opengl.h>
 #include <backends/imgui_impl_sdl2.h>
 #include <backends/imgui_impl_opengl3.h>
 
-#include "IPCClient.h"
 #include "Types.h"
+#include "render/Scene.h"
+#include "IPCClient.h"
 
 class IPCClient;
 
@@ -24,6 +26,8 @@ private:
 	bool InitializeSDL();
 	bool InitializeOpenGL();
 	void PollBackend();
+	void ProcessMouseEvents(SDL_Event event);
+	void ProcessKeyboardEvents(SDL_Event event);
 	void Cleanup();
 
 private:
@@ -35,5 +39,7 @@ private:
 	int screenHeight;
 
 	IPCClient ipc;
-
+	std::unique_ptr<Scene> scene;
+	bool mouseDragging = false;
+	bool middleMousehold = false;
 };

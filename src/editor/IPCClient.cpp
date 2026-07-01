@@ -1,6 +1,6 @@
 #include "IPCClient.h"
 
-
+// Initializes all process and pipe handles to invalid states
 IPCClient::IPCClient() {
 	this->hProcess = INVALID_HANDLE_VALUE;
 	this->hStdin = INVALID_HANDLE_VALUE;
@@ -10,6 +10,9 @@ IPCClient::IPCClient() {
 
 IPCClient::~IPCClient() {}
 
+// Starts a Python subprocess and sets up inter-process communication (IPC) using pipes for stdin and stdout
+// Redirects the child process I/O so the application can send commands and receive responses
+// Also launches a background thread to continuously read output from the process
 bool IPCClient::Start(const String& pythonExe, const String& scriptPath) {
 	HANDLE stdinRead, stdinWrite;
 	HANDLE stdoutRead, stdoutWrite;
@@ -64,12 +67,14 @@ bool IPCClient::Start(const String& pythonExe, const String& scriptPath) {
 	return true;
 }
 
+// Sends a JSON-formatted message to the subprocess via stdin
 void IPCClient::Send(const String& jsonLine) {
 	String line = jsonLine + "\n";
 	DWORD written = 0;
 	WriteFile(this->hStdin, line.c_str(), (DWORD)line.size(), &written, nullptr);
 }
 
+// Retrieves all pending messages received from the subprocess
 void IPCClient::Poll(std::vector<BackendMessage>& outMessages) {
 	std::lock_guard<std::mutex> lock(mutex);
 	while (!this->qMessages.empty()) {
@@ -82,6 +87,7 @@ bool IPCClient::IsRunning() {
 	return true;
 }
 
+// Background thread function that continuously reads stdout from the subprocess
 void IPCClient::RenderThread() {
 	String lineBuf;
 	char ch = 0;
@@ -120,6 +126,7 @@ void IPCClient::RenderThread() {
 	this->running = false;
 }
 
+// Closes pipes and terminates all handles
 void IPCClient::Shutdown() {
 	if (this->hStdin != INVALID_HANDLE_VALUE) {
 		CloseHandle(this->hStdin);

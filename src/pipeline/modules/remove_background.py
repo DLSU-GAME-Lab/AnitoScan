@@ -15,7 +15,7 @@ from ultralytics.models.yolo import YOLOE
 core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
-from ipc import send, send_log, send_progress
+from ipc import send, send_log, send_progress, status_update, status_error
 
 # DIRECTORY RESOLUTION
 MODULE_PATH = Path(__file__).resolve()
@@ -43,16 +43,17 @@ def calculate_centroid_drift(boxA, boxB):
 
 
 def get_user_selection(img, detector, temp_dir, frame_name, device, input_callback=None):
-    """Runs YOLOE, draws uniquely colored candidates with collision avoidance, and gets terminal input.
+    """Runs YOLOE, draws uniquely colored candidates with collision avoidance, pops up a GUI, and gets terminal input.
 
     Returns a tuple: (chosen_box_coordinates or None, elapsed_wait_time_seconds)
     """
     start_wait = time.perf_counter()
-    print(f"\n[*] Running YOLOE-26 on {frame_name}...")
+    print("\n")
+    status_update(f"Running YOLOE-26 on {frame_name}...")
     results = detector.predict(source=img, conf=0.35, device=device, verbose=False)[0]
 
     if results.boxes is None or len(results.boxes) == 0:
-        print("[!] YOLOE found no valid subjects in this frame.")
+        status_error("YOLOE found no valid subjects in this frame.")
         return None, time.perf_counter() - start_wait
 
     h_img, w_img = img.shape[:2]
@@ -130,9 +131,8 @@ def get_user_selection(img, detector, temp_dir, frame_name, device, input_callba
 
     write_success = cv2.imwrite(str(preview_path), preview_img)
     if not write_success:
-        print(
-            f"\n[!] CRITICAL ERROR: OpenCV failed to write the preview image to: {preview_path}"
-        )
+        print("\n")
+        status_error(f"OpenCV failed to write the preview image to: {preview_path}")
         sys.exit(1)
 
     if input_callback is not None:
@@ -144,24 +144,47 @@ def get_user_selection(img, detector, temp_dir, frame_name, device, input_callba
             return valid_boxes[choice], time.perf_counter() - start_wait
         return None, time.perf_counter() - start_wait
     else:
-        print("\n==================================================")
-        print(f" ACTION REQUIRED: Open {preview_path}")
-        print("==================================================") 
+        # --- GUI Pop-Up Logic ---
+        window_title = f"Selection Required - {frame_name}"
+        cv2.namedWindow(window_title, cv2.WINDOW_NORMAL)
 
+        # Force the window to open at a generous starting size
+        cv2.resizeWindow(window_title, 1280, 720)
+
+        cv2.imshow(window_title, preview_img)
+
+        print("\n==================================================")
+        print(" ACTION REQUIRED: Click on the image window to focus it.")
+        print(
+            f" Press the number key (0-{len(valid_boxes) - 1}) corresponding to the correct subject."
+        )
+        print(" Press 's' to skip this frame.")
+        print("==================================================")
+
+        # Replace terminal input with an active OpenCV event loop
         while True:
-            try:
-                choice = input(
-                    f"Enter the ID of the correct bounding box (0-{len(valid_boxes) - 1}) or 's' to skip: "
-                )
-                if choice.lower() == "s":
-                    return None, time.perf_counter() - start_wait
-                idx = int(choice)
+            # waitKey(50) keeps the GUI perfectly responsive by checking for input every 50ms
+            key = cv2.waitKey(50) & 0xFF
+
+            # Failsafe: if the user clicks the 'X' button to manually close the window, treat it as a skip
+            if cv2.getWindowProperty(window_title, cv2.WND_PROP_VISIBLE) < 1:
+                return None, time.perf_counter() - start_wait
+
+            # 's' key to skip
+            if key == ord("s"):
+                cv2.destroyWindow(window_title)
+                cv2.waitKey(1)  # Flush GUI events
+                return None, time.perf_counter() - start_wait
+
+            # Any number key from 0 to 9
+            elif ord("0") <= key <= ord("9"):
+                idx = int(chr(key))
                 if 0 <= idx < len(valid_boxes):
+                    cv2.destroyWindow(window_title)
+                    cv2.waitKey(1)  # Flush GUI events
                     return valid_boxes[idx], time.perf_counter() - start_wait
                 else:
-                    print("[!] Invalid ID. Try again.")
-            except ValueError:
-                print("[!] Please enter a valid number.")
+                    print(f"[!] Invalid ID {idx}. Try again.")
 
    
 
@@ -177,15 +200,8 @@ def run_remove_background(
     temp_dir = output_dir / "temp"
 
     if not input_dir.exists():
-        print(f"[!] Input directory not found: {input_dir}")
+        status_error(f"Input directory not found: {input_dir}")
         sys.exit(1)
-
-    # if force and output_dir.exists():
-    #     print(f"[!] Force flag detected. Wiping: {output_dir}")
-    #     shutil.rmtree(output_dir)
-
-    # output_dir.mkdir(parents=True, exist_ok=True)
-    # temp_dir.mkdir(parents=True, exist_ok=True)
 
     source_images = sorted(
         [f for f in input_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
@@ -198,14 +214,9 @@ def run_remove_background(
         existing_masks = [f for f in output_dir.iterdir() if f.suffix.lower() == ".png"]
         # Allow resuming: only skip entirely if we process all frames
         if len(existing_masks) == total_frames and total_frames > 0:
-            print(
-                f"[*] Found {len(existing_masks)} existing masked frames in {output_dir}."
-            )
-            print("[*] Skipping background removal phase... (Use --force to override)")
-
-            if ipc_mode:
-                send_log(f"Found {len(existing_masks)} existing masked frames in {output_dir}.")
-                send_log(f"Skipping background removal phase...")
+            # use --force to override
+            status_update(f"Found {len(existing_masks)} existing masked frames in {output_dir}.")
+            status_update("Skipping background removal phase...")
 
             # Ensure the manifest is correctly updated even when skipping
             manifest["status"]["phase"] = 2
@@ -220,7 +231,7 @@ def run_remove_background(
     # -----------------------
 
     if force and output_dir.exists():
-        print(f"[!] Force flag detected. Wiping: {output_dir}")
+        status_update(f"Force flag detected. Wiping: {output_dir}")
         shutil.rmtree(output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -228,10 +239,8 @@ def run_remove_background(
 
     target_min_frames = manifest["settings"].get("minimum_frames", 45)
 
-    print("[*] Starting Background Removal Phase.")
-    print(
-        f"[*] Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})"
-    )
+    status_update("Starting Background Removal Phase.")
+    status_update(f"[*] Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})")
 
     device = (
         "cuda"
@@ -307,9 +316,8 @@ def run_remove_background(
             if best_match is not None:
                 chosen_box = best_match
             else:
-                print(
-                    f"\n[!] Tracking signature broke on {img_path.name} (Strict limits violated)."
-                )
+                print("\n")
+                status_error(f"Tracking signature broke on {img_path.name} (Strict limits violated).")
                 chosen_box, wait_time = get_user_selection(
                     img, detector, temp_dir, img_path.stem, device,
                     input_callback=input_callback
@@ -324,11 +332,6 @@ def run_remove_background(
 
         # If skipped or failed, write zeroed blank structural mask frame matching target shape
         if chosen_box is None:
-            # executor.submit(
-            #     cv2.imwrite,
-            #     str(target_path),
-            #     np.zeros((h_img, w_img, 4), dtype=np.uint8),
-            # )
             cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
             prev_box = None
             continue
@@ -367,11 +370,6 @@ def run_remove_background(
             # executor.submit(cv2.imwrite, str(target_path), bgra)
             cv2.imwrite(str(target_path), bgra)
         else:
-            # executor.submit(
-            #     cv2.imwrite,
-            #     str(target_path),
-            #     np.zeros((h_img, w_img, 4), dtype=np.uint8),
-            # )
             cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
             prev_box = None  # Tear down tracking anchor path if extraction completely drops
 
@@ -392,10 +390,11 @@ def run_remove_background(
     if temp_dir.exists():
         shutil.rmtree(temp_dir)
 
-    print(f"\n[*] Complete. Filtered segmentation masks saved to: {output_dir}")
-    print(f"[*] Total Gross Session Duration: {total_time:.2f}s")
-    print(f"[*] Total User Interaction Hold Time: {total_user_time:.2f}s")
-    print(f"[*] Pure AI Processing Execution Speed: {processing_time:.2f}s")
+    print("\n")
+    status_update(f"Complete. Filtered segmentation masks saved to: {output_dir}")
+    status_update(f"[*] Total Gross Session Duration: {total_time:.2f}s")
+    status_update(f"Total User Interaction Hold Time: {total_user_time:.2f}s")
+    status_update(f"Pure AI Processing Execution Speed: {processing_time:.2f}s")
 
 
 if __name__ == "__main__":

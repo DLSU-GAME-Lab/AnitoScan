@@ -1,34 +1,31 @@
 #include "MaskingPopup.h"
 
-MaskingPopup::MaskingPopup(String name, IPCClient& ipc) : UIPanel(UIType::MASKING_MODAL, name, false), ipc(ipc) {
+//Initializes the popup's UI properties, default preview texture states, and binds the IPC client reference
+MaskingPopup::MaskingPopup(String name, IPCClient& ipc) 
+    : UIPanel(UIType::MASKING_MODAL, name, false), ipc(ipc) {
 	this->lastPreviewPath = "";
 	this->previewTexture = NULL;
 	this->showPopup = activeSelf;
-	this->isWaiting = true;
 }
 
 MaskingPopup::~MaskingPopup() {}
 
 
+// Handles the core rendering loop for the popup modal and draws the image preview alongside its action buttons.
 void MaskingPopup::Draw() {
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2(0, 0));
-
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground |
-        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
-        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
-
-    ImGui::Begin("##masking_popup_host", nullptr, flags);
     if (this->showPopup) {
         ImGui::OpenPopup(this->GetName().c_str());
         this->showPopup = false;
     }
 
+    // center the window
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(1000, 700), ImGuiCond_Always);
 
-    ImGuiWindowFlags popupflags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+    ImGuiWindowFlags popupflags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove;
+
+    // draw window
     if (ImGui::BeginPopupModal(this->GetName().c_str(), nullptr, popupflags)) {
         ImGui::Text("Frame: %s", this->frame.c_str());
         ImGui::Text("Select the correct subject:");
@@ -41,34 +38,35 @@ void MaskingPopup::Draw() {
             ImGui::TextDisabled("Loading preview...");
         }
 
-        ImGui::Separator(); 
+        ImGui::Separator();
 
         // candidates button
         DisplayCandidatesButton();
 
-        //skip button
+        // skip button
         DisplaySkipButton();
 
         ImGui::EndPopup();
     }
-
-    ImGui::End(); 
 }
 
-
+// Prepares and activates the popup to display a specfic image. 
+// Flags the UI to open and loads the target preview image
 void MaskingPopup::ShowCandidates(String previewPath, String frame, int count) {
 	this->count = count;
 	this->frame = frame;
-	this->isWaiting = true;
+
     ShowPopup();
 	LoadPreview(previewPath);
 }
 
+// Activates the popup window
 void MaskingPopup::ShowPopup() {
 	this->activeSelf = true;
 	this->showPopup = true;
 }
 
+// Loads the image to be examined via stb_image, configures GL filters, and binds texture ID for ImGui rendering
 void MaskingPopup::LoadPreview(const String& path) {
 	if (path == this->lastPreviewPath) return;
 	ClearPreview();
@@ -90,6 +88,7 @@ void MaskingPopup::LoadPreview(const String& path) {
 	this->lastPreviewPath = path;
 }
 
+// Preview cleanup
 void MaskingPopup::ClearPreview() {
     if (this->previewTexture) {
         glDeleteTextures(1, &this->previewTexture);
@@ -99,7 +98,7 @@ void MaskingPopup::ClearPreview() {
     this->lastPreviewPath.clear();
 }
 
-
+// Renders the loaded texture and handles mouse wheel zoom and left-drag panning interactions
 void MaskingPopup::DisplayPreview() {
     ImVec2 availSize = ImVec2(960, 540);
     float aspect = (float)this->previewH / (float)this->previewW;
@@ -108,7 +107,6 @@ void MaskingPopup::DisplayPreview() {
     if (baseH > availSize.y) {
         baseH = availSize.y;
         baseW = baseH / aspect;
-        ;
     }
 
     ImVec2 displaySize(baseW * this->zoom, baseH * this->zoom);
@@ -150,6 +148,7 @@ void MaskingPopup::DisplayPreview() {
     ImGui::TextDisabled("(scroll to zoom, drag to pan)");
 }
 
+// Renders a dynamic row of numbered selection buttons for candidates and sends a response over the IPC
 void MaskingPopup::DisplayCandidatesButton() {
     for (int i = 0; i < this->count; i++) {
         String label = "  " + std::to_string(i) + "  ";
@@ -158,20 +157,19 @@ void MaskingPopup::DisplayCandidatesButton() {
             response["type"] = "selection";
             response["choice"] = std::to_string(i);
             this->ipc.Send(response.dump());
-            this->isWaiting = false;
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
     }
 }
 
+// Renders a skip button for the candidate selection and broadcasts it over IPC
 void MaskingPopup::DisplaySkipButton() {
     if (ImGui::Button("Skip", ImVec2(60, 36))) {
         nlohmann::json response;
         response["type"] = "selection";
         response["choice"] = "skip";
         this->ipc.Send(response.dump());
-        this->isWaiting = false;
         ImGui::CloseCurrentPopup();
     }
 }

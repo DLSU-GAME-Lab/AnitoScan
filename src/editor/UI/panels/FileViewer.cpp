@@ -1,5 +1,6 @@
 #include "FileViewer.h"
 
+// Configures the embedded file browser flags and filters out image format extensions for browsing
 FileViewer::FileViewer(String name, Phase phase) : UIPanel(UIType::FILE_VIEWER, name) {
 	this->fileDialog = ImGui::FileBrowser(ImGuiFileBrowserFlags_Embedded | ImGuiFileBrowserFlags_NoModal);
 	//this->fileDialog.SetTitle("FileBrowser");
@@ -10,11 +11,12 @@ FileViewer::FileViewer(String name, Phase phase) : UIPanel(UIType::FILE_VIEWER, 
 
 FileViewer::~FileViewer() {}
 
+// Manages a refresh timer to poll the storage directory for changes and calls the draw function for the browser
 void FileViewer::Draw() {
 	//update timer
 	ImGuiIO& io = ImGui::GetIO();
 
-	if (isRefreshing) {
+	if (this->isRefreshing) {
 		this->refreshTimer += io.DeltaTime;
 		if (this->refreshTimer >= this->refreshInterval) {
 			this->fileDialog.Refresh();
@@ -24,7 +26,7 @@ void FileViewer::Draw() {
 
 	ImGui::Begin(this->name.c_str());
 
-	if (hasRootFolder) {
+	if (this->hasRootFolder) {
 		DrawDefaultBrowser();
 		//DrawBrowserTable();
 	}
@@ -32,7 +34,7 @@ void FileViewer::Draw() {
 	ImGui::End();
 }
 
-// displays the directory and preview panel in a vertical layout
+// Displays the directory and preview panel in a vertical layout
 void FileViewer::DrawDefaultBrowser() {
 	ImVec2 windowSize = ImGui::GetContentRegionAvail();
 	float browserH = windowSize.y * 0.6f;
@@ -56,7 +58,7 @@ void FileViewer::DrawDefaultBrowser() {
 	ImGui::EndChild();
 }
 
-// displays the directory and preview panel side-by-side
+// Displays the directory and preview panel side-by-side
 void FileViewer::DrawBrowserTable() {
 	if (ImGui::BeginTable("layout", 2,
 		ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
@@ -82,6 +84,7 @@ void FileViewer::DrawBrowserTable() {
 	}
 }
 
+// Decodes an image file into memory and uploads it as a 2D OpenGL texture via stb_image
 void FileViewer::LoadPreview(const String& path) {
 	if (path == this->lastPreviewPath) return;
 	ClearPreview();
@@ -103,7 +106,7 @@ void FileViewer::LoadPreview(const String& path) {
 	this->lastPreviewPath = path;
 }
 
-
+// Preview image clean up
 void FileViewer::ClearPreview() {
 	if (this->previewTexture) {
 		glDeleteTextures(1, &this->previewTexture);
@@ -113,7 +116,8 @@ void FileViewer::ClearPreview() {
 	this->lastPreviewPath.clear();
 }
 
-
+// Computes aspect ratio uniform scaling and positions the image in the center of the viewport box
+// Shifts ImGui rendering cursors to center align, and draws the output texture
 void FileViewer::DrawFittedImage(GLuint texture, int imgW, int imgH, ImVec2 availSpace) {
 	float scaleX = availSpace.x / (float)imgW;
 	float scaleY = availSpace.y / (float)imgH;
@@ -129,6 +133,7 @@ void FileViewer::DrawFittedImage(GLuint texture, int imgW, int imgH, ImVec2 avai
 	ImGui::Image((ImTextureID)(intptr_t)texture, displaySize);
 }
 
+// Evaluates and targets a specific subdirectory run folder depending on the active stage process
 void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 	if (output.empty()) {
 		std::cerr << "[ERROR] FileViewer::SetRootFolderToView called with empty root" << std::endl;
@@ -157,6 +162,7 @@ void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 
 }
 
+// Controls whether the file dialog should continuously trigger directory polling updates inside the frame loop
 void FileViewer::ToggleRefresh(bool isRefreshing) {
 	this->isRefreshing = isRefreshing;
 }

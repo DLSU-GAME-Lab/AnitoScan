@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ipc import send, send_progress, send_log, send_done, send_error, is_ipc_mode
+from ipc import send, send_progress, send_log, send_done, send_error, status_update, make_ipc_input_callback
 
 # DIRECTORY RESOLUTION
 SCRIPT_PATH = Path(__file__).resolve()  # /src/pipeline/core/pipeline.py
@@ -21,35 +21,6 @@ def _get(args, key, default=None):
         return args.get(key, default)   # IPC mode
     return getattr(args, key, default)  # CLI mode 
 
-def make_ipc_input_callback():
-    def callback(preview_path: str, count: int, frame_name: str) -> int | None: 
-        send({
-            "type":     "action_required",
-            "frame":    frame_name,
-            "preview":  preview_path,
-            "count":    count,
-        })
-
-        send_log(f"Opened {frame_name} preview: {preview_path}")
-
-        for raw_line in sys.stdin:
-            raw_line = raw_line.strip()
-            if not raw_line:
-                continue
-            try:
-                response = json.loads(raw_line)
-                if response.get("type") == "selection":
-                    choice = response.get("choice")
-                    if choice == "skip":
-                        send_log(f"Skipped boundary selection")
-                        return None
-                    send_log(f"Selected {int(choice)} for {frame_name}")
-                    return int(choice)
-            except (json.JSONDecodeError, ValueError):
-                continue
-        return None
-    return callback
-
 
 def _run_phase(phase_num: int, phase_name: str, cmd: list, ipc_mode: bool):
     result = subprocess.run(cmd)
@@ -61,10 +32,8 @@ def _run_phase(phase_num: int, phase_name: str, cmd: list, ipc_mode: bool):
             print(f"[!] {msg}")
             sys.exit(result.returncode)
 
-
-
-def run_phase1(parent_module_path, manifest_path, args, ipc_mode=False):
-    # 1. Launch Phase 1: Capture
+# PHASE 1: CAPTURE
+def run_phase1(parent_module_path, manifest_path, args, ipc_mode=False): 
     module_path = parent_module_path / "capture.py"
     cmd = [
         sys.executable,
@@ -87,11 +56,9 @@ def run_phase1(parent_module_path, manifest_path, args, ipc_mode=False):
 
     _run_phase(1, "Capture", cmd, ipc_mode)
 
-
+# PHASE 2: MASKING
 def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False):
     if ipc_mode:
-        send_log("Starting Phase 2: Masking")
-        send_progress(0.0, "Phase 2: Masking starting...", phase=2)
         try:
             run_remove_background(
                 manifest_path = manifest_path,
@@ -125,7 +92,7 @@ def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False):
 
         _run_phase(2, "Masking", cmd, ipc_mode)
 
-
+# PHASE 3: SPATIAL
 def run_phase3(parent_module_path, manifest_path, args, ipc_mode=False):
     module_path = parent_module_path / "spatial.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
@@ -134,7 +101,7 @@ def run_phase3(parent_module_path, manifest_path, args, ipc_mode=False):
     if ipc_mode: cmd.append("--ipc")
     _run_phase(3, "Spatial Initialization", cmd, ipc_mode)
 
-
+# PHASE 4: GEOMETRY
 def run_phase4(parent_module_path, manifest_path, args, ipc_mode=False):
     module_path = parent_module_path / "geometry.py"
 
@@ -167,7 +134,7 @@ def run_phase4(parent_module_path, manifest_path, args, ipc_mode=False):
     if ipc_mode: cmd.append("--ipc")
     _run_phase(4, "Geometry Generation", cmd, ipc_mode)
 
-
+# PHASE 5: EXPORT
 def run_phase5(parent_module_path, manifest_path, args, ipc_mode=False):
     module_path = parent_module_path / "export.py"
     cmd = [sys.executable, str(module_path), "--manifest", str(manifest_path)]
@@ -229,36 +196,29 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=4)
 
-    print(f"[*] Workspace initialized: {base_dir}")
-
+    status_update(f"Workspace initialized: {base_dir}")
     if ipc_mode:
-        send_log(f"Workspace initialized: {base_dir}")
         send({"type": "workspace_ready", "path": str(base_dir), "run_name": args["name"]})
 
     parent_module_path = Path(__file__).parent.parent / "modules"
 
-    #if ipc_mode: send_progress(0.0, "[*] Starting Phase 1: Capture")
-    send_log("Starting Phase 1: Capture")
+    status_update("Starting Phase 1: Capture")
     run_phase1(parent_module_path, manifest_path, args, ipc_mode)
 
-    #if ipc_mode: send_progress(0.20, "[*] Starting Phase 2: Masking")
-    send_log("Starting Phase 2: Masking")
+    status_update("Starting Phase 2: Masking")
     run_phase2(parent_module_path, manifest_path, args, ipc_mode)
 
-    #if ipc_mode: send_progress(0.40, "[*] Starting Phase 3: Spatial")
-    send_log("Starting Phase 3: Spatial")
+    status_update("Starting Phase 3: Spatial")
     run_phase3(parent_module_path, manifest_path, args, ipc_mode)
 
-    #if ipc_mode: send_progress(0.60, "[*] Starting Phase 4: Geometry")
-    send_log("Starting Phase 4: Geometry")
+    status_update("Starting Phase 4: Geometry")
     run_phase4(parent_module_path, manifest_path, args, ipc_mode)
 
-    #if ipc_mode: send_progress(0.80, "[*] Starting Phase 5: Export", phase=5)
-    send_log("Starting Phase 5: Export")
+    status_update("Starting Phase 5: Export")
     run_phase5(parent_module_path, manifest_path, args, ipc_mode)
 
-    #if ipc_mode: send_progress(1.0, "[*] Complete")
-    send_done({"run_name": name, "output": str(base_dir)})
+    status_update("Scan Complete")
+    if ipc_mode: send_done({"run_name": name, "output": str(base_dir)})
 
 
 def run_ipc_mode():

@@ -7,7 +7,7 @@ from pathlib import Path
 core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
-from ipc import send_log, send_progress, send_error
+from ipc import send_log, send_progress, send_error, status_error, status_update
 
 try:
     import pymeshlab
@@ -30,9 +30,7 @@ def run_export_and_baking(manifest_path, force=False, ipc_mode=False):
     input_ply = geometry_dir / "fused_mesh.ply"
 
     if not input_ply.exists():
-        msg = f"Could not find raw geometry at {input_ply}. Did Phase 4 complete?"
-        print(f"[!] Error: {msg}")
-        if ipc_mode: send_error(f"Phase 5: {msg}")
+        status_error(f"Could not find raw geometry at {input_ply}. Did Phase 4 complete?")
         sys.exit(1)
 
     export_dir.mkdir(parents=True, exist_ok=True)
@@ -45,27 +43,31 @@ def run_export_and_baking(manifest_path, force=False, ipc_mode=False):
 
     # --- SKIP LOGIC ---
     if final_obj_path.exists() and not force:
-        print(f"[*] Found existing exported asset: {final_obj_path}")
-        print("[*] Skipping Phase 5 (Export & Baking)... (Use --force to override)")
-        print("PROGRESS: 100")
-        if ipc_mode:
-            send_log(f"Found existing exported asset: {final_obj_path}. Skipping...")
-            send_progress(1.0, "Phase 5: Export complete (cached)", phase=5)
+        status_update(f"Found existing exported asset: {final_obj_path}",
+                      progress=1.0,
+                      progress_msg="Phase 5: Export complete (cached)", 
+                      phase=5)
+        status_update("Skipping Phase 5 (Export & Baking)...")
+        print("PROGRESS: 100") 
+        
         return
     # ------------------
 
     start_time = time.perf_counter()
-    print("\n[*] Starting Automated Retopology and Texture Baking Phase...")
-    if ipc_mode: send_progress(0.0, "Phase 5: Loading mesh...", phase=5)
+    print("\n")
+    status_update("Starting Automated Retopology and Texture Baking Phase...",
+                  progress=0.0,
+                  progress_msg="Phase 5: Loading mesh...",
+                  phase=5)
 
     try:
         ms = pymeshlab.MeshSet()  # type: ignore
         ms.load_new_mesh(str(input_ply))
 
-        print("[*] Mesh loaded. Cleaning raw topology...")
-        if ipc_mode: 
-            send_log(f"Mesh loaded. Cleaning raw topology...")
-            send_progress(0.05, "Phase 5: Cleaning topology...", phase=5)
+        status_update("Mesh loaded. Cleaning raw topology...",
+                      progress=0.05,
+                      progress_msg="Phase 5: Cleaning topology...",
+                      phase=5)
         ms.meshing_remove_unreferenced_vertices()
         ms.meshing_remove_duplicate_faces()
         ms.meshing_repair_non_manifold_edges()
@@ -77,10 +79,11 @@ def run_export_and_baking(manifest_path, force=False, ipc_mode=False):
             quality_preset, 300000
         )
 
-        print(f"[*] Decimating and smoothing mesh to {target_faces:,} faces...")
-        if ipc_mode:
-            send_log(f"Decimating and smoothing mesh to {target_faces:,} faces...")
-            send_progress(0.15, f"Phase 5: Decimating to {target_faces:,} faces...", phase=5)
+        # DECIMATION
+        status_update(f"Decimating and smoothing mesh to {target_faces:,} faces...",
+                      progress=0.15,
+                      progress_msg=f"Phase 5: Decimating to {target_faces:,} faces...",
+                      phase=5)
 
         ms.meshing_decimation_quadric_edge_collapse(
             targetfacenum=target_faces,
@@ -89,45 +92,46 @@ def run_export_and_baking(manifest_path, force=False, ipc_mode=False):
             preservetopology=True,
         )
 
-        print("[*] Generating smooth surface normals...")
-        if ipc_mode: 
-            send_log(f"Generating smooth surface normals...")
-            send_progress(0.45, "Phase 5: Computing normals...", phase=5)
+        # COMPUTE NORMALS
+        status_update("Generating smooth surface normals...",
+                      progress=0.45,
+                      progress_msg="Phase 5: Computing normals...",
+                      phase=5)
         ms.compute_normal_per_vertex()
 
-        print("[*] Unwrapping UV Coordinates...")
-        if ipc_mode:
-            send_log(f"Unwrapping UV Coordinates...") 
-            send_progress(0.50, "Phase 5: Unwrapping UVs...", phase=5)
+        # UNWRAP UVs
+        status_update("Unwrapping UV Coordinates...",
+                      progress=0.50,
+                      progress_msg="Phase 5: Unwrapping UVs...",
+                      phase=5)
         try:
             # Primary Strategy: Voronoi Atlas
-            print("    -> Attempting Voronoi Atlas parameterization...")
-            if ipc_mode: send_log("Attempting Voronoi Atlas UV parameterization...")
+            status_update("Attempting Voronoi Atlas parameterization...")
             ms.compute_texcoord_parametrization_voronoi_atlas()
         except Exception as uv_error:
             # Fallback Strategy: Trivial Per-Wedge
-            print(f"    [!] Voronoi failed. Falling back to Trivial Unwrapping...")
-            if ipc_mode: send_log("Voronoi failed. Falling back to Trivial Unwrapping...")
+            status_update("Voronoi failed. Falling back to Trivial Unwrapping...")
             ms.compute_texcoord_parametrization_triangle_trivial_per_wedge(textdim=4096)
 
-        print(f"[*] Baking vertex colors to {final_texture_name} (4K Resolution)...")
-        if ipc_mode:
-            send_log("Baking vertex colors to {final_texture_name} (4K Resolution)...")
-            send_progress(0.80, "Phase 5: Baking 4K texture...", phase=5)
+        # BAKING
+        status_update(f"Baking vertex colors to {final_texture_name} (4K Resolution)...",
+                      progress=0.80,
+                      progress_msg="Phase 5: Baking 4K texture...",
+                      phase=5)
         ms.transfer_attributes_to_texture_per_vertex(
             textname=final_texture_name, textw=4096, texth=4096
         )
 
-        print(f"[*] Exporting final optimized OBJ package to {export_dir}...")
-        if ipc_mode: 
-            send_log("Exporting final optimized OBJ package to {export_dir}...")
-            send_progress(0.95, "Phase 5: Exporting OBJ...", phase=5)
+        # EXPORT
+        status_update(f"Exporting final optimized OBJ package to {export_dir}...",
+                      progress=0.95,
+                      progress_msg="Phase 5: Exporting OBJ...",
+                      phase=5)
         ms.save_current_mesh(str(final_obj_path))
 
     except Exception as e:
-        msg = f"A fatal error occurred during mesh processing: {e}"
-        print(f"\n[!] {msg}")
-        if ipc_mode: send_error(f"Phase 5: {msg}")
+        print("\n")
+        status_error(f"A fatal error occurred during mesh processing: {e}")
         sys.exit(1)
 
     total_time = time.perf_counter() - start_time
@@ -140,12 +144,9 @@ def run_export_and_baking(manifest_path, force=False, ipc_mode=False):
         json.dump(manifest, f, indent=4)
 
     print("\nPROGRESS: 100")
-    print(f"[*] Export Phase Complete. Final textured asset ready: {final_obj_path}")
-    print(f"[*] Phase 5 Total Time: {total_time:.2f}s")
-
-    if ipc_mode:
-        send_progress(1.0, "Phase 5: Export complete", phase=5)
-        send_log(f"Export complete in {total_time:.2f}s. Asset: {final_obj_path}")
+    status_update(f"Export Phase Complete. Final textured asset ready: {final_obj_path}")
+    status_update(f"Phase 5 Total Time: {total_time:.2f}s")
+    if ipc_mode: send_progress(1.0, "Phase 5: Export complete", phase=5)
 
 
 if __name__ == "__main__":
