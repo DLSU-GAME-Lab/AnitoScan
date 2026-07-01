@@ -58,11 +58,8 @@ Thumbs.db
 /output
 /build-vs
 /build
-<<<<<<< HEAD
 
 .cache/
-=======
->>>>>>> editor
 
 # Vendor
 # Block the heavy dependency folders entirely
