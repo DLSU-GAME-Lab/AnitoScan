@@ -1,0 +1,663 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <!-- Meta tags for social media banners, these should be filled in appropriatly as they are your "business card" -->
+        <!-- Replace the content tag with appropriate information -->
+        <meta name="description" content="AnitoScan Project Page" />
+        <meta property="og:title" content="AnitoScan Project Page" />
+        <meta
+            property="og:description"
+            content="Overall information about AnitoScan."
+        />
+        <meta property="og:url" content="https://dlsu-game-lab.github.io/AnitoScan/" />
+        <!-- TODO: Path to banner image, should be in the path listed below. Optimal dimenssions are 1200X630-->
+        <meta property="og:image" content="static/images/banner.png" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="550" />
+
+        <meta name="twitter:title" content="AnitoScan Project Page" />
+        <meta
+            name="twitter:description"
+            content="Overall information about AnitoScan."
+        />
+        <!-- TODO: Path to banner image, should be in the path listed below. Optimal dimenssions are 1200X600-->
+        <meta name="twitter:image" content="static/images/banner.png" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <!-- Keywords for your paper to be indexed by-->
+        <meta
+            name="keywords"
+            content="Video to Mesh Pipeline, 2D Reconstruction, 3D Reconstruction, 2D Gaussian Splatting"
+        />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+        <title>AnitoScan</title>
+        <!--  TODO: change to own icon (optionally use png)  -->
+        <link rel="icon" type="image/x-icon" href="static/images/icon.ico" />
+        <link
+            href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+            rel="stylesheet"
+        />
+
+        <link rel="stylesheet" href="static/css/bulma.min.css" />
+        <link rel="stylesheet" href="static/css/bulma-carousel.min.css" />
+        <link rel="stylesheet" href="static/css/bulma-slider.min.css" />
+        <link rel="stylesheet" href="static/css/fontawesome.all.min.css" />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css"
+        />
+        <link rel="stylesheet" href="static/css/index.css" />
+
+        <style>
+            .video-container {
+                position: relative;
+                width: 100%;
+                /* Sets a 16:9 aspect ratio (9 ÷ 16 = 0.5625).
+            Adjust if you need a different ratio. */
+                padding-bottom: 56.25%;
+            }
+
+            .video-container iframe {
+                position: absolute;
+                top: 0;
+                left: 0;
+                /* Make the iframe fill the container */
+                width: 100%;
+                height: 100%;
+            }
+        </style>
+
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+        <script src="https://documentcloud.adobe.com/view-sdk/main.js"></script>
+        <script defer src="static/js/fontawesome.all.min.js"></script>
+        <script src="static/js/bulma-carousel.min.js"></script>
+        <script src="static/js/bulma-slider.min.js"></script>
+        <script src="static/js/index.js"></script>
+    </head>
+
+    <body>
+        <section class="hero">
+            <div class="hero-body">
+                <div class="container is-max-desktop">
+                    <div class="columns is-centered">
+                        <div class="column has-text-centered">
+                            <h1 class="title is-1 publication-title">
+                                AnitoScan: Video-To-Mesh 3D Reconstruction
+                                Prototype
+                            </h1>
+                            <div class="is-size-4 publication-authors">
+                                <!-- Paper authors -->
+                                <span class="author-block">
+                                    <a
+                                        href="https://github.com/perdit-io"
+                                        target="_blank"
+                                        >Marc Angeles</a
+                                    ><sup>*</sup>,
+                                </span>
+                                <span class="author-block">
+                                    <a
+                                        href="https://github.com/rits-u"
+                                        target="_blank"
+                                        >Andrea Legaspi</a
+                                    ><sup>*</sup>,</span
+                                >
+                                <span class="author-block">
+                                    <a
+                                        href="https://github.com/gabwithtie"
+                                        target="_blank"
+                                        >Gabriel Rayo</a
+                                    >
+                                </span>
+                            </div>
+
+                            <div class="is-size-5 publication-authors">
+                                <span class="author-block"
+                                    ><small>DLSU GAME Lab</small></span
+                                >
+                                <span class="eql-cntrb"
+                                    ><small
+                                        ><br /><sup>*</sup>Indicates Equal
+                                        Contribution</small
+                                    ></span
+                                >
+                            </div>
+
+                            <div class="column has-text-centered">
+                                <div class="publication-links">
+                                    <!-- PDF link -->
+                                    <span class="link-block">
+                                        <!--  TODO: add href= to pdf link  -->
+                                        <a
+                                            style="
+                                                opacity: 0.6;
+                                                cursor: not-allowed;
+                                            "
+                                            target="_blank"
+                                            class="external-link button is-normal is-rounded is-dark"
+                                        >
+                                            <span class="icon">
+                                                <i class="fas fa-file-pdf"></i>
+                                            </span>
+                                            <span>Paper (Soon)</span>
+                                        </a>
+                                    </span>
+
+                                    <!-- Github link -->
+                                    <span class="link-block">
+                                        <a
+                                            href="https://github.com/DLSU-GAME-Lab/AnitoScan"
+                                            target="_blank"
+                                            class="external-link button is-normal is-rounded is-dark"
+                                        >
+                                            <span class="icon">
+                                                <i class="fab fa-github"></i>
+                                            </span>
+                                            <span>Code</span>
+                                        </a>
+                                    </span>
+
+                                    <!-- Data link -->
+                                    <span class="link-block">
+                                        <a
+                                            href="https://drive.google.com/drive/u/0/folders/1yJp-H4HuJQ6AwwfcsUH65hSKEsHebSlM"
+                                            target="_blank"
+                                            class="external-link button is-normal is-rounded is-dark"
+                                        >
+                                            <span class="icon">
+                                                <i class="fa fa-database"></i>
+                                            </span>
+                                            <span>Data</span>
+                                        </a>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Teaser video-->
+        <section class="hero teaser">
+            <div class="container is-max-desktop">
+                <div class="hero-body">
+                    <video
+                        poster="static/assets/editor-timelapse-poster.png"
+                        id="video1"
+                        autoplay
+                        controls
+                        muted
+                        loop
+                        height="100%"
+                    >
+                        <source
+                            src="static/assets/editor-timelapse.mp4"
+                            type="video/mp4"
+                        />
+                    </video>
+                    <h2 class="subtitle has-text-justified">
+                        Take a look at the AnitoScan workspace in action. This
+                        raw, hands-on preview showcases our unified editor
+                        handling the entire data-oriented reconstruction
+                        pipeline from start to finish.
+                    </h2>
+                    <h2 class="subtitle has-text-justified">
+                        Instead of jumping between disconnected tools,
+                        everything happens right here—from importing raw video
+                        footage and processing frames, to tweaking alignment
+                        parameters and generating the final, optimized 3D mesh.
+                        Watch how a seamless, single-software workflow
+                        transforms captured video into a production-ready asset
+                        in real time.
+                    </h2>
+                </div>
+            </div>
+        </section>
+        <!-- End teaser video -->
+
+        <!-- Paper abstract -->
+        <section class="section hero is-light">
+            <div class="container is-max-desktop">
+                <div class="columns is-centered has-text-centered">
+                    <div class="column is-four-fifths">
+                        <h2 class="title is-3">Abstract</h2>
+                        <div class="content has-text-justified">
+                            <p>
+                                3D reconstruction of intricate physical assets
+                                typically requires extensive manual adjustments
+                                or dense sensor arrangements. We introduce
+                                <strong>AnitoScan</strong>, a video-to-mesh
+                                geometric processing pipeline engineered to
+                                reconstruct 3D topological configurations
+                                directly from lightweight video streams. Our
+                                framework decouples raw structural estimation
+                                from rendering fragments to assemble an
+                                organized library of OBJ assets. Evaluated
+                                across our custom catalog of 14 figures
+                                archived at the DLSU GAME Lab, the current
+                                prototype successfully preserves intricate
+                                surface continuity, producing high-fidelity
+                                output geometries directly optimized for
+                                integration into modern engines.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- End paper abstract -->
+
+        <!-- Overall carousel -->
+        <section class="hero is-small">
+            <div class="hero-body">
+                <div class="container is-max-desktop">
+                    <div
+                        id="results-carousel"
+                        class="carousel results-carousel"
+                    >
+                        <!-- Slide 1: Vertical Input Video -->
+                        <div class="item item-video-1">
+                            <div
+                                class="columns is-centered has-text-centered mx-0 my-0"
+                                style="background: #111; border-radius: 6px"
+                            >
+                                <div class="column is-paddingless">
+                                    <video
+                                        poster="static/assets/bowser-input-video-poster.png"
+                                        id="video2"
+                                        autoplay
+                                        controls
+                                        muted
+                                        loop
+                                        style="
+                                            width: 100%;
+                                            height: 450px;
+                                            object-fit: contain;
+                                            display: block;
+                                        "
+                                    >
+                                        <source
+                                            src="static/assets/bowser-input-video-compressed.mp4"
+                                            type="video/mp4"
+                                        />
+                                    </video>
+                                </div>
+                            </div>
+                            <div class="content has-text-justified mt-4">
+                                <p class="subtitle">
+                                    <strong
+                                        >Raw Capture: The Input Video</strong
+                                    >
+                                    <br />
+                                    <br />
+                                    Before any processing begins, it all starts
+                                    with standard video footage. This clip
+                                    demonstrates our recording phase: a
+                                    continuous, handheld camera pass looping
+                                    around the target object.
+                                    <br />
+                                    <br />
+                                    <strong>The Setup:</strong> A simple,
+                                    unconstrained smartphone or camera sweep.
+                                    <br />
+                                    <strong>The Goal:</strong> Capturing diverse
+                                    viewing angles and overlapping features
+                                    under natural lighting.
+                                    <br />
+                                    <strong>The Core Benefit:</strong> No
+                                    specialized hardware, depth sensors, or
+                                    complex studio rigs required—just raw,
+                                    accessible video frames ready for the
+                                    reconstruction pipeline.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Slide 2: Horizontal Mesh Video -->
+                        <div class="item item-video-1">
+                            <div
+                                class="columns is-centered has-text-centered mx-0 my-0"
+                                style="background: #111; border-radius: 6px"
+                            >
+                                <div class="column is-paddingless">
+                                    <video
+                                        poster="static/assets/bowser-360-views-poster.png"
+                                        id="video3"
+                                        autoplay
+                                        controls
+                                        muted
+                                        loop
+                                        style="
+                                            width: 100%;
+                                            height: 450px;
+                                            object-fit: contain;
+                                            display: block;
+                                        "
+                                    >
+                                        <source
+                                            src="static/assets/bowser-360-views.mp4"
+                                            type="video/mp4"
+                                        />
+                                    </video>
+                                </div>
+                            </div>
+                            <div class="content has-text-justified mt-4">
+                                <p class="subtitle">
+                                    <strong
+                                        >The Result: The Reconstructed 3D
+                                        Mesh</strong
+                                    >
+                                    <br />
+                                    <br />
+                                    This is the final milestone of the AnitoScan
+                                    pipeline. The video showcases a full
+                                    360-degree flythrough of the generated 3D
+                                    asset, showcasing how our engine transforms
+                                    flat pixels into spatial geometry.
+                                    <br />
+                                    <br />
+                                    <strong>High-Fidelity Topology:</strong>
+                                    Watch how the editor cleanly captures
+                                    intricate surface details, sharp edges, and
+                                    geometric depth.
+                                    <br />
+                                    <strong>Optimized Output:</strong> The final
+                                    mesh is clean, scaled, and structured right
+                                    out of the editor.
+                                    <br />
+                                    <strong>Production-Ready:</strong> What
+                                    started as a casual video clip is now a
+                                    fully realized, isolated 3D asset ready to
+                                    be dropped straight into a real-time
+                                    graphics pipeline or engine environment.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- End video carousel -->
+
+        <!-- Video carousel -->
+        <section class="hero is-small is-light">
+            <div class="hero-body">
+                <div class="container is-max-desktop">
+                    <div
+                        id="results-carousel"
+                        class="carousel results-carousel"
+                    >
+                        <div class="item item-video1">
+                            <video
+                                poster="static/assets/bowser-360-views-poster.png"
+                                id="video4"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/bowser-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/brave-highmountain-360-views-poster.png"
+                                id="video5"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/brave-highmountain-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/broll-bearmantle-360-views-poster.png"
+                                id="video6"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/broll-bearmantle-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/donkey-kong-360-views-poster.png"
+                                id="video7"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/donkey-kong-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/godzilla-360-views-poster.png"
+                                id="video8"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/godzilla-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/groot-360-views-poster.png"
+                                id="video9"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/groot-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/idk-who-360-views-poster.png"
+                                id="video10"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/idk-who-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/link-360-views-poster.png"
+                                id="video11"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/link-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/mono-360-views-poster.png
+                                id="video12"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/mono-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/myers-360-views-poster.png"
+                                id="video13"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/myers-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/ryu-360-views-poster.png"
+                                id="video14"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/ryu-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/six-360-views-poster.png"
+                                id="video15"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/six-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/tom-360-views-poster.png"
+                                id="video16"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/tom-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+
+                        <div class="item item-video2">
+                            <video
+                                poster="static/assets/yoshi-360-views-poster.png"
+                                id="video17"
+                                autoplay
+                                controls
+                                muted
+                                loop
+                            >
+                                <source
+                                    src="static/assets/yoshi-360-views.mp4"
+                                    type="video/mp4"
+                                />
+                            </video>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- End video carousel -->
+
+        <!--BibTex citation -->
+        <section class="section" id="BibTeX">
+            <div class="container is-max-desktop content">
+                <h2 class="title">BibTeX</h2>
+                <pre><code>To Be Added</code></pre>
+            </div>
+        </section>
+        <!--End BibTex citation -->
+
+        <footer class="footer">
+            <div class="container">
+                <div class="columns is-centered">
+                    <div class="column is-8">
+                        <div class="content">
+                            <p>
+                                This page was built using the
+                                <a
+                                    href="https://github.com/eliahuhorwitz/Academic-project-page-template"
+                                    target="_blank"
+                                    >Academic Project Page Template</a
+                                >
+                                which was adopted from the <a
+                                    href="https://nerfies.github.io"
+                                    target="_blank"
+                                    >Nerfies</a
+                                > project page. You are free to borrow the
+                                source code of this website, we just ask that
+                                you link back to this page in the footer. <br />
+                                This website is licensed under a
+                                <a
+                                    rel="license"
+                                    href="http://creativecommons.org/licenses/by-sa/4.0/"
+                                    target="_blank"
+                                    >Creative Commons Attribution-ShareAlike 4.0
+                                    International License</a
+                                >.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </body>
+</html>
