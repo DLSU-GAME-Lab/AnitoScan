@@ -57,6 +57,7 @@ Thumbs.db
 /out
 /output
 /build-vs
+/build
 
 # Vendor
 # Block the heavy dependency folders entirely
