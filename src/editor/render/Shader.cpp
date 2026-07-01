@@ -85,6 +85,7 @@ void Shader::Use() {
 	glUseProgram(this->programID);
 }
 
+// Sets a 4x4 matrix uniform in the shader program
 void Shader::SetMat4(const String& name, const glm::mat4& mat) const {
 	glUniformMatrix4fv(
 		GetUniformLocation(name),
@@ -94,6 +95,7 @@ void Shader::SetMat4(const String& name, const glm::mat4& mat) const {
 	);
 }
 
+// Sets a 3-component vector uniform in the shader program
 void Shader::SetVec3(const String& name, const glm::vec3& vec) const {
 	glUniform3fv(
 		GetUniformLocation(name),
@@ -102,10 +104,12 @@ void Shader::SetVec3(const String& name, const glm::vec3& vec) const {
 	);
 }
 
+// Sets a float point in the shader program
 void Shader::SetFloat(const String& name, float value) const{
 	glUniform1f(GetUniformLocation(name), value);
 }
 
+// Sets a singular integer in the shader program
 void Shader::SetInt(const String& name, int value) const{
 	glUniform1i(GetUniformLocation(name), value);
 }

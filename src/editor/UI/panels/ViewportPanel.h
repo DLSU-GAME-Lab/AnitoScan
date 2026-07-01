@@ -2,6 +2,7 @@
 
 #include "../UIPanel.h"
 #include "../../render/Scene.h"
+#include "OverviewPanel.h"
 
 class ViewportPanel : public UIPanel {
 public:
@@ -9,6 +10,7 @@ public:
 	~ViewportPanel();
 
 	void Draw() override;
+	void LoadOutputModel(String outputName, String quality);
 
 	bool IsHovered();
 

@@ -32,16 +32,12 @@ void App::Initialize() {
 		std::cerr << "[ERROR]: ImGui initialization failed: " << std::endl;
 		return;
 	}
-
+	
 	//IPC - pipeline.py
 	if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc")) {
 		std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
 		return;
 	}
-	
-	this->viewportPanel = (ViewportPanel*)UIManager::GetInstance()->GetPanelByType(UIType::VIEWPORT);
-	//scene->LoadModel("data/output/GROOT_CHECK/groot.obj");	
-
 	
 	this->isRunning = true;
 	std::cout << "[DEBUG]: App is initialized and running." << std::endl;
@@ -105,20 +101,25 @@ bool App::InitializeOpenGL() {
 void App::PollBackend() {
 	std::vector<BackendMessage> messages;
 	this->ipc.Poll(messages);
-	//UIPanel* ui = UIManager::GetInstance()->GetPanelByType(UIType::SCAN_PANEL);
-	//ScanPanel* panel = static_cast<ScanPanel*>(ui);
-	OverviewPanel* overview = (OverviewPanel*)UIManager::GetInstance()->GetPanelByType(UIType::OVERVIEW);
-	LogPanel* log = (LogPanel*)UIManager::GetInstance()->GetPanelByType(UIType::LOG_PANEL);
+
+	if (messages.empty()) return;
+
+	OverviewPanel* overview = static_cast<OverviewPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::OVERVIEW));
+	LogPanel* log = static_cast<LogPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::LOG_PANEL));
+	MaskingPopup* popup = static_cast<MaskingPopup*>(UIManager::GetInstance()->GetPanelByType(UIType::MASKING_MODAL));
+	ViewportPanel* viewport = static_cast<ViewportPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::VIEWPORT));
 
 	for (BackendMessage& msg : messages) {
 		try {
 			auto j = nlohmann::json::parse(msg.raw);
 
+			// LOG
 			if (msg.type == "log") {
 				String text = j.value("text", "");
 				log->PushLog(text);
-				//panel->PushLog(text);
 			}
+
+			// INITIALIZED WORKSPACE
 			else if (msg.type == "workspace_ready") {
 				String runName = j.value("run_name", "");
 				std::cout << "[DEBUG]: workspace_ready received, run_name: '" << runName << "'" << std::endl;
@@ -126,6 +127,8 @@ void App::PollBackend() {
 					UIManager::GetInstance()->SetOutputToFileViewers(runName);
 				}
 			}
+
+			// PROGRESS UPDATE
 			else if (msg.type == "progress") {
 				float value = j.value("value", 0.0f);
 				String label = j.value("label", "");
@@ -143,39 +146,102 @@ void App::PollBackend() {
 					overview->SetPhaseProgress(overview->GetCurrentPhase(), value, label);
 				}
 			}
+
+			// MASKING POPUP
 			else if (msg.type == "action_required") { //pass the image index
-				std::string previewPath = j.value("preview", "");
-				std::string frame = j.value("frame", "");
+				String previewPath = j.value("preview", "");
+				String frame = j.value("frame", "");
 				int count = j.value("count", 0);
 				std::cout << "[DEBUG] action_required: " << previewPath << std::endl;
 
-				MaskingPopup* popup = (MaskingPopup*)UIManager::GetInstance()->GetPanelByType(UIType::MASKING_MODAL);
 				popup->ShowCandidates(previewPath, frame, count);
 			}
+			
+			// SCAN COMPLETE
 			else if (msg.type == "done") {
 				overview->SetDone();
+				String baseDir = j["data"].value("output", "");
+				String outputName = j["data"].value("run_name", "");
+				
+				viewport->LoadOutputModel(outputName, overview->GetExportQuality());
+
+				std::cout << "[DEBUG]: Scan Complete" << std::endl;
+				std::cout << "[DEBUG]: Output in: " << baseDir << std::endl;
 			}
+
+			// ERROR
 			else if (msg.type == "error") {
-				//panel->PushLog("[ERROR] " + j.value("text", "unknown error"));
 				log->PushLog("[ERROR] " + j.value("text", "unknown error"));
 			}
 		}
-		catch (const nlohmann::json::exception&){
-			//if (msg.raw.find("PROGRESS:") != std::string::npos) {
-			//	try {
-			//		int percent = std::stoi(msg.raw.substr(msg.raw.find(":") + 1));
 
-			//		float overall = (percent / 100.0f) * 0.25f;
-			//		String temp = "Phase 1: Capture " + std::to_string(percent);
-			//		overview->SetProgress(overall, temp);
-			//	}
-			//	catch (...){}
-			//}
-			////else {
-			////	//panel->PushLog("[RAW] " + msg.raw);
-			////	log->PushLog("[RAW] " + msg.raw);
-			////}
+		// RAW prints from backend
+		catch (const nlohmann::json::exception&){
+			std::cout << "[RAW]: " + msg.raw << std::endl;
  		}
+	}
+}
+
+void App::ProcessMouseEvents(SDL_Event event) {
+	ViewportPanel* viewport = static_cast<ViewportPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::VIEWPORT));
+	bool canStartOrbit = viewport && viewport->IsHovered();
+
+	//MOUSE DOWN
+	if (event.type == SDL_MOUSEBUTTONDOWN && canStartOrbit) {
+		if (event.button.button == SDL_BUTTON_LEFT) {
+			this->mouseDragging = true;
+		}
+		else if (event.button.button == SDL_BUTTON_MIDDLE) {
+			this->middleMousehold = true;
+		}
+		SDL_SetRelativeMouseMode(SDL_TRUE);
+	}
+
+	//RELEASE
+	else if (event.type == SDL_MOUSEBUTTONUP) {
+		if (event.button.button == SDL_BUTTON_LEFT) {
+			this->mouseDragging = false;
+		}
+		else if (event.button.button == SDL_BUTTON_MIDDLE) {
+			this->middleMousehold = false;
+		}
+		SDL_SetRelativeMouseMode(SDL_FALSE);
+	}
+
+	// adjust camera rotation when dragging mouse
+	else if (event.type == SDL_MOUSEMOTION && this->mouseDragging) {
+		this->scene->GetCamera().ProcessMouseDrag(
+			static_cast<float>(event.motion.xrel),
+			static_cast<float>(event.motion.yrel)
+		);
+	}
+
+	// pan camera when dragging middle mouse button
+	else if (event.type == SDL_MOUSEMOTION && this->middleMousehold) {
+		this->scene->GetCamera().ProcessPan(
+			static_cast<float>(event.motion.xrel),
+			static_cast<float>(event.motion.yrel)
+		);
+	}
+
+	// mouse wheel function
+	else if (event.type == SDL_MOUSEWHEEL && (canStartOrbit || this->mouseDragging)) {
+		this->scene->GetCamera().ProcessScroll(static_cast<float>(event.wheel.y));
+	}
+
+
+	//safety net when mouse input exits window 
+	if (event.type == SDL_WINDOWEVENT &&
+		(event.window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+			event.window.event == SDL_WINDOWEVENT_LEAVE)) {
+		mouseDragging = false;
+		SDL_SetRelativeMouseMode(SDL_FALSE);
+	}
+}
+
+void App::ProcessKeyboardEvents(SDL_Event event) {
+	if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_f) {
+		this->scene->Recenter();
 	}
 }
 
@@ -192,36 +258,8 @@ void App::Run()
 				this->isRunning = false;
 			}
 
-			bool canStartOrbit = this->viewportPanel && this->viewportPanel->IsHovered();
-			// hold mouse
-			if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT && canStartOrbit) {
-				mouseDragging = true;
-				SDL_SetRelativeMouseMode(SDL_TRUE);
-			}
-			// release mouse hold
-			else if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT) {
-				mouseDragging = false;
-				SDL_SetRelativeMouseMode(SDL_FALSE);
-			}
-			// adjust camera when dragging mouse
-			else if (event.type == SDL_MOUSEMOTION && mouseDragging) {
-				scene->GetCamera().ProcessMouseDrag(
-					static_cast<float>(event.motion.xrel),
-					static_cast<float>(event.motion.yrel)
-				);
-			}
-			// mouse wheel function
-			else if (event.type == SDL_MOUSEWHEEL && (canStartOrbit || mouseDragging)) {
-				scene->GetCamera().ProcessScroll(static_cast<float>(event.wheel.y));
-			}
-
-			//safety net
-			if (event.type == SDL_WINDOWEVENT &&
-				(event.window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
-				 event.window.event == SDL_WINDOWEVENT_LEAVE)) {
-				mouseDragging = false;
-				SDL_SetRelativeMouseMode(SDL_FALSE);
-			}
+			ProcessMouseEvents(event);
+			ProcessKeyboardEvents(event);	
 		}
 
 		// Receiver and action decoder from python backend

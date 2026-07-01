@@ -1,11 +1,11 @@
 #include "LogPanel.h"
 
-LogPanel::LogPanel(String name, IPCClient& ipc) : UIPanel(UIType::LOG_PANEL, name), ipc(ipc) {
-
-}
+LogPanel::LogPanel(String name, IPCClient& ipc) 
+	: UIPanel(UIType::LOG_PANEL, name), ipc(ipc) {}
 
 LogPanel::~LogPanel() {}
 
+// Main render loop for the log interface and processes actions
 void LogPanel::Draw() {
 	ImGui::Begin(this->name.c_str());
 
@@ -28,6 +28,8 @@ void LogPanel::Draw() {
 	ImGui::End();
 }
 
+
+// Appends a new message entry to the log collection history and trims older log entries once it reaches 500 lines
 void LogPanel::PushLog(const String& line) {
 	this->logLines.push_back(line);
 	this->scrollToBottom = true;
@@ -37,6 +39,7 @@ void LogPanel::PushLog(const String& line) {
 	}
 }
 
+// Handles custom formatting, background hover states, and input event maps for log lines
 void LogPanel::DrawLogLines() {
 	for (int i = 0; i < this->logLines.size(); i++) {
 		String line = this->logLines[i];

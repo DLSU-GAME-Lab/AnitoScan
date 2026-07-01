@@ -15,6 +15,7 @@
 #include "panels/LogPanel.h"
 #include "panels/MaskingPopup.h"
 #include "panels/ViewportPanel.h"
+#include "panels/InputWindow.h"
 
 #include "../IPCClient.h"
 #include "../render/Scene.h"
@@ -29,6 +30,7 @@ public:
 	void EndFrame();
 	UIPanel* GetPanelByName(String name);
 	UIPanel* GetPanelByType(UIType type);
+	void OpenUI(UIType type);
 	void Shutdown();
 	void SetOutputToFileViewers(std::filesystem::path output);
 

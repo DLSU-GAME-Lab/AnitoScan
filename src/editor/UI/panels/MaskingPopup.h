@@ -23,7 +23,7 @@ private:
 
 private:
 	IPCClient& ipc;
-	bool showPopup, isWaiting;
+	bool showPopup;
 	GLuint previewTexture;
 	String lastPreviewPath;
 	int previewW = 0, previewH = 0;

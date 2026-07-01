@@ -2,6 +2,7 @@
 
 UIManager* UIManager::sharedInstance = nullptr;
 
+// Creates and initializes ImGui context
 bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClient& ipc, Scene& scene) {
 	sharedInstance = new UIManager();
 
@@ -32,7 +33,7 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClien
 	return true;
 }
 
-// create and register the UI Panels
+// Create and register the UI Panels
 void UIManager::CreateUIPanels(IPCClient& ipc, Scene& scene) {
 	DockSpace* dockSpace = new DockSpace("DockSpace");
 	this->uiList.push_back(dockSpace);
@@ -65,7 +66,10 @@ void UIManager::CreateUIPanels(IPCClient& ipc, Scene& scene) {
 	ViewportPanel* viewport = new ViewportPanel("Model Viewer", scene);
 	this->uiList.push_back(viewport);
 	this->uiMap[viewport->GetName()] = viewport;
-	
+
+	InputWindow* input = new InputWindow("Input Window");
+	this->uiList.push_back(input);
+	this->uiMap[input->GetName()] = input;
 }
 
 UIManager* UIManager::GetInstance() {
@@ -76,14 +80,14 @@ UIManager::UIManager() {}
 	
 UIManager::~UIManager() {}
 
-// new frame
+// Initiates frame loops
 void UIManager::BeginNewFrame() {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplSDL2_NewFrame();
 	ImGui::NewFrame();
 }
 
-// draw
+// Iterates through the layout list and fires Draw calls for every active panel layer
 void UIManager::DrawAllUIs() {
 	for (UIPanel* panel : this->uiList) {
 		if(panel->IsActive())
@@ -91,7 +95,7 @@ void UIManager::DrawAllUIs() {
 	}
 }
 
-// render
+// Dispatches instructions down to the OpenGL renderer
 void UIManager::EndFrame() {
 	ImGui::Render();
 	ImGuiIO& io = ImGui::GetIO();
@@ -100,18 +104,12 @@ void UIManager::EndFrame() {
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
-
+// Returns registered UIPanel according to its name from the map attribute
 UIPanel* UIManager::GetPanelByName(String name) {
-	UIPanel* ret = nullptr;
-	for (UIPanel* panel : this->uiList) {
-		if (panel->GetName() == name) {
-			ret = panel;
-			break;
-		}
-	}
-	return ret;
+	return this->uiMap[name];
 }
 
+// Returns registered UIPanel according to its type
 UIPanel* UIManager::GetPanelByType(UIType type) {
 	UIPanel* ret = nullptr;
 	for (UIPanel* panel : this->uiList) {
@@ -121,6 +119,11 @@ UIPanel* UIManager::GetPanelByType(UIType type) {
 		}
 	}
 	return ret;
+}
+
+// Searches for the UIPanel by its type and activates it
+void UIManager::OpenUI(UIType type) {
+	GetPanelByType(type)->SetActive(true);
 }
 
 // Clean up

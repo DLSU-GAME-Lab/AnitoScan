@@ -15,7 +15,7 @@ void main() {
     float diff = max(dot(norm, normalize(-lightDir)), 0.0);
 
     vec3 baseColor = (hasTexture == 1) ? texture(diffuseTexture, TexCoords).rgb : objectColor;
-    vec3 result = (0.2 + diff * 0.8) * baseColor;
+    vec3 result = (0.4 + diff * 0.8) * baseColor;
 
     FragColor = vec4(result, 1.0);
 }

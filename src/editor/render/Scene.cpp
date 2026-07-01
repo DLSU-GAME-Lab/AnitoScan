@@ -4,8 +4,7 @@
 #include <iostream>
 
 // Initializes the scene with a default camera position  and creates the default shader used for rendering.
-Scene::Scene() 
-	: camera(glm::vec3(0.0f, 0.0f, 3.0f), 5.0f) {
+Scene::Scene() : camera(glm::vec3(0.0f, 0.0f, 3.0f), 5.0f) {
 	shader = std::make_unique<Shader>("shaders/default.vert", "shaders/default.frag");
 }
 
@@ -14,22 +13,31 @@ Scene::~Scene() {}
 // Loads a 3D model from file and adjustments on camera
 void Scene::LoadModel(const String& objPath) {
 	model = std::make_unique<Model>(objPath);
+	Recenter();
+}
 
-	glm::vec3 center = model->GetBoundsCenter();
+// Recalculates camera distance and target orientation based on the active model's bounds.
+void Scene::Recenter() {
+	if (!model) return;
+
+	glm::vec3 center = model->GetCentroid();
 	float radius = model->GetBoundsRadius();
 
 	float fovRadians = glm::radians(45.0f);
 	float distance = (radius / std::sin(fovRadians * 0.5f)) * 1.5f;
-
+	
 	camera.SetTarget(center);
 	camera.SetDistance(distance);
 
-	std::cout << "[Scene] Framed camera: target(" << center.x << ", " << center.y << ", " << center.z
+	std::cout << "[Scene] Recentered camera: target(" << center.x << ", " << center.y << ", " << center.z
 		<< ") distance(" << distance << ")\n";
 }
 
+// Updates scene transformations, step logics, and animations over time
 void Scene::Update(float deltaTime) {}
 
+
+// Deletes OpenGL color textures, depth renderbuffers, and framebuffers to clear memory
 void Scene::DestroyFramebuffer() {
 	if (colorTexture) glDeleteTextures(1, &colorTexture);
 	if (depthRenderbuffer) glDeleteRenderbuffers(1, &depthRenderbuffer);
@@ -38,6 +46,7 @@ void Scene::DestroyFramebuffer() {
 	fboWidth = fboHeight = 0;
 }
 
+// Verifies and instantiates an OpenGL Framebuffer Object matched to the target dimensions
 void Scene::EnsureFramebuffer(int width, int height) {
 	if (fbo != 0 && width == fboWidth && height == fboHeight) {
 		return;
@@ -73,6 +82,8 @@ void Scene::EnsureFramebuffer(int width, int height) {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+
+// Binds the custom framebuffer, applies matrix uniforms, and draws the 3D geometry
 void Scene::Render(int width, int height) {
 	if (width <= 0 || height <= 0) return;
 
@@ -108,14 +119,17 @@ void Scene::Render(int width, int height) {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+// Returns the internal OpenGL color texture attachment handle
 GLuint Scene::GetColorTexture() {
 	return this->colorTexture;
 }
 
+// Returns a reference to the scene viewport camera
 Camera& Scene::GetCamera() {
 	return this->camera;
 }
 
+// Returns a raw pointer to the currently loaded 3D asset model
 Model* Scene::GetModel() {
 	return this->model.get();
 }

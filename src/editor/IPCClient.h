@@ -36,9 +36,4 @@ private:
 	std::atomic<bool> running;
 	std::mutex mutex;
 	std::queue<BackendMessage> qMessages;
-
-	
-
-
-
 };

@@ -86,6 +86,7 @@ add_executable(${PROJECT_NAME}
     src/editor/UI/panels/LogPanel.cpp
     src/editor/UI/panels/MaskingPopup.cpp
     src/editor/UI/panels/ViewportPanel.cpp
+    src/editor/UI/panels/InputWindow.cpp
 
     src/editor/render/Shader.cpp
     src/editor/render/Mesh.cpp

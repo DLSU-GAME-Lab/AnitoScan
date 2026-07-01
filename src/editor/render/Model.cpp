@@ -28,12 +28,17 @@ namespace {
 	};
 }
 
+// Calls the file loading and parsing system for a specified .obj file asset
 Model::Model(const String& objPath) {
 	LoadOBJ(objPath);
 }
 
 Model::~Model() {}
 
+
+// Parses a 3D Wavefront(.obj) file from disk using tiny_obj_loader.
+// Extracts positions, normals, and UV layouts, de - duplicates vertex arrays per material group,
+// instantiates individual sub - meshes, and computes the master bounding box and centroid space.
 void Model::LoadOBJ(const String& objPath) {
 	size_t slash = objPath.find_last_of("/\\");
 	this->directory = (slash == std::string::npos) ? "." : objPath.substr(0, slash);
@@ -132,8 +137,33 @@ void Model::LoadOBJ(const String& objPath) {
 	}
 
 	std::cout << "Loaded (" << objPath << ") size: " << meshes.size() << std::endl;
+
+
+
+	//bounding box
+	glm::vec3 boundsMin(FLT_MAX), boundsMaxLocal(-FLT_MAX);
+	glm::dvec3 sum(0.0);
+	size_t vertCount = attrib.vertices.size() / 3;
+	for (size_t i = 0; i < attrib.vertices.size(); i += 3) {
+		glm::vec3 v(attrib.vertices[i], attrib.vertices[i + 1], attrib.vertices[i + 2]);
+		boundsMin = glm::min(boundsMin, v);
+		boundsMaxLocal = glm::max(boundsMaxLocal, v);
+		sum += glm::dvec3(v);
+	}
+
+	this->boundsMin = boundsMin;
+	this->boundsMax = boundsMaxLocal;
+	this->GetCentroid() = vertCount > 0 ? glm::vec3(sum / static_cast<double>(vertCount)) : glm::vec3(0.0f);
+
+	//std::cout << "[Model] Bounding box min(" << boundsMin.x << ", " << boundsMin.y << ", " << boundsMin.z
+	//	<< ") max(" << boundsMaxLocal.x << ", " << boundsMaxLocal.y << ", " << boundsMaxLocal.z << ")\n";
+	//std::cout << "[Model] Centroid (" << center.x << ", " << center.y << ", " << center.z << ")\n";
 }
 
+
+// Decodes and generates an OpenGL texture 2D map from an asset image file.
+// Checks the texture lookup cache to prevent redundant uploads, loads file bytes via stb_image,
+// configures mipmaps, and flags standard clamping / filtering formats.
 GLuint Model::LoadTexture(const String& filename) {
 	auto cached = this->textureCache.find(filename);
 	if (cached != this->textureCache.end())
@@ -175,36 +205,49 @@ glm::mat4 Model::GetModelMatrix() const {
 	return m;
 }
 
+// Iterates through and renders all child mesh fragments bound to this model instance
 void Model::Draw(const Shader& shader) const {
 	for (const auto& mesh : this->meshes) {
 		mesh.Draw(shader);
 	}
 }
 
+// Sets the 3D translation coordinates of the model
 void Model::SetPosition(glm::vec3 position) {
 	this->position = position;
 }
 
+// Sets the local orientation of the model using Euler angles
 void Model::SetRotation(glm::vec3 euler) {
 	this->rotation = euler;
 }
 
+// Sets the local scale multipliers of the model
 void Model::SetScale(glm::vec3 scale) {
 	this->scale = scale;
 }
 
+// Returns the model's current local position vector
 glm::vec3 Model::GetPosition() {
 	return this->position;
 }
 
+// Returns the total number of sub-meshes making up this 3D asset
 size_t Model::GetMeshCount() {
 	return this->meshes.size();
 }
 
+// Computes the geometric middle point of the model's minimum and maximum boundaries
 glm::vec3 Model::GetBoundsCenter() {
 	return (this->boundsMin + this->boundsMax) * 0.5f;
 }
 
+// Calculates the bounding sphere radius that completely encapsulates the asset
 float Model::GetBoundsRadius() {
 	return glm::length(this->boundsMax - this->boundsMin) * 0.5f;
+}
+
+// Returns the pre-calculated vertex average centroid point of the mesh
+glm::vec3 Model::GetCentroid() {
+	return this->centroid;
 }
