@@ -1,11 +1,11 @@
 #include "DockSpace.h"
 
-DockSpace::DockSpace(String name) : UIPanel(UIType::DOCKSPACE, name) {
-
-}
+DockSpace::DockSpace(String name) 
+	: UIPanel(UIType::DOCKSPACE, name) {}
 
 DockSpace::~DockSpace() {}
 
+// Configures and renders the primary application docking surface
 void DockSpace::Draw() {
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(viewport->WorkPos);

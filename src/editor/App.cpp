@@ -113,10 +113,13 @@ void App::PollBackend() {
 		try {
 			auto j = nlohmann::json::parse(msg.raw);
 
+			// LOG
 			if (msg.type == "log") {
 				String text = j.value("text", "");
 				log->PushLog(text);
 			}
+
+			// INITIALIZED WORKSPACE
 			else if (msg.type == "workspace_ready") {
 				String runName = j.value("run_name", "");
 				std::cout << "[DEBUG]: workspace_ready received, run_name: '" << runName << "'" << std::endl;
@@ -124,6 +127,8 @@ void App::PollBackend() {
 					UIManager::GetInstance()->SetOutputToFileViewers(runName);
 				}
 			}
+
+			// PROGRESS UPDATE
 			else if (msg.type == "progress") {
 				float value = j.value("value", 0.0f);
 				String label = j.value("label", "");
@@ -141,6 +146,8 @@ void App::PollBackend() {
 					overview->SetPhaseProgress(overview->GetCurrentPhase(), value, label);
 				}
 			}
+
+			// MASKING POPUP
 			else if (msg.type == "action_required") { //pass the image index
 				String previewPath = j.value("preview", "");
 				String frame = j.value("frame", "");
@@ -149,6 +156,8 @@ void App::PollBackend() {
 
 				popup->ShowCandidates(previewPath, frame, count);
 			}
+			
+			// SCAN COMPLETE
 			else if (msg.type == "done") {
 				overview->SetDone();
 				String baseDir = j["data"].value("output", "");
@@ -159,10 +168,14 @@ void App::PollBackend() {
 				std::cout << "[DEBUG]: Scan Complete" << std::endl;
 				std::cout << "[DEBUG]: Output in: " << baseDir << std::endl;
 			}
+
+			// ERROR
 			else if (msg.type == "error") {
 				log->PushLog("[ERROR] " + j.value("text", "unknown error"));
 			}
 		}
+
+		// RAW prints from backend
 		catch (const nlohmann::json::exception&){
 			std::cout << "[RAW]: " + msg.raw << std::endl;
  		}
@@ -172,6 +185,8 @@ void App::PollBackend() {
 void App::ProcessMouseEvents(SDL_Event event) {
 	ViewportPanel* viewport = static_cast<ViewportPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::VIEWPORT));
 	bool canStartOrbit = viewport && viewport->IsHovered();
+
+	//MOUSE DOWN
 	if (event.type == SDL_MOUSEBUTTONDOWN && canStartOrbit) {
 		if (event.button.button == SDL_BUTTON_LEFT) {
 			this->mouseDragging = true;
@@ -182,6 +197,7 @@ void App::ProcessMouseEvents(SDL_Event event) {
 		SDL_SetRelativeMouseMode(SDL_TRUE);
 	}
 
+	//RELEASE
 	else if (event.type == SDL_MOUSEBUTTONUP) {
 		if (event.button.button == SDL_BUTTON_LEFT) {
 			this->mouseDragging = false;

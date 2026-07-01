@@ -1,8 +1,7 @@
 #include "ViewportPanel.h"
 
 ViewportPanel::ViewportPanel(String name, Scene& scene) 
-	: UIPanel(UIType::VIEWPORT, name), scene(scene) {
-}
+	: UIPanel(UIType::VIEWPORT, name), scene(scene) {}
 
 ViewportPanel::~ViewportPanel() {}
 
@@ -32,6 +31,7 @@ void ViewportPanel::Draw() {
     ImGui::PopStyleVar();
 }
 
+// Loads the scanned model to viewport
 void ViewportPanel::LoadOutputModel(String outputName, String quality) {
     String modelPath = "data/output/" + outputName + "/" + outputName + "_" + quality + ".obj";
     this->scene.LoadModel(modelPath);

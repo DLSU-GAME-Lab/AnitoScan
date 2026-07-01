@@ -1,6 +1,8 @@
 #include "MaskingPopup.h"
 
-MaskingPopup::MaskingPopup(String name, IPCClient& ipc) : UIPanel(UIType::MASKING_MODAL, name, false), ipc(ipc) {
+//Initializes the popup's UI properties, default preview texture states, and binds the IPC client reference
+MaskingPopup::MaskingPopup(String name, IPCClient& ipc) 
+    : UIPanel(UIType::MASKING_MODAL, name, false), ipc(ipc) {
 	this->lastPreviewPath = "";
 	this->previewTexture = NULL;
 	this->showPopup = activeSelf;
@@ -8,6 +10,8 @@ MaskingPopup::MaskingPopup(String name, IPCClient& ipc) : UIPanel(UIType::MASKIN
 
 MaskingPopup::~MaskingPopup() {}
 
+
+// Handles the core rendering loop for the popup modal and draws the image preview alongside its action buttons.
 void MaskingPopup::Draw() {
     if (this->showPopup) {
         ImGui::OpenPopup(this->GetName().c_str());
@@ -46,7 +50,8 @@ void MaskingPopup::Draw() {
     }
 }
 
-
+// Prepares and activates the popup to display a specfic image. 
+// Flags the UI to open and loads the target preview image
 void MaskingPopup::ShowCandidates(String previewPath, String frame, int count) {
 	this->count = count;
 	this->frame = frame;
@@ -55,11 +60,13 @@ void MaskingPopup::ShowCandidates(String previewPath, String frame, int count) {
 	LoadPreview(previewPath);
 }
 
+// Activates the popup window
 void MaskingPopup::ShowPopup() {
 	this->activeSelf = true;
 	this->showPopup = true;
 }
 
+// Loads the image to be examined via stb_image, configures GL filters, and binds texture ID for ImGui rendering
 void MaskingPopup::LoadPreview(const String& path) {
 	if (path == this->lastPreviewPath) return;
 	ClearPreview();
@@ -81,6 +88,7 @@ void MaskingPopup::LoadPreview(const String& path) {
 	this->lastPreviewPath = path;
 }
 
+// Preview cleanup
 void MaskingPopup::ClearPreview() {
     if (this->previewTexture) {
         glDeleteTextures(1, &this->previewTexture);
@@ -90,7 +98,7 @@ void MaskingPopup::ClearPreview() {
     this->lastPreviewPath.clear();
 }
 
-
+// Renders the loaded texture and handles mouse wheel zoom and left-drag panning interactions
 void MaskingPopup::DisplayPreview() {
     ImVec2 availSize = ImVec2(960, 540);
     float aspect = (float)this->previewH / (float)this->previewW;
@@ -140,6 +148,7 @@ void MaskingPopup::DisplayPreview() {
     ImGui::TextDisabled("(scroll to zoom, drag to pan)");
 }
 
+// Renders a dynamic row of numbered selection buttons for candidates and sends a response over the IPC
 void MaskingPopup::DisplayCandidatesButton() {
     for (int i = 0; i < this->count; i++) {
         String label = "  " + std::to_string(i) + "  ";
@@ -154,6 +163,7 @@ void MaskingPopup::DisplayCandidatesButton() {
     }
 }
 
+// Renders a skip button for the candidate selection and broadcasts it over IPC
 void MaskingPopup::DisplaySkipButton() {
     if (ImGui::Button("Skip", ImVec2(60, 36))) {
         nlohmann::json response;

@@ -80,14 +80,14 @@ UIManager::UIManager() {}
 	
 UIManager::~UIManager() {}
 
-// new frame
+// Initiates frame loops
 void UIManager::BeginNewFrame() {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplSDL2_NewFrame();
 	ImGui::NewFrame();
 }
 
-// draw
+// Iterates through the layout list and fires Draw calls for every active panel layer
 void UIManager::DrawAllUIs() {
 	for (UIPanel* panel : this->uiList) {
 		if(panel->IsActive())
@@ -95,7 +95,7 @@ void UIManager::DrawAllUIs() {
 	}
 }
 
-// render
+// Dispatches instructions down to the OpenGL renderer
 void UIManager::EndFrame() {
 	ImGui::Render();
 	ImGuiIO& io = ImGui::GetIO();
@@ -104,11 +104,12 @@ void UIManager::EndFrame() {
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
-
+// Returns registered UIPanel according to its name from the map attribute
 UIPanel* UIManager::GetPanelByName(String name) {
 	return this->uiMap[name];
 }
 
+// Returns registered UIPanel according to its type
 UIPanel* UIManager::GetPanelByType(UIType type) {
 	UIPanel* ret = nullptr;
 	for (UIPanel* panel : this->uiList) {
@@ -120,6 +121,7 @@ UIPanel* UIManager::GetPanelByType(UIType type) {
 	return ret;
 }
 
+// Searches for the UIPanel by its type and activates it
 void UIManager::OpenUI(UIType type) {
 	GetPanelByType(type)->SetActive(true);
 }

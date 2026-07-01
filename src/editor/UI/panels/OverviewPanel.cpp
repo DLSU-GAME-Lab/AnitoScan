@@ -5,6 +5,7 @@ OverviewPanel::OverviewPanel(String name, IPCClient& ipc)
 
 OverviewPanel::~OverviewPanel() {}
 
+// Sets the progress value of a phase
 void OverviewPanel::SetPhaseProgress(Phase phase, float value, const String& label) {
 	int i = (int)phase;
 	if (i < 0 || i >= (int)Phase::COUNT) return;
@@ -16,6 +17,7 @@ void OverviewPanel::SetPhaseProgress(Phase phase, float value, const String& lab
 	//std::cout << "Output: " << this->phases[i].progress << std::endl;
 }
 
+// Sets a phase to complete
 void OverviewPanel::SetPhaseComplete(Phase phase) {
 	int i = (int)phase;
 	if (i < 0 || i >= (int)Phase::COUNT) return;
@@ -25,6 +27,7 @@ void OverviewPanel::SetPhaseComplete(Phase phase) {
 	this->phases[i].label = "Complete";
 }
 
+// Sets the overall progress to complete
 void OverviewPanel::SetDone() {
 	for (auto& p : phases) {
 		p.progress = 1.0f;
@@ -39,6 +42,7 @@ void OverviewPanel::SetScanning(bool scanning) {
 	this->isScanning = scanning;
 }
 
+// Sets the necessary input values to be passed to the backend
 void OverviewPanel::SetInput(String input, String output, int minFrames, String quality) {
 	this->inputFile = input;
 	this->outputFolder = output;
@@ -55,6 +59,7 @@ Phase OverviewPanel::GetCurrentPhase() {
 	return this->currentPhase;
 }
 
+// Displays input values and accesses input window
 void OverviewPanel::DrawInputSection() {
 	InputWindow* input = static_cast<InputWindow*>(UIManager::GetInstance()->GetPanelByType(UIType::INPUT));
 
@@ -92,6 +97,8 @@ void OverviewPanel::DrawInputSection() {
 
 // upper section of the overview panel
 void OverviewPanel::DrawActions() {
+
+	// RUN PIPELINE
 	ImGui::BeginDisabled(!this->isScanning && !inputReady);
 	if (ImGui::Button("Run Pipeline")) {
 		this->isScanning = true;
@@ -110,15 +117,12 @@ void OverviewPanel::DrawActions() {
 		std::cout << "[DEBUG]: Output folder: " << this->outputFolder << std::endl;
 		std::cout << "[DEBUG]: Input file: " << this->inputFile << std::endl;
 	}
-
-
 	ImGui::EndDisabled();
-
 	ImGui::SameLine();
 
+
+	// CANCEL
 	ImGui::BeginDisabled(!this->isScanning);
-
-
 	//TODO: implement cancellation option on every phase once pipeline.py is connected
 	// cancel button is not working properly atm
 	if (ImGui::Button("Cancel")) {
@@ -132,16 +136,15 @@ void OverviewPanel::DrawActions() {
 	ImGui::Spacing();
 }
 
-// overall progress bar
+// Displays the overall progress bar
 void OverviewPanel::DrawOverallProgress() {
 	float overall = CalculateOverallProgress();
 	ImGui::SeparatorText("Overall Progress");
 	ImGui::ProgressBar(overall, ImVec2(-1, 20));
-//	ImGui::Text("%.0f%%", overall * 100.0f);
 }
 
 
-// progress bars for each phase
+// Displays and updates the progress bars for each phase
 void OverviewPanel::DrawPhaseBreakdown() {
 	const char* phaseNames[]{
 		"Phase 1: Capture",
@@ -181,6 +184,7 @@ void OverviewPanel::DrawPhaseBreakdown() {
 	}
 }
 
+// Compute for the overall progress based on the progress of each phase
 float OverviewPanel::CalculateOverallProgress() {
 	float total = 0.0f;
 	int partial = (int)Phase::COUNT;
@@ -189,7 +193,6 @@ float OverviewPanel::CalculateOverallProgress() {
 	}
 	return total;
 }
-
 
 
 // MAIN DRAW

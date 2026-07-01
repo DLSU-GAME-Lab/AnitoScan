@@ -1,6 +1,9 @@
 #include "InputWindow.h"
 #include "OverviewPanel.h"
 
+
+// Initializes active state and Sets the target directory of the ImGui file browser
+// Filters access to .mp4 and .MOV files only
 InputWindow::InputWindow(String name) : UIPanel(UIType::INPUT, name, false) {
     this->show = this->activeSelf;
     this->fileDialog.SetTypeFilters({ ".mp4", ".MOV" });
@@ -11,6 +14,8 @@ InputWindow::InputWindow(String name) : UIPanel(UIType::INPUT, name, false) {
 
 InputWindow::~InputWindow() {}
 
+// Renders the input window and binds the necessary input values (input file, folder name, minimum frames, quality)
+// before sending it over to the overview panel
 void InputWindow::Draw() {
     if (this->show) {
         ImGui::OpenPopup(this->GetName().c_str());        
@@ -127,18 +132,22 @@ void InputWindow::Draw() {
     }
 };
     
+
+// Activates the window visibility flags
 void InputWindow::ShowWindow() {
     this->activeSelf = true;
     this->show = true;
 }
 
+
+// Generates dynamic numerical values for the frame selection dropdown list 
 void InputWindow::InitializeDropDown() {
     //for (const char* ptr : this->items) {
     //    free((void*)ptr);
     //}
     //this->items.clear();
 
-    int gap = 20;
+    int gap = 10;
     std::vector<String> tempItems;
 
     int min = this->minOption;
@@ -149,6 +158,7 @@ void InputWindow::InitializeDropDown() {
     }
 }
 
+// Helper function for validating the input for the output folder name
 bool InputWindow::ValidateFolderName(String name, String& outErrorMsg) {
     if (name.empty() || name[0] == '\0') {
         outErrorMsg = "Folder name cannot be empty.";
@@ -158,7 +168,7 @@ bool InputWindow::ValidateFolderName(String name, String& outErrorMsg) {
     const char* checkFor[] = { "<", ">", ":", "/", "\\", "|", "?", "*" };
     for (const char* c : checkFor) {
         if (name.find(c) != std::string::npos) {
-            outErrorMsg = "Must not contain '" + String(c) + "' character";
+            outErrorMsg = "Must not contain '" + String(c) + "' character.";
             return false;
         }
     }

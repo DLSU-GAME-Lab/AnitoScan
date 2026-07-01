@@ -57,6 +57,8 @@ void Camera::ProcessScroll(float delta) {
 	distance = std::clamp(distance, minDistance, maxDistance);
 }
 
+// Transforms the horizontal and vertical pixel deltas into the camera's local 
+// right and up vector workspace, scaling the movement speed based on view distance
 void Camera::ProcessPan(float dx, float dy) {
 	glm::vec3 localRight = orientation * glm::vec3(1.0f, 0.0f, 0.0f);
 	glm::vec3 localUp = orientation * glm::vec3(0.0f, 1.0f, 0.0f);
@@ -66,10 +68,12 @@ void Camera::ProcessPan(float dx, float dy) {
 	target += (-dx * localRight + dy * localUp) * scale;
 }
 
+// Sets the 3D focal coordinates that the camera looks at
 void Camera::SetTarget(glm::vec3 target) {
 	this->target = target;
 }
 
+// Sets the orbit radius distance from the focal target, clamped to prevent inversion
 void Camera::SetDistance(float distance) {
 	this->distance = std::max(distance, 0.01f);
 }

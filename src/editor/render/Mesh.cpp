@@ -95,9 +95,12 @@ void Mesh::Draw(const Shader& shader) const {
 	glBindVertexArray(0);
 }
 
+// Returns the vertices count of the mesh
 size_t Mesh::GetVertexCount() {
 	return this->vertices.size();
 }
+
+// Returns the indices count of the mesh
 size_t Mesh::GetIndexCount() {
 	return this->indices.size();
 }
