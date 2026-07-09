@@ -269,6 +269,9 @@ def run_remove_background(
                 label=f"Processing frame {current_frame_number} of {total_frames}",
                 phase=2
             )
+        else:
+            sys.stdout.write(f"\r[*] Processed {i + 1}/{total_frames} frames")
+            #sys.stdout.flush()
 
         img = cv2.imread(str(img_path))
         if img is None:
@@ -373,8 +376,7 @@ def run_remove_background(
             cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
             prev_box = None  # Tear down tracking anchor path if extraction completely drops
 
-        sys.stdout.write(f"\r[*] Processed {i + 1}/{total_frames} frames")
-        sys.stdout.flush()
+        
 
     total_time = time.perf_counter() - start_perf
     processing_time = total_time - total_user_time

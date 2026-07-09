@@ -33,6 +33,7 @@ public:
 	void OpenUI(UIType type);
 	void Shutdown();
 	void SetOutputToFileViewers(std::filesystem::path output);
+	void ClearOutputFromFileViewers();
 
 private:
 	void CreateUIPanels(IPCClient& ipc, Scene& scene);

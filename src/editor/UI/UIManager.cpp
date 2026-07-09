@@ -148,3 +148,12 @@ void UIManager::SetOutputToFileViewers(std::filesystem::path output) {
 		}
 	}
 }
+
+void UIManager::ClearOutputFromFileViewers() {
+	for (UIPanel* panel : this->uiList) {
+		if (panel->GetType() == UIType::FILE_VIEWER) {
+			FileViewer* temp = static_cast<FileViewer*>(panel);
+			temp->ClearOutputFolder();
+		}
+	}
+}

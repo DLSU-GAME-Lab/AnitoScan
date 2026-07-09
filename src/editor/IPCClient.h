@@ -31,9 +31,11 @@ private:
 	HANDLE hProcess;
 	HANDLE hStdin;
 	HANDLE hStdout;
+	HANDLE hJob = nullptr;
 
 	std::thread thread;
 	std::atomic<bool> running;
 	std::mutex mutex;
 	std::queue<BackendMessage> qMessages;
+
 };

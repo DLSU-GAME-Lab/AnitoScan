@@ -71,10 +71,20 @@ def run_bundle_adjustment(image_dir: Path, output_dir: Path):
 
     # PyCOLMAP returns a dictionary in newer versions, where the largest map is usually key 0
     # or it returns a list. We will safely grab the first/largest one.
-    best_map_key = list(maps.keys())[0] if isinstance(maps, dict) else 0
-    best_map = maps[best_map_key]
+    
+    # status_update(f"Bundle Adjustment complete. Registered {len(best_map.images)} cameras.")
+    map_values = list(maps.values()) if isinstance(maps, dict) else list(maps)
+    best_map = max(map_values, key=lambda m: len(m.images))
 
     status_update(f"Bundle Adjustment complete. Registered {len(best_map.images)} cameras.")
+
+    total_input_images = len(list(image_dir.glob("*")))
+    if len(best_map.images) < max(3, 0.5 * total_input_images):
+        status_error(
+            f"Bundle Adjustment only registered {len(best_map.images)}/{total_input_images} images "
+            "in the largest reconstructed map. Scene may lack sufficient overlap/texture."
+        )   
+        sys.exit(1)
 
     # Export to the raw text format 2DGS expects
     best_map.write_text(str(output_dir))

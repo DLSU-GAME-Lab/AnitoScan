@@ -162,6 +162,12 @@ void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 
 }
 
+void FileViewer::ClearOutputFolder() {
+	this->output.clear();
+	this->hasRootFolder = false;
+	this->fileDialog.SetPwd(std::filesystem::current_path());
+}
+
 // Controls whether the file dialog should continuously trigger directory polling updates inside the frame loop
 void FileViewer::ToggleRefresh(bool isRefreshing) {
 	this->isRefreshing = isRefreshing;

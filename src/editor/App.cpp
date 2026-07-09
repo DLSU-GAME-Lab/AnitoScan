@@ -177,7 +177,8 @@ void App::PollBackend() {
 
 		// RAW prints from backend
 		catch (const nlohmann::json::exception&){
-			std::cout << "[RAW]: " + msg.raw << std::endl;
+			//std::cout << "[RAW]: " + msg.raw << std::endl;
+			log->PushLog(msg.raw);
  		}
 	}
 }

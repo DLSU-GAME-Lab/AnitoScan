@@ -41,6 +41,12 @@ bool IPCClient::Start(const String& pythonExe, const String& scriptPath) {
 	si.hStdError = stdoutWrite;
 
 	PROCESS_INFORMATION pi{};
+
+	this->hJob = CreateJobObjectA(nullptr, nullptr);
+	JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli{};
+	jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+	SetInformationJobObject(this->hJob, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli));
+
 	BOOL ok = CreateProcessA(
 		nullptr, cmdBuf.data(),
 		nullptr, nullptr,
@@ -49,6 +55,8 @@ bool IPCClient::Start(const String& pythonExe, const String& scriptPath) {
 		nullptr, nullptr,
 		&si, &pi
 	);
+
+	AssignProcessToJobObject(this->hJob, pi.hProcess);
 
 	CloseHandle(stdinRead);
 	CloseHandle(stdoutWrite);
@@ -126,8 +134,17 @@ void IPCClient::RenderThread() {
 	this->running = false;
 }
 
-// Closes pipes and terminates all handles
 void IPCClient::Shutdown() {
+	if (this->hJob) {
+		TerminateJobObject(this->hJob, 0);
+		CloseHandle(this->hJob);
+		this->hJob = nullptr;
+	}
+
+	if (this->hProcess != INVALID_HANDLE_VALUE) {
+		TerminateProcess(this->hProcess, 0);
+	}
+
 	if (this->hStdin != INVALID_HANDLE_VALUE) {
 		CloseHandle(this->hStdin);
 		this->hStdin = INVALID_HANDLE_VALUE;
@@ -138,10 +155,9 @@ void IPCClient::Shutdown() {
 	}
 
 	if (this->hProcess != INVALID_HANDLE_VALUE) {
-		TerminateProcess(this->hProcess, 0);
 		CloseHandle(this->hProcess);
 		this->hProcess = INVALID_HANDLE_VALUE;
-;	}
+	}
 
 	if (this->hStdout != INVALID_HANDLE_VALUE) {
 		CloseHandle(this->hStdout);
