@@ -185,10 +185,9 @@ void OverviewPanel::DrawPhaseBreakdown() {
 		else {
 			if (!p.label.empty())
 				ImGui::TextDisabled("[    ] %s", phaseNames[i]);
-			//barColor = UIColor::
 		}
 
-		UpdateImGuiProgressBar(p.progress, ImVec2(-1, 12), barColor);
+		UpdateImGuiProgressBar(p.progress, ImVec2(-1, 12), barColor);	
 
 		if(p.active || p.completed) {
 			ImGui::TextDisabled("  %s", p.label.c_str());

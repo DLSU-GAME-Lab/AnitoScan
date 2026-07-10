@@ -29,6 +29,10 @@ public:
 	glm::vec3 GetCentroid();
 
 private:
+	void LoadOBJ(const String& path);
+	GLuint LoadTexture(const String& filename);
+
+private:
 	std::vector<Mesh> meshes;
 	glm::vec3 position{ 0.0f };
 	glm::vec3 rotation{ 0.0f };
@@ -39,8 +43,5 @@ private:
 	glm::vec3 centroid{ 0.0f };
 
 	String directory;
-	void LoadOBJ(const String& path);
-	GLuint LoadTexture(const String& filename);
-
 	std::unordered_map<String, GLuint> textureCache;
 };

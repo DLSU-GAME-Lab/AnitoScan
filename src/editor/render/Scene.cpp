@@ -106,8 +106,9 @@ void Scene::Render(int width, int height) {
 		shader->SetMat4("projection", proj);
 		shader->SetMat4("model", modelMat);
 		shader->SetVec3("lightDir", lightDir);
+		shader->SetFloat("ambientStrength", ambientStrength);
 		shader->SetVec3("objectColor", objectColor);
-
+		shader->SetInt("colorMode", colorMode);
 		model->Draw(*shader);
 	}
 
