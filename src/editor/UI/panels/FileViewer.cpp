@@ -150,7 +150,10 @@ void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 		case Phase::SPATIAL: temp = "03_spatial"; break;
 	}
 
-	std::filesystem::path fullPath = std::filesystem::current_path() / "data" / "runs" / this->output / temp;
+	//std::filesystem::path fullPath = std::filesystem::current_path() / "data" / "runs" / this->output / temp;
+
+	std::filesystem::path projectRoot(PROJECT_ROOT_DIR);
+	std::filesystem::path fullPath = projectRoot / "data" / "runs" / this->output / temp;
 
 	std::error_code ec;
 	if (!std::filesystem::exists(fullPath, ec)) {

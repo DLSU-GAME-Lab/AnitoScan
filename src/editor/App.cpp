@@ -34,9 +34,31 @@ void App::Initialize() {
 	}
 	
 	//IPC - pipeline.py
-	if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc")) {
-		std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
-		return;
+	//if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc")) {
+	//	std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
+	//	return;
+	//}
+
+	// 1. Get the true project root folder from your CMake macro
+	std::filesystem::path projectRoot(PROJECT_ROOT_DIR);
+
+	// 2. Target 'uv' as the primary executable instead of the internal .venv python
+	// Note: This assumes 'uv' is installed globally in the system path. 
+	// On Windows, you can just pass "uv" or "uv.exe" as the application name.
+	std::string uvExecutable = "uv";
+
+	// 3. Build the explicit absolute path to the core script in your source tree
+	std::filesystem::path pythonScript = projectRoot / "src" / "pipeline" / "core" / "pipeline.py";
+
+	// 4. Prepare arguments: Tell UV to 'run python' followed by your script and flags
+	std::string commandArgs = "run python \"" + pythonScript.string() + "\" --ipc";
+
+	std::cout << "[DEBUG] Spawning process manager: " << uvExecutable << std::endl;
+	std::cout << "[DEBUG] UV Run Arguments: " << commandArgs << std::endl;
+
+	// 5. Start the process via UV
+	if (!this->ipc.Start(uvExecutable.c_str(), commandArgs.c_str())) {
+		std::cerr << "[ERROR]: Failed to launch UV package manager backend." << std::endl;
 	}
 	
 	this->isRunning = true;

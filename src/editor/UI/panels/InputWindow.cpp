@@ -7,8 +7,11 @@
 InputWindow::InputWindow(String name) : UIPanel(UIType::INPUT, name, false) {
     this->show = this->activeSelf;
     this->fileDialog.SetTypeFilters({ ".mp4", ".MOV" });
-    this->fileDialog.SetPwd(std::filesystem::current_path() / "data" / "input");
+   // this->fileDialog.SetPwd(std::filesystem::current_path() / "data" / "input");
     
+    std::filesystem::path rootPath(PROJECT_ROOT_DIR);
+    this->fileDialog.SetPwd(rootPath / "data" / "input");
+
     InitializeDropDown();
 }
 
@@ -53,7 +56,7 @@ void InputWindow::Draw() {
         if (fileDialog.HasSelected()) {
             hasInputVideo = true;
             std::filesystem::path path = fileDialog.GetSelected();
-            inputFile = path.filename().string();
+            inputFile = path.generic_string();
         }
         ImGui::NewLine();
 

@@ -142,4 +142,5 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     IMGUI_IMPL_OPENGL_LOADER_GLAD2
+    PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
 )
