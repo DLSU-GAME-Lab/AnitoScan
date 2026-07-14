@@ -79,7 +79,9 @@ void OverviewPanel::DrawInputSection() {
 	ImGui::Spacing();
 	ImGui::Text("Selected: ");
 	ImGui::SameLine();
-	HighlightImGuiText(this->inputFile, UIColor::GREEN);
+	std::filesystem::path path(this->inputFile);
+	HighlightImGuiText(path.filename().string(), UIColor::GREEN);
+	//HighlightImGuiText(this->inputFile, UIColor::GREEN);
 
 	ImGui::Text("Output folder: ");
 	ImGui::SameLine();
