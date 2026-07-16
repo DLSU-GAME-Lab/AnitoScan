@@ -60,7 +60,7 @@ void InputWindow::Draw() {
         }
         ImGui::NewLine();
 
-
+        //asd
         //NAME
         ImGui::BeginDisabled(!this->hasInputVideo);
         ImGui::SeparatorText("Enter the name of the output folder");
