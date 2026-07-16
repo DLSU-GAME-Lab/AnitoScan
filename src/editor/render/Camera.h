@@ -8,10 +8,8 @@ public:
 	Camera(glm::vec3 target, float distance);
 	~Camera();
 
-	glm::mat4 GetViewMatrix();
-	glm::mat4 GetProjectionMatrix(float aspectRatio);
-
 	void ProcessMouseDrag(float dx, float dy);
+	void ProcessKeyboard(bool left, bool right, bool up, bool down, float deltaTime);
 
 	void ProcessScroll(float delta);
 	void ProcessPan(float dx, float dy);
@@ -19,6 +17,8 @@ public:
 	void SetTarget(glm::vec3 target);
 	void SetDistance(float distance);
 	glm::vec3 GetPosition();
+	glm::mat4 GetViewMatrix();
+	glm::mat4 GetProjectionMatrix(float aspectRatio);
 
 private:
 	glm::vec3 target = glm::vec3(0.0f);

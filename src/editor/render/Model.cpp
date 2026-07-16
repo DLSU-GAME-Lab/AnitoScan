@@ -164,7 +164,7 @@ void Model::LoadOBJ(const String& objPath) {
 
 	this->boundsMin = boundsMin;
 	this->boundsMax = boundsMaxLocal;
-	this->GetCentroid() = vertCount > 0 ? glm::vec3(sum / static_cast<double>(vertCount)) : glm::vec3(0.0f);
+	this->centroid = vertCount > 0 ? glm::vec3(sum / static_cast<double>(vertCount)) : glm::vec3(0.0f);
 
 	//std::cout << "[Model] Bounding box min(" << boundsMin.x << ", " << boundsMin.y << ", " << boundsMin.z
 	//	<< ") max(" << boundsMaxLocal.x << ", " << boundsMaxLocal.y << ", " << boundsMaxLocal.z << ")\n";

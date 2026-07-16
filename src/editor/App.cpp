@@ -61,6 +61,7 @@ void App::Initialize() {
 		std::cerr << "[ERROR]: Failed to launch UV package manager backend." << std::endl;
 	}
 	
+	this->lastTime = SDL_GetPerformanceCounter();
 	this->isRunning = true;
 	std::cout << "[DEBUG]: App is initialized and running." << std::endl;
 }
@@ -274,6 +275,12 @@ void App::Run()
 	// main loop
 	SDL_Event event;
 	while (this->isRunning) {
+		//deltaTime
+		Uint64 now = SDL_GetPerformanceCounter();
+		this->deltaTime = static_cast<float>(now - this->lastTime) / SDL_GetPerformanceFrequency();
+		this->lastTime = now;
+		this->deltaTime = (std::min)(deltaTime, 0.05f);
+
 		// handle window/input events
 		while (SDL_PollEvent(&event)) {
 			ImGui_ImplSDL2_ProcessEvent(&event);
@@ -284,6 +291,17 @@ void App::Run()
 			ProcessMouseEvents(event);
 			ProcessKeyboardEvents(event);	
 		}
+
+
+		const Uint8* keys = SDL_GetKeyboardState(nullptr);
+		scene->GetCamera().ProcessKeyboard(
+			keys[SDL_SCANCODE_LEFT],
+			keys[SDL_SCANCODE_RIGHT],
+			keys[SDL_SCANCODE_UP],
+			keys[SDL_SCANCODE_DOWN],
+			deltaTime
+		);
+
 
 		// Receiver and action decoder from python backend
 		PollBackend();

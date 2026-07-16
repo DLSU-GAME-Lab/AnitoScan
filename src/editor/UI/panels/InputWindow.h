@@ -16,6 +16,8 @@ public:
 private:
 	void InitializeDropDown();
 	bool ValidateFolderName(String name, String& outErrorMsg);
+	void MakeNewRun();
+	void SelectPreviousRun();
 
 private:
 
@@ -24,6 +26,7 @@ private:
 	bool hasName = false;
 	bool hasCompleteInput = false;
 	bool validInput = false;
+	bool selectPrevRun = false;
 
 	ImGui::FileBrowser fileDialog;
 	char inputText[256] = "";
