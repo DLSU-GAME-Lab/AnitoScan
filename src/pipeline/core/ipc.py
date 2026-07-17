@@ -16,7 +16,7 @@ def send_progress(value: float, label: str = "", phase: int = 0):
 def status_update(log: str="", progress: float | None=None, progress_msg: str | None = None, phase: int=0):
     print(f"[*] {log}")
     if is_ipc_mode():
-        # send_log(log)
+        send_log(log)
         if progress is not None:
             if progress_msg is None:
                 progress_msg = log

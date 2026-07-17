@@ -1,4 +1,5 @@
 #include "IPCClient.h"
+#include <iostream>
 
 // Initializes all process and pipe handles to invalid states
 IPCClient::IPCClient() {
@@ -9,6 +10,25 @@ IPCClient::IPCClient() {
 }
 
 IPCClient::~IPCClient() {}
+
+void IPCClient::RunThroughUV(std::filesystem::path pythonSource) {
+	std::string uvExecutable = "uv";
+
+	std::filesystem::path projectRoot(PROJECT_ROOT_DIR);
+
+	std::filesystem::path pythonScript = projectRoot / pythonSource;
+
+	std::string commandArgs = "run python \"" + pythonScript.string() + "\" --ipc";
+
+	std::cout << "[DEBUG] Spawning process manager: " << uvExecutable << std::endl;
+	std::cout << "[DEBUG] UV Run Arguments: " << commandArgs << std::endl;
+
+	// 5. Start the process via UV
+	if (!Start(uvExecutable.c_str(), commandArgs.c_str())) {
+		std::cerr << "[ERROR]: Failed to launch UV package manager backend." << std::endl;
+	}
+}
+
 
 // Starts a Python subprocess and sets up inter-process communication (IPC) using pipes for stdin and stdout
 // Redirects the child process I/O so the application can send commands and receive responses

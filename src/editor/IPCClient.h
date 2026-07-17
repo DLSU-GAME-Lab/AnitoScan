@@ -18,6 +18,7 @@ public:
 	IPCClient();
 	~IPCClient();
 
+	void RunThroughUV(std::filesystem::path pythonScript);
 	bool Start(const String& pythonExe, const String& scriptPath);
 	void Send(const String& jsonLine);
 	void Poll(std::vector<BackendMessage>& outMessages);

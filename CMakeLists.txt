@@ -80,19 +80,21 @@ add_executable(${PROJECT_NAME}
 
     src/editor/UI/UIManager.cpp 
     src/editor/UI/UIPanel.cpp
-    src/editor/UI/panels/DockSpace.cpp
+    src/editor/UI/panels/Dockspace.cpp
     src/editor/UI/panels/OverviewPanel.cpp
     src/editor/UI/panels/FileViewer.cpp
     src/editor/UI/panels/LogPanel.cpp
     src/editor/UI/panels/MaskingPopup.cpp
     src/editor/UI/panels/ViewportPanel.cpp
     src/editor/UI/panels/InputWindow.cpp
+    src/editor/UI/panels/MenuToolbar.cpp
 
     src/editor/render/Shader.cpp
     src/editor/render/Mesh.cpp
     src/editor/render/Model.cpp
     src/editor/render/Camera.cpp
     src/editor/render/Scene.cpp
+
     # Add your other .cpp files here
 
     ${imgui_SOURCE_DIR}/imgui.cpp

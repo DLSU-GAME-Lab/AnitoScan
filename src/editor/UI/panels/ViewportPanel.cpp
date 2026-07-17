@@ -7,11 +7,11 @@ ViewportPanel::~ViewportPanel() {}
 
 // Displays the model viewer panel
 void ViewportPanel::Draw() {
-    //ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
+    //ImGui::Begin(this->name.c_str());
 
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-	//ImGui::Begin(this->name.c_str(), nullptr, flags);
-    ImGui::Begin(this->name.c_str());
+	ImGui::Begin(this->name.c_str(), nullptr, flags);
 
 	hoveredLastFrame = ImGui::IsWindowHovered();
 

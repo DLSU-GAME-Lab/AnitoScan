@@ -2,12 +2,23 @@
 
 #include "../UIPanel.h"
 
-class DockSpace : public UIPanel {
+class Dockspace : public UIPanel {
 public:
-	DockSpace(String name);
-	~DockSpace();
+	Dockspace(String name);
+	~Dockspace();
 	void Draw() override;
 
+	void RequestDefaultLayout();       
+	void RequestModelViewerLayout();
+
 private:
-	void SetupDefaultLayout(ImGuiID dockspaceID);
+	void SetupDefaultLayout();
+	void SetupModelViewerLayout();
+
+private:
+	ImGuiID dockspaceID = 0;
+
+	enum class PendingLayout { None, Default, ModelViewer };
+	PendingLayout pendingLayout = PendingLayout::None;
+
 };

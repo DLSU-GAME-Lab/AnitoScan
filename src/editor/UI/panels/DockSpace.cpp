@@ -1,12 +1,13 @@
-#include "DockSpace.h"
+#include "Dockspace.h"
 
-DockSpace::DockSpace(String name) 
+Dockspace::Dockspace(String name)
 	: UIPanel(UIType::DOCKSPACE, name) {}
 
-DockSpace::~DockSpace() {}
+Dockspace::~Dockspace() {}
+
 
 // Configures and renders the primary application docking surface
-void DockSpace::Draw() {
+void Dockspace::Draw() {
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(viewport->WorkPos);
 	ImGui::SetNextWindowSize(viewport->WorkSize);
@@ -26,39 +27,84 @@ void DockSpace::Draw() {
 	ImGui::Begin("##dockspace", nullptr, flags);
 	ImGui::PopStyleVar();
 
-	ImGuiID dockspaceID = ImGui::GetID("MainDockSpace");
-	ImGui::DockSpace(dockspaceID, ImVec2(0 , 0), ImGuiDockNodeFlags_PassthruCentralNode);
+	this->dockspaceID = ImGui::GetID("MainDockspace");
 
 	static bool layoutInitialized = false;
 	if (!layoutInitialized) {
 		layoutInitialized = true;
+		if (ImGui::DockBuilderGetNode(this->dockspaceID) == nullptr) {
+			SetupDefaultLayout();
+		}
+	}
+
+	if (this->pendingLayout == PendingLayout::Default) {
+		SetupDefaultLayout();
+		this->pendingLayout = PendingLayout::None;
+	}
+	else if (this->pendingLayout == PendingLayout::ModelViewer) {
+		SetupModelViewerLayout();
+		this->pendingLayout = PendingLayout::ModelViewer;
 	}
 
 	//SetupDefaultLayout(dockspaceID);
+	ImGui::DockSpace(this->dockspaceID, ImVec2(0 , 0), ImGuiDockNodeFlags_PassthruCentralNode);
 	ImGui::End();
 }
 
-//void DockSpace::SetupDefaultLayout(ImGuiID dockspaceID) {
-//	ImGui::DockBuilderRemoveNode(dockspaceID);
-//	ImGui::DockBuilderAddNode(dockspaceID, ImGuiDockNodeFlags_PassthruCentralNode);
-//	ImGui::DockBuilderSetNodeSize(dockspaceID, ImGui::GetMainViewport()->WorkSize);
-//
-//	//ImGuiID leftID, remainderID;
-//	//ImGui::DockBuilderSplitNode(dockspaceID, ImGuiDir_Left, 0.25f, &leftID, &remainderID);
-//
-//	//ImGuiID centerID, bottomID;
-//	//ImGui::DockBuilderSplitNode(remainderID, ImGuiDir_Down, 0.25f, &bottomID, &centerID);
-//	//ImGuiID centerLeftID, centerRightID;
-//	//ImGui::DockBuilderSplitNode(centerID, ImGuiDir_Left, 0.5f, &centerLeftID, &centerRightID);
-//
-//
-//	ImGuiID leftID, rightID;
-//	ImGui::DockBuilderSplitNode(dockspaceID, ImGuiDir_Left, 0.5f, &leftID, &rightID);
-//
-//	ImGui::DockBuilderDockWindow("Scan Panel", leftID);
-//	ImGui::DockBuilderDockWindow("Capture", rightID);
-//	//ImGui::DockBuilderDockWindow("Phase 2", centerRightID);
-//	//ImGui::DockBuilderDockWindow("Log", bottomID);
-//
-//	ImGui::DockBuilderFinish(dockspaceID);
-//}
+void Dockspace::SetupDefaultLayout() {
+	this->dockspaceID = ImGui::GetID("MainDockspace");
+
+	ImGui::DockBuilderRemoveNode(this->dockspaceID);
+	ImGui::DockBuilderAddNode(this->dockspaceID, ImGuiDockNodeFlags_PassthruCentralNode);
+	ImGui::DockBuilderSetNodeSize(this->dockspaceID, ImGui::GetMainViewport()->WorkSize);
+
+	//File viewer section
+	ImGuiID dockMain = this->dockspaceID;
+	ImGuiID dockRight = ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Right, 0.22f, nullptr, &dockMain);
+	
+	//remaining left area: top(viewer) bottom(overview/log)
+	ImGuiID dockBottom = ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Down, 0.38f, nullptr, &dockMain);
+
+	//split bottom strip
+	ImGuiID dockBottomLeft = ImGui::DockBuilderSplitNode(dockBottom, ImGuiDir_Left, 0.44f, nullptr, &dockBottom);
+
+
+	ImGuiDockNode* viewportNode = ImGui::DockBuilderGetNode(dockMain);
+	if (viewportNode)
+		viewportNode->LocalFlags |= ImGuiDockNodeFlags_AutoHideTabBar;
+
+	ImGui::DockBuilderDockWindow("Viewport", dockMain);
+	ImGui::DockBuilderDockWindow("Overview", dockBottomLeft);
+	ImGui::DockBuilderDockWindow("Log", dockBottom);
+
+	ImGui::DockBuilderDockWindow("Capture", dockRight);
+	ImGui::DockBuilderDockWindow("Masking", dockRight);
+
+	ImGui::DockBuilderFinish(this->dockspaceID);
+}
+
+
+void Dockspace::SetupModelViewerLayout() {
+	this->dockspaceID = ImGui::GetID("MainDockspace");
+
+	ImGui::DockBuilderRemoveNode(this->dockspaceID);
+	ImGui::DockBuilderAddNode(this->dockspaceID, ImGuiDockNodeFlags_PassthruCentralNode);
+	ImGui::DockBuilderSetNodeSize(this->dockspaceID, ImGui::GetMainViewport()->WorkSize);
+
+	//ImGuiID dockMain = this->dockspaceID;
+	//ImGuiDockNode* viewportNode = ImGui::DockBuilderGetNode(dockMain);
+	//if (viewportNode)
+	//	viewportNode->LocalFlags |= ImGuiDockNodeFlags_AutoHideTabBar;
+
+	ImGui::DockBuilderDockWindow("Viewport", this->dockspaceID);
+
+	ImGui::DockBuilderFinish(this->dockspaceID);
+}
+
+void Dockspace::RequestDefaultLayout() {
+	this->pendingLayout = PendingLayout::Default;
+}
+
+void Dockspace::RequestModelViewerLayout() {
+	this->pendingLayout = PendingLayout::ModelViewer;
+}

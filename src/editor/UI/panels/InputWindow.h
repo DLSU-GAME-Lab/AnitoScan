@@ -16,8 +16,8 @@ public:
 private:
 	void InitializeDropDown();
 	bool ValidateFolderName(String name, String& outErrorMsg);
-	void MakeNewRun();
-	void SelectPreviousRun();
+//	void MakeNewRun();
+//	void SelectPreviousRun();
 
 private:
 

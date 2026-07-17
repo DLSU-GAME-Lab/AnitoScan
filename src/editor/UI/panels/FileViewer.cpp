@@ -1,12 +1,17 @@
 #include "FileViewer.h"
 
 // Configures the embedded file browser flags and filters out image format extensions for browsing
-FileViewer::FileViewer(String name, Phase phase) : UIPanel(UIType::FILE_VIEWER, name) {
+FileViewer::FileViewer(String name, Phase phase) : UIPanel(name) {
 	this->fileDialog = ImGui::FileBrowser(ImGuiFileBrowserFlags_Embedded | ImGuiFileBrowserFlags_NoModal);
 	//this->fileDialog.SetTitle("FileBrowser");
 	this->fileDialog.SetTypeFilters({ ".png", ".jpg", ".jpeg" });
 	this->previewTexture = NULL;
 	this->phase = phase;
+
+	switch (phase) {
+		case Phase::CAPTURE: this->type = UIType::FILE_VIEWER_CAPTURE; break;
+		case Phase::MASKING: this->type = UIType::FILE_VIEWER_MASKING; break;
+	}
 }
 
 FileViewer::~FileViewer() {}

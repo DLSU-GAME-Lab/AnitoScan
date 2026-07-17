@@ -104,6 +104,7 @@ void OverviewPanel::DrawActions() {
 	// RUN PIPELINE
 	ImGui::BeginDisabled(this->isScanning || this->isCleaningUp || !this->inputReady);
 	if (ImGui::Button("Run Pipeline")) {
+		ResetAllProgress();
 		this->isScanning = true;
 		//inputReady = false;
 
@@ -134,8 +135,8 @@ void OverviewPanel::DrawActions() {
 		UIManager::GetInstance()->ClearOutputFromFileViewers();
 		this->isScanning = false;
 		this->isCleaningUp = true;
-
-		String runPath = "data/runs/" + this->outputFolder;
+;
+		String runPath = String(PROJECT_ROOT_DIR) + "/data/runs/" + this->outputFolder;
 		std::thread([this, runPath]() {
 			bool ok = DeleteRunFolder(runPath, 5);
 			{
@@ -145,7 +146,8 @@ void OverviewPanel::DrawActions() {
 			}
 		}).detach();
 
-		this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc");
+		//this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc");
+		this->ipc.RunThroughUV(std::filesystem::path("src") / "pipeline" / "core" / "pipeline.py");
 	}
 	ImGui::EndDisabled();
 

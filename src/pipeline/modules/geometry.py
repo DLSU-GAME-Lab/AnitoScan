@@ -411,24 +411,21 @@ def run_surface_reconstruction(
 
         for line in process.stdout:
             line = line.rstrip()
-            print(f"\r{line}", end="", flush=True)
+            #print(f"\r{line}", end="", flush=True)
             if ipc_mode:
                 match = re.search(r'(\d+)\s*/\s*(\d+)', line)
                 if match:
                     current = int(match.group(1))
                     total = int(match.group(2))
-
                     progress = TRAIN_START + (current / total) * TRAIN_RANGE
-                    send_log("")
-                    send_progress(
-                        progress,
-                        f"Training {current}/{total} iterations",
-                        phase=4
-                    )
+                    send_progress(progress, f"Training {current}/{total} iterations", phase=4)
+                    #send_log(f"Training progress: {current}/{total} iterations")
                 else:   
                     stripped = line.strip()
                     if stripped and not stripped.startswith("("):
                         send_log(f"[train] {stripped}")
+            else:
+                print(f"\r{line}", end="", flush=True)
 
         process.wait()
         if process.returncode != 0:
@@ -453,8 +450,8 @@ def run_surface_reconstruction(
         for line in process.stdout:
             line = line.rstrip()
             print(f"\r{line}", end="", flush=True)
-            if ipc_mode and line.strip():
-                send_log(f"[render] {line}")
+            # if ipc_mode and line.strip():
+            #     send_log(f"[render] {line}")
         process.wait()
         if process.returncode != 0:
             status_error("Phase 4: Meshing failed")
