@@ -6,6 +6,7 @@
 // Initializes the scene with a default camera position  and creates the default shader used for rendering.
 Scene::Scene() : camera(glm::vec3(0.0f, 0.0f, 3.0f), 5.0f) {
 	shader = std::make_unique<Shader>("shaders/default.vert", "shaders/default.frag");
+	//shader = std::make_unique<Shader>("default.vert", "default.frag");
 }
 
 Scene::~Scene() {}
@@ -106,8 +107,9 @@ void Scene::Render(int width, int height) {
 		shader->SetMat4("projection", proj);
 		shader->SetMat4("model", modelMat);
 		shader->SetVec3("lightDir", lightDir);
+		shader->SetFloat("ambientStrength", ambientStrength);
 		shader->SetVec3("objectColor", objectColor);
-
+		shader->SetInt("colorMode", colorMode);
 		model->Draw(*shader);
 	}
 

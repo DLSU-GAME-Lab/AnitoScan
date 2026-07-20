@@ -47,7 +47,7 @@ void LogPanel::DrawLogLines() {
 
 		//display
 		ImVec2 startPos = ImGui::GetCursorScreenPos();
-		ImGui::TextWrapped("%s", line.c_str());
+		ImGui::TextWrapped("> %s", line.c_str());
 		ImVec2 endPos = ImGui::GetCursorScreenPos();
 
 		ImVec2 minBound = startPos;

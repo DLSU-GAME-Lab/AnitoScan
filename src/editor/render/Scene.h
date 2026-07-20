@@ -33,11 +33,13 @@ private:
 
 	glm::vec3 lightDir{ -0.5f, -1.0f, -0.3f };
 	glm::vec3 objectColor{ 0.8f, 0.8f, 0.8f };
-
-	GLuint fbo = 0;
 	GLuint colorTexture = 0;
+	float ambientStrength = 0.8f;
+	int colorMode = 0;
+
 	GLuint depthRenderbuffer = 0;
-	int fboWidth = 0;
-	int fboHeight = 0;
+	GLuint fbo = 0;
+	int fboWidth = 0, fboHeight = 0;
+
 
 };

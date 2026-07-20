@@ -2,7 +2,9 @@
 
 // Loads shader source files, compiles fragment and vertex shader and links them to a shader program
 Shader::Shader(const String& vertPath, const String& fragPath) {
-	String rootPath = "src/editor/render/";
+	String rootPath = String(PROJECT_ROOT_DIR) + "/src/editor/render/";
+
+	std::cout << rootPath << std::endl;
 	String vertSrc = LoadFile(rootPath + vertPath);
 	String fragSrc = LoadFile(rootPath + fragPath);
 

@@ -31,13 +31,17 @@ private:
 	void DrawOverallProgress();
 	void DrawPhaseBreakdown();
 	float CalculateOverallProgress();
+	void ResetAllProgress();
+	bool DeleteRunFolder(String path, int maxAttempts);
 
 private:
 	IPCClient& ipc;
 	bool isScanning = false;
 	bool inputReady = false;
+	bool isCleaningUp = false;
 	PhaseStatus phases[5];
 	Phase currentPhase = Phase::NONE;
 	String inputFile, outputFolder, quality;
 	int minFrames;
+	std::mutex uiMutex;
 };

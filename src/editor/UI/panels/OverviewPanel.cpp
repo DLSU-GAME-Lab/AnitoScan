@@ -59,49 +59,54 @@ Phase OverviewPanel::GetCurrentPhase() {
 	return this->currentPhase;
 }
 
-// Displays input values and accesses input window
 void OverviewPanel::DrawInputSection() {
 	InputWindow* input = static_cast<InputWindow*>(UIManager::GetInstance()->GetPanelByType(UIType::INPUT));
 
-	if (!inputReady) {
-		if (ImGui::Button("Open input window")) {	
+	if (!this->isScanning && !this->inputReady) {
+		if (ImGui::Button("Open Input Window"))
 			input->ShowWindow();
-		}
+		return;
+	}
+
+	if (this->isScanning) {
+		ImGui::SeparatorText("Current Input");
 	}
 	else {
-		if (ImGui::Button("Modify Input")) {
+		if (ImGui::Button("Modify Input"))
 			input->ShowWindow();
-		}
-		ImGui::Spacing();
-
-		ImGui::Text("Selected: ");
-		ImGui::SameLine();
-		HighlightImGuiText(this->inputFile, UIColor::GREEN);
-
-		ImGui::Text("Output folder: ");
-		ImGui::SameLine();
-		HighlightImGuiText(this->outputFolder, UIColor::GREEN);
-
-		ImGui::Text("Minimum Frames: ");
-		ImGui::SameLine();
-		HighlightImGuiText(std::to_string(this->minFrames), UIColor::GREEN);
-
-		ImGui::Text("Quality");
-		ImGui::SameLine();
-		HighlightImGuiText(this->quality, UIColor::GREEN);
-
 	}
-}
 
+	ImGui::Spacing();
+	ImGui::Text("Selected: ");
+	ImGui::SameLine();
+	std::filesystem::path path(this->inputFile);
+	HighlightImGuiText(path.filename().string(), UIColor::GREEN);
+	//HighlightImGuiText(this->inputFile, UIColor::GREEN);
+
+	ImGui::Text("Output folder: ");
+	ImGui::SameLine();
+	HighlightImGuiText(this->outputFolder, UIColor::GREEN);
+
+	ImGui::Text("Minimum Frames: ");
+	ImGui::SameLine();
+	HighlightImGuiText(std::to_string(this->minFrames), UIColor::GREEN);
+
+	ImGui::Text("Quality");
+	ImGui::SameLine();
+	HighlightImGuiText(this->quality, UIColor::GREEN);
+	ImGui::Spacing();
+}
 
 
 // upper section of the overview panel
 void OverviewPanel::DrawActions() {
 
 	// RUN PIPELINE
-	ImGui::BeginDisabled(!this->isScanning && !inputReady);
+	ImGui::BeginDisabled(this->isScanning || this->isCleaningUp || !this->inputReady);
 	if (ImGui::Button("Run Pipeline")) {
+		ResetAllProgress();
 		this->isScanning = true;
+		//inputReady = false;
 
 		nlohmann::json cmd;
 		cmd["action"] = "run_pipeline";
@@ -116,6 +121,7 @@ void OverviewPanel::DrawActions() {
 
 		std::cout << "[DEBUG]: Output folder: " << this->outputFolder << std::endl;
 		std::cout << "[DEBUG]: Input file: " << this->inputFile << std::endl;
+
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
@@ -123,16 +129,29 @@ void OverviewPanel::DrawActions() {
 
 	// CANCEL
 	ImGui::BeginDisabled(!this->isScanning);
-	//TODO: implement cancellation option on every phase once pipeline.py is connected
-	// cancel button is not working properly atm
-	if (ImGui::Button("Cancel")) {
-		this->isScanning = false;
+	if (ImGui::Button("Cancel Scan")) {
+		ResetAllProgress();
 		this->ipc.Shutdown();
-		//this->inputReady = false;	
-		//this->ipc.Start(".venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc");
-		//this->ipc.Start(".venv\\Scripts\\python.exe", "src/pipeline/core/dummy.py");
+		UIManager::GetInstance()->ClearOutputFromFileViewers();
+		this->isScanning = false;
+		this->isCleaningUp = true;
+;
+		String runPath = String(PROJECT_ROOT_DIR) + "/data/runs/" + this->outputFolder;
+		std::thread([this, runPath]() {
+			bool ok = DeleteRunFolder(runPath, 5);
+			{
+				std::lock_guard<std::mutex> lock(this->uiMutex);
+				if(!ok) std::cout << "Failed to clean up folder: " + runPath << std::endl;
+				this->isCleaningUp = false;
+			}
+		}).detach();
+
+		//this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc");
+		this->ipc.RunThroughUV(std::filesystem::path("src") / "pipeline" / "core" / "pipeline.py");
 	}
 	ImGui::EndDisabled();
+
+
 	ImGui::Spacing();
 }
 
@@ -170,10 +189,9 @@ void OverviewPanel::DrawPhaseBreakdown() {
 		else {
 			if (!p.label.empty())
 				ImGui::TextDisabled("[    ] %s", phaseNames[i]);
-			//barColor = UIColor::
 		}
 
-		UpdateImGuiProgressBar(p.progress, ImVec2(-1, 12), barColor);
+		UpdateImGuiProgressBar(p.progress, ImVec2(-1, 12), barColor);	
 
 		if(p.active || p.completed) {
 			ImGui::TextDisabled("  %s", p.label.c_str());
@@ -192,6 +210,36 @@ float OverviewPanel::CalculateOverallProgress() {
 		total += phases[i].progress / partial;
 	}
 	return total;
+}
+
+void OverviewPanel::ResetAllProgress() {
+	for (int i = 0; i < (int)Phase::COUNT; i++) {
+		this->phases[i].progress = 0.f;
+		this->phases[i].active = false;
+		this->phases[i].completed = false;
+		this->phases[i].label = "Waiting...";
+	}
+}
+
+bool OverviewPanel::DeleteRunFolder(String path, int maxAttempts) {
+	for (int i = 0; i < maxAttempts; i++) {
+		try {
+			std::error_code ec;
+			if(i == 0) std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+			UIManager::GetInstance()->ClearOutputFromFileViewers();
+			std::filesystem::remove_all(path, ec);
+			if (!ec) {
+				return true;
+			}
+			std::cout << "Remove_all failed: " << ec.message() << std::endl;
+		}
+		catch (std::filesystem::filesystem_error e){
+			std::cout << "filesystem_error on attempt " << i << ": " << e.what() << std::endl;
+		} 
+		std::this_thread::sleep_for(std::chrono::milliseconds(300));
+	}
+	return false;
 }
 
 

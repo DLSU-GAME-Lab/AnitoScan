@@ -269,6 +269,9 @@ def run_remove_background(
                 label=f"Processing frame {current_frame_number} of {total_frames}",
                 phase=2
             )
+        else:
+            sys.stdout.write(f"\r[*] Processed {i + 1}/{total_frames} frames")
+            #sys.stdout.flush()
 
         img = cv2.imread(str(img_path))
         if img is None:
@@ -348,11 +351,15 @@ def run_remove_background(
             min(h_img, chosen_box[3] + pad_y),
         ]
 
-        sam_results = segmenter.predict(
-            source=img, bboxes=[padded_box], device=device, verbose=False
-        )[0]
+        try:
+            sam_results = segmenter.predict(
+                source=img, bboxes=[padded_box], device=device, verbose=False
+            )[0]
+        except Exception as e:
+            status_update(f"[!] SAM failed on {img_path.name}: {e}")
+            sam_results = None
 
-        if sam_results.masks is not None:
+        if sam_results is not None and sam_results.masks is not None and len(sam_results.masks.data) > 0:
             mask_np = sam_results.masks.data[0].cpu().numpy()
             mask_resized = cv2.resize(
                 (mask_np > 0).astype(np.uint8) * 255,
@@ -371,10 +378,8 @@ def run_remove_background(
             cv2.imwrite(str(target_path), bgra)
         else:
             cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
-            prev_box = None  # Tear down tracking anchor path if extraction completely drops
+            prev_box = None
 
-        sys.stdout.write(f"\r[*] Processed {i + 1}/{total_frames} frames")
-        sys.stdout.flush()
 
     total_time = time.perf_counter() - start_perf
     processing_time = total_time - total_user_time

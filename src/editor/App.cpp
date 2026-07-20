@@ -34,11 +34,14 @@ void App::Initialize() {
 	}
 	
 	//IPC - pipeline.py
-	if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc")) {
-		std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
-		return;
-	}
-	
+	//if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc")) {
+	//	std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
+	//	return;
+	//}
+
+	this->ipc.RunThroughUV(std::filesystem::path("src") / "pipeline" / "core" / "pipeline.py");
+
+	this->lastTime = SDL_GetPerformanceCounter();
 	this->isRunning = true;
 	std::cout << "[DEBUG]: App is initialized and running." << std::endl;
 }
@@ -177,7 +180,8 @@ void App::PollBackend() {
 
 		// RAW prints from backend
 		catch (const nlohmann::json::exception&){
-			std::cout << "[RAW]: " + msg.raw << std::endl;
+			//std::cout << "[RAW]: " + msg.raw << std::endl;
+			log->PushLog(msg.raw);
  		}
 	}
 }
@@ -251,6 +255,12 @@ void App::Run()
 	// main loop
 	SDL_Event event;
 	while (this->isRunning) {
+		//deltaTime
+		Uint64 now = SDL_GetPerformanceCounter();
+		this->deltaTime = static_cast<float>(now - this->lastTime) / SDL_GetPerformanceFrequency();
+		this->lastTime = now;
+		this->deltaTime = (std::min)(deltaTime, 0.05f);
+
 		// handle window/input events
 		while (SDL_PollEvent(&event)) {
 			ImGui_ImplSDL2_ProcessEvent(&event);
@@ -261,6 +271,17 @@ void App::Run()
 			ProcessMouseEvents(event);
 			ProcessKeyboardEvents(event);	
 		}
+
+
+		const Uint8* keys = SDL_GetKeyboardState(nullptr);
+		scene->GetCamera().ProcessKeyboard(
+			keys[SDL_SCANCODE_LEFT],
+			keys[SDL_SCANCODE_RIGHT],
+			keys[SDL_SCANCODE_UP],
+			keys[SDL_SCANCODE_DOWN],
+			deltaTime
+		);
+
 
 		// Receiver and action decoder from python backend
 		PollBackend();

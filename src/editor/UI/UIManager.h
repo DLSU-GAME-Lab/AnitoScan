@@ -10,12 +10,14 @@
 #include "../Types.h"
 #include "UIPanel.h"
 #include "panels/OverviewPanel.h"
-#include "panels/DockSpace.h"
+#include "panels/Dockspace.h"
 #include "panels/FileViewer.h"
 #include "panels/LogPanel.h"
 #include "panels/MaskingPopup.h"
 #include "panels/ViewportPanel.h"
 #include "panels/InputWindow.h"
+#include "panels/MenuToolbar.h"
+
 
 #include "../IPCClient.h"
 #include "../render/Scene.h"
@@ -30,9 +32,20 @@ public:
 	void EndFrame();
 	UIPanel* GetPanelByName(String name);
 	UIPanel* GetPanelByType(UIType type);
-	void OpenUI(UIType type);
+	void OpenPanel(UIType type);
+	void ClosePanel(UIType type);
 	void Shutdown();
 	void SetOutputToFileViewers(std::filesystem::path output);
+	void ClearOutputFromFileViewers();
+	void ApplyLayout(UILayout layout);
+
+	template<typename... Args>
+	bool Contains(UIType target, Args... args) {
+		return ((args == target) || ...);
+	}
+	/*void OnlyOpenPanels(Args... args) {
+		
+	}*/
 
 private:
 	void CreateUIPanels(IPCClient& ipc, Scene& scene);
