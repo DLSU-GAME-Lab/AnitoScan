@@ -70,3 +70,5 @@ Thumbs.db
 /vendor/glm/
 
 /vendor/2d-gaussian-splatting/
+
+imgui.ini
