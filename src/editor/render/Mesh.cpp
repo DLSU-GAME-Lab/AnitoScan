@@ -75,6 +75,14 @@ void Mesh::SetupMesh() {
 		(void*)offsetof(Vertex, TexCoords)
 	);
 
+	glEnableVertexAttribArray(3);
+	glVertexAttribPointer(
+		3, 3,
+		GL_FLOAT, GL_FALSE,
+		sizeof(Vertex),
+		(void*)offsetof(Vertex, Color)
+	);
+
 	glBindVertexArray(0);
 }
 

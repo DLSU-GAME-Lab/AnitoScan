@@ -11,6 +11,7 @@ public:
 
 	void Draw() override;
 	void SetOutputFolderToView(std::filesystem::path root);
+	void ClearOutputFolder();
 	void ToggleRefresh(bool isRefreshing);
 
 private:

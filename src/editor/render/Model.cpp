@@ -116,6 +116,17 @@ void Model::LoadOBJ(const String& objPath) {
 					vert.TexCoords = { 0.0f, 0.0f };
 				}
 
+				if (!attrib.colors.empty()) {
+					vert.Color = {
+						attrib.colors[3 * idx.vertex_index + 0],
+						attrib.colors[3 * idx.vertex_index + 1],
+						attrib.colors[3 * idx.vertex_index + 2]
+					};
+				}
+				else {
+					vert.Color = { 1.0f, 1.0f, 1.0f };
+				}
+ 
 				unsigned int newIndex = static_cast<unsigned int>(vertsByMat[matID].size());
 				vertsByMat[matID].push_back(vert);
 				indicesByMat[matID].push_back(newIndex);
@@ -133,7 +144,7 @@ void Model::LoadOBJ(const String& objPath) {
 				texID = LoadTexture(diffuseTex);
 			}
 		}
-		this->meshes.emplace_back(std::move(verts), std::move(indicesByMat[matID]), texID);
+		this->meshes.emplace_back(std::move(verts), std::move(indicesByMat[matID]), texID);	
 	}
 
 	std::cout << "Loaded (" << objPath << ") size: " << meshes.size() << std::endl;
@@ -153,7 +164,7 @@ void Model::LoadOBJ(const String& objPath) {
 
 	this->boundsMin = boundsMin;
 	this->boundsMax = boundsMaxLocal;
-	this->GetCentroid() = vertCount > 0 ? glm::vec3(sum / static_cast<double>(vertCount)) : glm::vec3(0.0f);
+	this->centroid = vertCount > 0 ? glm::vec3(sum / static_cast<double>(vertCount)) : glm::vec3(0.0f);
 
 	//std::cout << "[Model] Bounding box min(" << boundsMin.x << ", " << boundsMin.y << ", " << boundsMin.z
 	//	<< ") max(" << boundsMaxLocal.x << ", " << boundsMaxLocal.y << ", " << boundsMaxLocal.z << ")\n";

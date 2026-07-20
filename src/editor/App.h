@@ -42,4 +42,6 @@ private:
 	std::unique_ptr<Scene> scene;
 	bool mouseDragging = false;
 	bool middleMousehold = false;
+	Uint64 lastTime = 0;
+	float deltaTime;
 };

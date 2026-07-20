@@ -3,15 +3,21 @@
 #include "../Types.h"
 
 enum class UIType {
-	MENU_BAR,
+	MENU_TOOLBAR,
 	OVERVIEW,
 	DOCKSPACE,
-	FILE_VIEWER,
+	FILE_VIEWER_CAPTURE,
+	FILE_VIEWER_MASKING,
 	LOG_PANEL,
 	MASKING_MODAL,
 	VIEWPORT,
 	INPUT,
 	UNKNOWN
+};
+
+enum class UILayout {
+	DEFAULT,
+	MODEL_VIEWER
 };
 
 enum class UIColor {

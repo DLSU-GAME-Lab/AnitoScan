@@ -1,4 +1,5 @@
 #include "IPCClient.h"
+#include <iostream>
 
 // Initializes all process and pipe handles to invalid states
 IPCClient::IPCClient() {
@@ -9,6 +10,25 @@ IPCClient::IPCClient() {
 }
 
 IPCClient::~IPCClient() {}
+
+void IPCClient::RunThroughUV(std::filesystem::path pythonSource) {
+	std::string uvExecutable = "uv";
+
+	std::filesystem::path projectRoot(PROJECT_ROOT_DIR);
+
+	std::filesystem::path pythonScript = projectRoot / pythonSource;
+
+	std::string commandArgs = "run python \"" + pythonScript.string() + "\" --ipc";
+
+	std::cout << "[DEBUG] Spawning process manager: " << uvExecutable << std::endl;
+	std::cout << "[DEBUG] UV Run Arguments: " << commandArgs << std::endl;
+
+	// 5. Start the process via UV
+	if (!Start(uvExecutable.c_str(), commandArgs.c_str())) {
+		std::cerr << "[ERROR]: Failed to launch UV package manager backend." << std::endl;
+	}
+}
+
 
 // Starts a Python subprocess and sets up inter-process communication (IPC) using pipes for stdin and stdout
 // Redirects the child process I/O so the application can send commands and receive responses
@@ -41,6 +61,12 @@ bool IPCClient::Start(const String& pythonExe, const String& scriptPath) {
 	si.hStdError = stdoutWrite;
 
 	PROCESS_INFORMATION pi{};
+
+	this->hJob = CreateJobObjectA(nullptr, nullptr);
+	JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli{};
+	jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+	SetInformationJobObject(this->hJob, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli));
+
 	BOOL ok = CreateProcessA(
 		nullptr, cmdBuf.data(),
 		nullptr, nullptr,
@@ -49,6 +75,8 @@ bool IPCClient::Start(const String& pythonExe, const String& scriptPath) {
 		nullptr, nullptr,
 		&si, &pi
 	);
+
+	AssignProcessToJobObject(this->hJob, pi.hProcess);
 
 	CloseHandle(stdinRead);
 	CloseHandle(stdoutWrite);
@@ -126,8 +154,17 @@ void IPCClient::RenderThread() {
 	this->running = false;
 }
 
-// Closes pipes and terminates all handles
 void IPCClient::Shutdown() {
+	if (this->hJob) {
+		TerminateJobObject(this->hJob, 0);
+		CloseHandle(this->hJob);
+		this->hJob = nullptr;
+	}
+
+	if (this->hProcess != INVALID_HANDLE_VALUE) {
+		TerminateProcess(this->hProcess, 0);
+	}
+
 	if (this->hStdin != INVALID_HANDLE_VALUE) {
 		CloseHandle(this->hStdin);
 		this->hStdin = INVALID_HANDLE_VALUE;
@@ -138,10 +175,9 @@ void IPCClient::Shutdown() {
 	}
 
 	if (this->hProcess != INVALID_HANDLE_VALUE) {
-		TerminateProcess(this->hProcess, 0);
 		CloseHandle(this->hProcess);
 		this->hProcess = INVALID_HANDLE_VALUE;
-;	}
+	}
 
 	if (this->hStdout != INVALID_HANDLE_VALUE) {
 		CloseHandle(this->hStdout);

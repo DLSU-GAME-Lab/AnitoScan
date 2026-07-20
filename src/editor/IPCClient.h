@@ -18,6 +18,7 @@ public:
 	IPCClient();
 	~IPCClient();
 
+	void RunThroughUV(std::filesystem::path pythonScript);
 	bool Start(const String& pythonExe, const String& scriptPath);
 	void Send(const String& jsonLine);
 	void Poll(std::vector<BackendMessage>& outMessages);
@@ -31,9 +32,11 @@ private:
 	HANDLE hProcess;
 	HANDLE hStdin;
 	HANDLE hStdout;
+	HANDLE hJob = nullptr;
 
 	std::thread thread;
 	std::atomic<bool> running;
 	std::mutex mutex;
 	std::queue<BackendMessage> qMessages;
+
 };

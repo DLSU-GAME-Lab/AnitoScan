@@ -80,19 +80,21 @@ add_executable(${PROJECT_NAME}
 
     src/editor/UI/UIManager.cpp 
     src/editor/UI/UIPanel.cpp
-    src/editor/UI/panels/DockSpace.cpp
+    src/editor/UI/panels/Dockspace.cpp
     src/editor/UI/panels/OverviewPanel.cpp
     src/editor/UI/panels/FileViewer.cpp
     src/editor/UI/panels/LogPanel.cpp
     src/editor/UI/panels/MaskingPopup.cpp
     src/editor/UI/panels/ViewportPanel.cpp
     src/editor/UI/panels/InputWindow.cpp
+    src/editor/UI/panels/MenuToolbar.cpp
 
     src/editor/render/Shader.cpp
     src/editor/render/Mesh.cpp
     src/editor/render/Model.cpp
     src/editor/render/Camera.cpp
     src/editor/render/Scene.cpp
+
     # Add your other .cpp files here
 
     ${imgui_SOURCE_DIR}/imgui.cpp
@@ -142,4 +144,5 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     IMGUI_IMPL_OPENGL_LOADER_GLAD2
+    PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
 )

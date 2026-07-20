@@ -35,9 +35,14 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClien
 
 // Create and register the UI Panels
 void UIManager::CreateUIPanels(IPCClient& ipc, Scene& scene) {
-	DockSpace* dockSpace = new DockSpace("DockSpace");
+	MenuToolbar* toolbar = new MenuToolbar("Menu Toolbar");
+	this->uiList.push_back(toolbar);
+	this->uiMap[toolbar->GetName()] = toolbar;
+
+	Dockspace* dockSpace = new Dockspace("DockSpace");
 	this->uiList.push_back(dockSpace);
 	this->uiMap[dockSpace->GetName()] = dockSpace;
+	toolbar->SetDockspace(dockSpace);
 
 	OverviewPanel* overview = new OverviewPanel("Overview", ipc);
 	this->uiList.push_back(overview);
@@ -51,10 +56,6 @@ void UIManager::CreateUIPanels(IPCClient& ipc, Scene& scene) {
 	this->uiList.push_back(maskingViewer);
 	this->uiMap[maskingViewer->GetName()] = maskingViewer;
 
-	//FileViewer* spatialViewer = new FileViewer("Spatial", Phase::SPATIAL);
-	//this->uiList.push_back(spatialViewer);
-	//this->uiMap[spatialViewer->GetName()] = spatialViewer;
-
 	LogPanel* logPanel = new LogPanel("Log", ipc);
 	this->uiList.push_back(logPanel);
 	this->uiMap[logPanel->GetName()] = logPanel;
@@ -63,7 +64,7 @@ void UIManager::CreateUIPanels(IPCClient& ipc, Scene& scene) {
 	this->uiList.push_back(maskingPopup);
 	this->uiMap[maskingPopup->GetName()] = maskingPopup;
 
-	ViewportPanel* viewport = new ViewportPanel("Model Viewer", scene);
+	ViewportPanel* viewport = new ViewportPanel("Viewport", scene);
 	this->uiList.push_back(viewport);
 	this->uiMap[viewport->GetName()] = viewport;
 
@@ -90,6 +91,10 @@ void UIManager::BeginNewFrame() {
 // Iterates through the layout list and fires Draw calls for every active panel layer
 void UIManager::DrawAllUIs() {
 	for (UIPanel* panel : this->uiList) {
+		if (Contains(panel->GetType(), UIType::DOCKSPACE, UIType::MENU_TOOLBAR)) {
+			if (!panel->IsActive()) panel->SetActive(true);
+		}
+
 		if(panel->IsActive())
 			panel->Draw();
 	}
@@ -122,8 +127,12 @@ UIPanel* UIManager::GetPanelByType(UIType type) {
 }
 
 // Searches for the UIPanel by its type and activates it
-void UIManager::OpenUI(UIType type) {
+void UIManager::OpenPanel(UIType type) {
 	GetPanelByType(type)->SetActive(true);
+}
+
+void UIManager::ClosePanel(UIType type) {
+	GetPanelByType(type)->SetActive(false);
 }
 
 // Clean up
@@ -142,9 +151,66 @@ void UIManager::Shutdown() {
 // Sets the output folder to all file viewer instances (capture, masking, etc)
 void UIManager::SetOutputToFileViewers(std::filesystem::path output) {
 	for (UIPanel* panel : this->uiList) {
-		if (panel->GetType() == UIType::FILE_VIEWER) {
+		if (panel->GetType() == UIType::FILE_VIEWER_CAPTURE || panel->GetType() == UIType::FILE_VIEWER_MASKING) {
 			FileViewer* temp = static_cast<FileViewer*>(panel);
 			temp->SetOutputFolderToView(output);
 		}
 	}
 }
+
+void UIManager::ClearOutputFromFileViewers() {
+	for (UIPanel* panel : this->uiList) {
+		if (panel->GetType() == UIType::FILE_VIEWER_CAPTURE || panel->GetType() == UIType::FILE_VIEWER_MASKING) {
+			FileViewer* temp = static_cast<FileViewer*>(panel);
+			temp->ClearOutputFolder();
+		}
+	}
+}
+
+void UIManager::ApplyLayout(UILayout layout) {
+	Dockspace* dockspace = static_cast<Dockspace*>(GetPanelByType(UIType::DOCKSPACE));
+
+	switch (layout) {
+	case UILayout::DEFAULT:{
+		for (UIPanel* panel : this->uiList) {
+			if (Contains(panel->GetType(),
+				UIType::FILE_VIEWER_CAPTURE, UIType::FILE_VIEWER_MASKING, UIType::LOG_PANEL, UIType::OVERVIEW, UIType::VIEWPORT)) {
+				panel->SetActive(true);
+			}
+			else {
+				panel->SetActive(false);
+			}
+		}
+		dockspace->RequestDefaultLayout();
+;		break;
+		}
+	case UILayout::MODEL_VIEWER: {
+		for (UIPanel* panel : this->uiList) {
+			if (Contains(panel->GetType(), UIType::VIEWPORT)) {
+				panel->SetActive(true);
+			}
+			else {
+				panel->SetActive(false);
+			}
+		}
+		dockspace->RequestModelViewerLayout();
+		break;
+	}
+	}
+	
+}
+
+//void UIManager::ApplyLayout(UILayout layout) {
+//	switch (layout) {
+//	case UILayout::DEFAULT: {
+//		
+//
+//
+//		/*this->uiMap["Overview"]->
+//		this->uiMap["Logl"]->SetActive(true);
+//		this->uiMap["Masking"]->SetActive(true);
+//		this->uiMap["Capture"]->SetActive(true);*/
+//		break;
+//		}
+//	}
+//}

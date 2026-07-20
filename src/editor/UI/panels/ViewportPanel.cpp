@@ -7,8 +7,9 @@ ViewportPanel::~ViewportPanel() {}
 
 // Displays the model viewer panel
 void ViewportPanel::Draw() {
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
+    //ImGui::Begin(this->name.c_str());
 
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
 	ImGui::Begin(this->name.c_str(), nullptr, flags);
 
@@ -33,7 +34,7 @@ void ViewportPanel::Draw() {
 
 // Loads the scanned model to viewport
 void ViewportPanel::LoadOutputModel(String outputName, String quality) {
-    String modelPath = "data/output/" + outputName + "/" + outputName + "_" + quality + ".obj";
+    String modelPath = String(PROJECT_ROOT_DIR) + "/data/output/" + outputName + "/" + outputName + "_" + quality + ".obj";
     this->scene.LoadModel(modelPath);
 }
 

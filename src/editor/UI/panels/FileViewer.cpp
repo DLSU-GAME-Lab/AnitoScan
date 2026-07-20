@@ -1,12 +1,17 @@
 #include "FileViewer.h"
 
 // Configures the embedded file browser flags and filters out image format extensions for browsing
-FileViewer::FileViewer(String name, Phase phase) : UIPanel(UIType::FILE_VIEWER, name) {
+FileViewer::FileViewer(String name, Phase phase) : UIPanel(name) {
 	this->fileDialog = ImGui::FileBrowser(ImGuiFileBrowserFlags_Embedded | ImGuiFileBrowserFlags_NoModal);
 	//this->fileDialog.SetTitle("FileBrowser");
 	this->fileDialog.SetTypeFilters({ ".png", ".jpg", ".jpeg" });
 	this->previewTexture = NULL;
 	this->phase = phase;
+
+	switch (phase) {
+		case Phase::CAPTURE: this->type = UIType::FILE_VIEWER_CAPTURE; break;
+		case Phase::MASKING: this->type = UIType::FILE_VIEWER_MASKING; break;
+	}
 }
 
 FileViewer::~FileViewer() {}
@@ -150,7 +155,10 @@ void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 		case Phase::SPATIAL: temp = "03_spatial"; break;
 	}
 
-	std::filesystem::path fullPath = std::filesystem::current_path() / "data" / "runs" / this->output / temp;
+	//std::filesystem::path fullPath = std::filesystem::current_path() / "data" / "runs" / this->output / temp;
+
+	std::filesystem::path projectRoot(PROJECT_ROOT_DIR);
+	std::filesystem::path fullPath = projectRoot / "data" / "runs" / this->output / temp;
 
 	std::error_code ec;
 	if (!std::filesystem::exists(fullPath, ec)) {
@@ -160,6 +168,12 @@ void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 
 	this->fileDialog.SetPwd(fullPath);
 
+}
+
+void FileViewer::ClearOutputFolder() {
+	this->output.clear();
+	this->hasRootFolder = false;
+	this->fileDialog.SetPwd(std::filesystem::current_path());
 }
 
 // Controls whether the file dialog should continuously trigger directory polling updates inside the frame loop
