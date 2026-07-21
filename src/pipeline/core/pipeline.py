@@ -208,10 +208,10 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
     status_update("Starting Phase 2: Masking")
     run_phase2(parent_module_path, manifest_path, args, ipc_mode)
 
-    status_update("Starting Phase 3: Spatial")
-    run_phase3(parent_module_path, manifest_path, args, ipc_mode)
+    #status_update("Starting Phase 3: Spatial")
+    #run_phase3(parent_module_path, manifest_path, args, ipc_mode)
 
-    status_update("Starting Phase 4: Geometry")
+    #status_update("Starting Phase 4: Geometry")
     run_phase4(parent_module_path, manifest_path, args, ipc_mode)
 
     status_update("Starting Phase 5: Export")

@@ -12,5 +12,10 @@ public:
 	void SetDockspace(Dockspace* dockspace);
 
 private:
+	void SelectModelToImport();
+
+private:
 	 Dockspace* dockspace;
+	 bool displayImport = true;
+	 ImGui::FileBrowser fileDialog;
 };

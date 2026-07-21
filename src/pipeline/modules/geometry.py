@@ -42,7 +42,10 @@ def run_bundle_adjustment(image_dir: Path, output_dir: Path):
         database_path.unlink()  # Start fresh
 
     # 1. Feature Extraction (API FIX APPLIED HERE)
-    status_update("Extracting SIFT features...")
+    status_update("Extracting SIFT features...",
+                progress=0.30,
+                progress_msg="Phase 3: Extracting SIFT features...",
+                phase=3)
 
     # Initialize the specific reader options object required by the new API
     reader_options = pycolmap.ImageReaderOptions()  # type: ignore
@@ -55,12 +58,20 @@ def run_bundle_adjustment(image_dir: Path, output_dir: Path):
         reader_options=reader_options,
     )
 
+    status_update("Matching features...",
+                      progress=0.40,
+                      progress_msg="Phase 3: Matching features...",
+                      phase=3)
+    
     # 2. Feature Matching (Building the observation tracks)
-    status_update("Matching features...")
     pycolmap.match_exhaustive(database_path)  # type: ignore
 
     # 3. Incremental Mapping & Bundle Adjustment (Ceres Solver)
-    status_update("Running Ceres Solver (Bundle Adjustment)...")
+    status_update("Running Ceres Solver (Bundle Adjustment)...",
+                      progress=0.75,
+                      progress_msg="Phase 3: Running Ceres Solver (Bundle Adjustment)...",
+                      phase=3)
+    
     maps = pycolmap.incremental_mapping(database_path, image_dir, output_dir)  # type: ignore
 
     # Because pycolmap can technically return multiple disjoint maps,
@@ -76,7 +87,6 @@ def run_bundle_adjustment(image_dir: Path, output_dir: Path):
     map_values = list(maps.values()) if isinstance(maps, dict) else list(maps)
     best_map = max(map_values, key=lambda m: len(m.images))
 
-    status_update(f"Bundle Adjustment complete. Registered {len(best_map.images)} cameras.")
 
     total_input_images = len(list(image_dir.glob("*")))
     if len(best_map.images) < max(3, 0.5 * total_input_images):
@@ -270,6 +280,8 @@ def run_surface_reconstruction(
     force=False,
     ipc_mode=False
 ):
+
+    status_update("Starting Phase 3: Spatial")
     # 1. Load Manifest
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
@@ -288,7 +300,10 @@ def run_surface_reconstruction(
     ).exists()
 
     if spatial_init_complete and not force:
-        status_update(f"Found existing spatial initialization in {input_data_path}. Skipping prep and bundle adjustment...")
+        status_update(f"Found existing spatial initialization in {input_data_path}. Skipping prep and bundle adjustment...",
+                      1.0,
+                      "Phase 3: Spatial complete",
+                      phase=3)
     else:
         # We need to run spatial init, ensure directories exist fresh
         if force and input_data_path.exists():
@@ -300,8 +315,8 @@ def run_surface_reconstruction(
         # 3. Prepare Images (White Background Composite)
         status_update("Prepping images for Geometric Solver...",
                         progress=0.0,
-                        progress_msg="Phase 4: Preparing images...",
-                        phase=4)
+                        progress_msg="Phase 3: Preparing images...",
+                        phase=3)
         
         start_time_pycolmap = time.perf_counter()
         masked_frames = list(Path(manifest["paths"]["masked_frames"]).glob("*.png"))
@@ -323,21 +338,23 @@ def run_surface_reconstruction(
 
             if ipc_mode and total_frames > 0 and i % 10 == 0:
                 send_progress(
-                    (i / total_frames) * 0.15,
+                    (i / total_frames) * 0.30,
                     f"Preparing image {i + 1} of {total_frames}",
-                    phase=4
+                    phase=3
                 )
         
         # 4. RUN BUNDLE ADJUSTMENT
-        status_update("Started running bundle adjustment...",
-                      progress=0.15,
-                      progress_msg="Phase 4: Running Bundle Adjustment...",
-                      phase=4)
+        status_update("Started running bundle adjustment...")
         run_bundle_adjustment(image_dir, sparse_dir)
 
         total_time_pycolmap = time.perf_counter() - start_time_pycolmap
         status_update(f"Spatial Initialization via pycolmap Complete. Saved to: {input_data_path}")
         status_update(f"Total Time: {total_time_pycolmap:.2f}s")
+
+        status_update("Phase 3: Spatial complete", 1.0, phase=3)
+
+
+    status_update("Starting Phase 4: Geometry")
 
     # 5. Training
     gs_model_dir = output_dir / "vanilla_2dgs"
@@ -383,7 +400,7 @@ def run_surface_reconstruction(
     ]
 
     status_update(f"Starting 2DGS Training ({train_iterations} iterations)...",
-                  progress=0.30,
+                  progress=0.0,
                   progress_msg="Phase 4: Training 2DG...",
                   phase=4)
     total_time = 0
@@ -405,8 +422,8 @@ def run_surface_reconstruction(
         )
         assert process.stdout is not None
 
-        TRAIN_START = 0.30
-        TRAIN_END = 0.85    
+        TRAIN_START = 0.10
+        TRAIN_END = 0.75    
         TRAIN_RANGE = TRAIN_END - TRAIN_START
 
         for line in process.stdout:
@@ -433,7 +450,7 @@ def run_surface_reconstruction(
             sys.exit(1)
 
     status_update("Starting Mesh Extraction (TSDF Fusion)...",
-                progress=0.85,
+                progress=0.75,
                 progress_msg="Phase 4: Extracting mesh...",
                 phase=4)
     mesh_output_dir = gs_model_dir / "train" / f"ours_{train_iterations}"

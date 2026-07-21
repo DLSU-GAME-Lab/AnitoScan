@@ -393,5 +393,5 @@ if __name__ == "__main__":
     if(args.ipc):
         send_log("Skipping MASt3R phase...")
         send_progress(1.0, "Phase 3: Spatial complete", phase=3)
-    print("Skipping MASt3R phase")
+    #print("Skipping MASt3R phase")
 

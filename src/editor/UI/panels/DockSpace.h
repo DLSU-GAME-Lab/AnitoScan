@@ -19,6 +19,6 @@ private:
 	ImGuiID dockspaceID = 0;
 
 	enum class PendingLayout { None, Default, ModelViewer };
-	PendingLayout pendingLayout = PendingLayout::None;
+	PendingLayout pendingLayout = PendingLayout::Default;
 
 };

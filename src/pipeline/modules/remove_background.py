@@ -48,7 +48,7 @@ def get_user_selection(img, detector, temp_dir, frame_name, device, input_callba
     Returns a tuple: (chosen_box_coordinates or None, elapsed_wait_time_seconds)
     """
     start_wait = time.perf_counter()
-    print("\n")
+    #print("\n")
     status_update(f"Running YOLOE-26 on {frame_name}...")
     results = detector.predict(source=img, conf=0.35, device=device, verbose=False)[0]
 
@@ -131,7 +131,7 @@ def get_user_selection(img, detector, temp_dir, frame_name, device, input_callba
 
     write_success = cv2.imwrite(str(preview_path), preview_img)
     if not write_success:
-        print("\n")
+       # print("\n")
         status_error(f"OpenCV failed to write the preview image to: {preview_path}")
         sys.exit(1)
 
@@ -240,7 +240,7 @@ def run_remove_background(
     target_min_frames = manifest["settings"].get("minimum_frames", 45)
 
     status_update("Starting Background Removal Phase.")
-    status_update(f"[*] Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})")
+    status_update(f"Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})")
 
     device = (
         "cuda"
@@ -263,7 +263,7 @@ def run_remove_background(
             current_frame_number = i + 1
             progress_fraction = current_frame_number / total_frames
 
-            send_log("") 
+            #send_log("") 
             send_progress(
                 value=progress_fraction,
                 label=f"Processing frame {current_frame_number} of {total_frames}",
@@ -319,7 +319,7 @@ def run_remove_background(
             if best_match is not None:
                 chosen_box = best_match
             else:
-                print("\n")
+                #print("\n")
                 status_error(f"Tracking signature broke on {img_path.name} (Strict limits violated).")
                 chosen_box, wait_time = get_user_selection(
                     img, detector, temp_dir, img_path.stem, device,
@@ -383,7 +383,7 @@ def run_remove_background(
 
     total_time = time.perf_counter() - start_perf
     processing_time = total_time - total_user_time
-    print("\nPROGRESS: 100")
+    #print("\nPROGRESS: 100")
 
     manifest["status"]["phase"] = 2
     if "masking" not in manifest["status"]["completed"]:
@@ -395,7 +395,7 @@ def run_remove_background(
     if temp_dir.exists():
         shutil.rmtree(temp_dir)
 
-    print("\n")
+    #print("\n")
     status_update(f"Complete. Filtered segmentation masks saved to: {output_dir}")
     status_update(f"[*] Total Gross Session Duration: {total_time:.2f}s")
     status_update(f"Total User Interaction Hold Time: {total_user_time:.2f}s")

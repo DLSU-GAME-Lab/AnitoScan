@@ -117,8 +117,8 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
                 saved_count += 1
 
             if frame_idx % 30 == 0:
-                print(f"PROGRESS: {int((frame_idx / total_frames_in) * 100)}")
-                sys.stdout.flush()
+                #print(f"PROGRESS: {int((frame_idx / total_frames_in) * 100)}")
+               # sys.stdout.flush()
                 
                 if ipc_mode:
                     send_progress(

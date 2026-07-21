@@ -38,6 +38,11 @@ void ViewportPanel::LoadOutputModel(String outputName, String quality) {
     this->scene.LoadModel(modelPath);
 }
 
+void ViewportPanel::LoadOutputModel(std::filesystem::path filePath) {
+    String modelPath = filePath.string();
+    this->scene.LoadModel(modelPath);
+}
+
 bool ViewportPanel::IsHovered() {
 	return this->hoveredLastFrame;
 }

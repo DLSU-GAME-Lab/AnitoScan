@@ -11,6 +11,7 @@ public:
 
 	void Draw() override;
 	void LoadOutputModel(String outputName, String quality);
+	void LoadOutputModel(std::filesystem::path filePath);
 
 	bool IsHovered();
 
