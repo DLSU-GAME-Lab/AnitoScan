@@ -9,6 +9,7 @@ endif()
 
 add_library(editor_ipc STATIC
     IPCClient.cpp
+    IPCProtocol.cpp
     ${IPC_PLATFORM_SOURCE}
 )
 
@@ -71,6 +72,15 @@ target_compile_definitions(${MAIN_TARGET} PRIVATE
 )
 
 if(BUILD_TESTING)
+    add_executable(IPCProtocolTest
+        tests/IPCProtocolTest.cpp
+    )
+    target_link_libraries(IPCProtocolTest PRIVATE
+        editor_ipc
+        nlohmann_json::nlohmann_json
+    )
+    add_test(NAME ipc_protocol_test COMMAND IPCProtocolTest)
+
     add_executable(IPCClientSmokeTest
         tests/IPCClientSmokeTest.cpp
     )

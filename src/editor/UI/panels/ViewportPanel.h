@@ -10,7 +10,7 @@ public:
 	~ViewportPanel();
 
 	void Draw() override;
-	void LoadOutputModel(String outputName, String quality);
+	void LoadOutputModel(const String& modelPath);
 
 	bool IsHovered();
 

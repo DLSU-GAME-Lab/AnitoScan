@@ -1,9 +1,8 @@
 #include "App.h"
 #include "UI/UIManager.h"
+#include "IPCProtocol.h"
 
 #include <utility>
-
-#include <nlohmann/json.hpp>
 
 App::App(int width, int height, BackendLaunchConfig backendConfig)
 	: backendConfig(std::move(backendConfig)) {
@@ -19,25 +18,22 @@ App::~App() {
 }
 
 bool App::Initialize() {
-	//SDL
 	if (!InitializeSDL()) {
 		std::cerr << "[ERROR]: SDL initialization failed: " << SDL_GetError() << std::endl;
 		return false;
 	}
 
-	//OPENGL
 	if (!InitializeOpenGL()) {
 		std::cerr << "[ERROR]: OpenGL initialization failed: " << SDL_GetError() << std::endl;
 		return false;
 	}
 
 	this->scene = std::make_unique<Scene>();
-	//IMGUI
 	if (!UIManager::GetInstance()->Initialize(this->window, this->glContext, this->ipc, *this->scene)) {
 		std::cerr << "[ERROR]: ImGui initialization failed: " << std::endl;
 		return false;
 	}
-	
+
 	std::cout << "[DEBUG]: Launching " << this->backendConfig.displayName << " backend." << std::endl;
 	if (!this->ipc.Start(this->backendConfig.executable, this->backendConfig.arguments)) {
 		std::cerr << "[ERROR]: Failed to launch " << this->backendConfig.displayName << " backend." << std::endl;
@@ -51,13 +47,11 @@ bool App::Initialize() {
 }
 
 bool App::InitializeSDL() {
-	// initialize SDL
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0) {
 		std::cerr << "[ERROR]: SDL initialization failed: " << SDL_GetError() << std::endl;
 		return false;
 	}
 
-	// set OpenGL Attributes
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 #if defined(__APPLE__)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
@@ -70,9 +64,9 @@ bool App::InitializeSDL() {
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
-	float dpiScale = 1.25f;  
-	int logicalW = static_cast<int>(this->screenWidth / dpiScale);   
-	int logicalH = static_cast<int>(this->screenHeight / dpiScale);  
+	float dpiScale = 1.25f;
+	int logicalW = static_cast<int>(this->screenWidth / dpiScale);
+	int logicalH = static_cast<int>(this->screenHeight / dpiScale);
 
 	window = SDL_CreateWindow(
 		"AnitoScan",
@@ -92,7 +86,6 @@ bool App::InitializeSDL() {
 }
 
 bool App::InitializeOpenGL() {
-	// bind the OpenGL context to window
 	this->glContext = SDL_GL_CreateContext(this->window);
 	if (!glContext) {
 		std::cerr << "[ERROR]: OpenGL Context creation failed: " << SDL_GetError() << std::endl;
@@ -104,7 +97,6 @@ bool App::InitializeOpenGL() {
 		return false;
 	}
 
-	// enable v-sync
 	SDL_GL_SetSwapInterval(1);
 
 	if (!gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress)) {
@@ -115,7 +107,6 @@ bool App::InitializeOpenGL() {
 	return true;
 }
 
-// IPC and action decoder from the python backend
 void App::PollBackend() {
 	std::vector<BackendMessage> messages;
 	this->ipc.Poll(messages);
@@ -128,76 +119,73 @@ void App::PollBackend() {
 	ViewportPanel* viewport = static_cast<ViewportPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::VIEWPORT));
 
 	for (BackendMessage& msg : messages) {
-		try {
-			auto j = nlohmann::json::parse(msg.raw);
+		IPCProtocol::DecodedEvent event = IPCProtocol::DecodeEvent(msg.raw);
 
-			// LOG
-			if (msg.type == "log") {
-				String text = j.value("text", "");
-				log->PushLog(text);
-			}
+		switch (event.type) {
+			case IPCProtocol::EventType::BACKEND_READY:
+				std::cout << "[DEBUG]: Backend ready, protocol_version: " << event.backendReady.protocolVersion << std::endl;
+				break;
 
-			// INITIALIZED WORKSPACE
-			else if (msg.type == "workspace_ready") {
-				String runName = j.value("run_name", "");
-				std::cout << "[DEBUG]: workspace_ready received, run_name: '" << runName << "'" << std::endl;
-				if (!runName.empty()) {
-					UIManager::GetInstance()->SetOutputToFileViewers(runName);
+			case IPCProtocol::EventType::LOG:
+				if (log) log->PushLog(event.log.text);
+				break;
+
+			case IPCProtocol::EventType::WORKSPACE_READY:
+				if (!event.workspaceReady.runName.empty()) {
+					UIManager::GetInstance()->SetOutputToFileViewers(event.workspaceReady.runName);
 				}
-			}
+				break;
 
-			// PROGRESS UPDATE
-			else if (msg.type == "progress") {
-				float value = j.value("value", 0.0f);
-				String label = j.value("label", "");
-				int phase = j.value("phase", 0);
-				
-				//route to the correct phase bar
-				if (phase >= 1 && phase <= (int)Phase::COUNT) {
-					overview->SetPhaseProgress((Phase)(phase - 1), value, label);
-					if (value == 1.f) {
-						overview->SetPhaseComplete((Phase)(phase - 1));
-						std::cout << "[DEBUG]: " << label << std::endl;
-					}
+			case IPCProtocol::EventType::PHASE_STARTED:
+				if (overview) overview->SetPhaseStarted(event.phaseStarted.phase, event.phaseStarted.label);
+				break;
+
+			case IPCProtocol::EventType::PROGRESS:
+				if (overview) {
+					overview->SetPhaseProgress(
+						event.progress.phase,
+						event.progress.value,
+						event.progress.overallValue,
+						event.progress.label
+					);
 				}
-				else {		//overall progress bar
-					overview->SetPhaseProgress(overview->GetCurrentPhase(), value, label);
+				break;
+
+			case IPCProtocol::EventType::ACTION_REQUIRED:
+				if (popup) {
+					popup->ShowCandidates(
+						event.actionRequired.requestId,
+						event.actionRequired.preview,
+						event.actionRequired.frame,
+						event.actionRequired.count
+					);
 				}
-			}
+				break;
 
-			// MASKING POPUP
-			else if (msg.type == "action_required") { //pass the image index
-				String previewPath = j.value("preview", "");
-				String frame = j.value("frame", "");
-				int count = j.value("count", 0);
-				std::cout << "[DEBUG] action_required: " << previewPath << std::endl;
+			case IPCProtocol::EventType::PHASE_COMPLETED:
+				if (overview) overview->SetPhaseComplete(event.phaseCompleted.phase);
+				break;
 
-				popup->ShowCandidates(previewPath, frame, count);
-			}
-			
-			// SCAN COMPLETE
-			else if (msg.type == "done") {
-				overview->SetDone();
-				String baseDir = j["data"].value("output", "");
-				String outputName = j["data"].value("run_name", "");
-				
-				viewport->LoadOutputModel(outputName, overview->GetExportQuality());
+			case IPCProtocol::EventType::DONE:
+				if (overview) overview->SetDone();
+				if (viewport && !event.done.output.empty()) {
+					viewport->LoadOutputModel(event.done.output);
+				}
+				break;
 
-				std::cout << "[DEBUG]: Scan Complete" << std::endl;
-				std::cout << "[DEBUG]: Output in: " << baseDir << std::endl;
-			}
+			case IPCProtocol::EventType::CANCELLED:
+				if (overview) overview->SetCancelled();
+				break;
 
-			// ERROR
-			else if (msg.type == "error") {
-				log->PushLog("[ERROR] " + j.value("text", "unknown error"));
-			}
+			case IPCProtocol::EventType::ERROR:
+				if (log) log->PushLog("[ERROR] " + event.error.text);
+				if (overview) overview->HandleError(event.error);
+				break;
+
+			default:
+				if (log) log->PushLog(msg.raw);
+				break;
 		}
-
-		// RAW prints from backend
-		catch (const nlohmann::json::exception&){
-			//std::cout << "[RAW]: " + msg.raw << std::endl;
-			log->PushLog(msg.raw);
- 		}
 	}
 }
 
@@ -205,7 +193,6 @@ void App::ProcessMouseEvents(SDL_Event event) {
 	ViewportPanel* viewport = static_cast<ViewportPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::VIEWPORT));
 	bool canStartOrbit = viewport && viewport->IsHovered();
 
-	//MOUSE DOWN
 	if (event.type == SDL_MOUSEBUTTONDOWN && canStartOrbit) {
 		if (event.button.button == SDL_BUTTON_LEFT) {
 			this->mouseDragging = true;
@@ -215,8 +202,6 @@ void App::ProcessMouseEvents(SDL_Event event) {
 		}
 		SDL_SetRelativeMouseMode(SDL_TRUE);
 	}
-
-	//RELEASE
 	else if (event.type == SDL_MOUSEBUTTONUP) {
 		if (event.button.button == SDL_BUTTON_LEFT) {
 			this->mouseDragging = false;
@@ -226,30 +211,22 @@ void App::ProcessMouseEvents(SDL_Event event) {
 		}
 		SDL_SetRelativeMouseMode(SDL_FALSE);
 	}
-
-	// adjust camera rotation when dragging mouse
 	else if (event.type == SDL_MOUSEMOTION && this->mouseDragging) {
 		this->scene->GetCamera().ProcessMouseDrag(
 			static_cast<float>(event.motion.xrel),
 			static_cast<float>(event.motion.yrel)
 		);
 	}
-
-	// pan camera when dragging middle mouse button
 	else if (event.type == SDL_MOUSEMOTION && this->middleMousehold) {
 		this->scene->GetCamera().ProcessPan(
 			static_cast<float>(event.motion.xrel),
 			static_cast<float>(event.motion.yrel)
 		);
 	}
-
-	// mouse wheel function
 	else if (event.type == SDL_MOUSEWHEEL && (canStartOrbit || this->mouseDragging)) {
 		this->scene->GetCamera().ProcessScroll(static_cast<float>(event.wheel.y));
 	}
 
-
-	//safety net when mouse input exits window 
 	if (event.type == SDL_WINDOWEVENT &&
 		(event.window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
 			event.window.event == SDL_WINDOWEVENT_LEAVE)) {
@@ -264,19 +241,14 @@ void App::ProcessKeyboardEvents(SDL_Event event) {
 	}
 }
 
-
-void App::Run()
-{
-	// main loop
+void App::Run() {
 	SDL_Event event;
 	while (this->isRunning) {
-		//deltaTime
 		Uint64 now = SDL_GetPerformanceCounter();
 		this->deltaTime = static_cast<float>(now - this->lastTime) / SDL_GetPerformanceFrequency();
 		this->lastTime = now;
 		this->deltaTime = (std::min)(deltaTime, 0.05f);
 
-		// handle window/input events
 		while (SDL_PollEvent(&event)) {
 			ImGui_ImplSDL2_ProcessEvent(&event);
 			if (event.type == SDL_QUIT) {
@@ -284,9 +256,8 @@ void App::Run()
 			}
 
 			ProcessMouseEvents(event);
-			ProcessKeyboardEvents(event);	
+			ProcessKeyboardEvents(event);
 		}
-
 
 		const Uint8* keys = SDL_GetKeyboardState(nullptr);
 		scene->GetCamera().ProcessKeyboard(
@@ -297,17 +268,13 @@ void App::Run()
 			deltaTime
 		);
 
-
-		// Receiver and action decoder from python backend
 		PollBackend();
 
-		// model render
 		int drawableW, drawableH;
 		SDL_GL_GetDrawableSize(this->window, &drawableW, &drawableH);
 		scene->Update(0.0f);
 		scene->Render(drawableW, drawableH);
 
-		//ImGui draw/render
 		UIManager::GetInstance()->BeginNewFrame();
 		UIManager::GetInstance()->DrawAllUIs();
 		UIManager::GetInstance()->EndFrame();
@@ -316,18 +283,14 @@ void App::Run()
 	}
 }
 
-
 void App::Cleanup() {
 	this->ipc.Shutdown();
 	UIManager::GetInstance()->Shutdown();
-	// destroy window frame
 	if (this->glContext) {
 		SDL_GL_DeleteContext(this->glContext);
 	}
-
 	if (this->window) {
 		SDL_DestroyWindow(this->window);
 	}
-
 	SDL_Quit();
 }

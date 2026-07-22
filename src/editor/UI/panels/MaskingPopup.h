@@ -4,6 +4,7 @@
 
 #include "../UIPanel.h"
 #include "OverviewPanel.h"
+#include "../../IPCProtocol.h"
 
 class MaskingPopup : public UIPanel {
 public:
@@ -12,7 +13,7 @@ public:
 
 	void Draw() override;
 	void ShowPopup();
-	void ShowCandidates(String previewPath, String frame, int count);
+	void ShowCandidates(String requestId, String previewPath, String frame, int count);
 
 private:
 	void LoadPreview(const String& path);
@@ -27,10 +28,11 @@ private:
 	GLuint previewTexture;
 	String lastPreviewPath;
 	int previewW = 0, previewH = 0;
+	String requestId;
 	String previewPath, frame;
-	int count;
+	int count = 0;
 
-//zoom
+// zoom & pan
 private:
 	float  zoom = 1.0f;
 	ImVec2 panOffset = ImVec2(0, 0);

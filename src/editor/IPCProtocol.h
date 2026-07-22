@@ -2,7 +2,7 @@
 
 #include <string>
 #include <nlohmann/json.hpp>
-#include "Types.h"
+#include "Phase.h"
 
 namespace IPCProtocol {
 
