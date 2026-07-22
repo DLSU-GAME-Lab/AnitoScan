@@ -78,7 +78,7 @@ std::optional<BackendLaunchConfig> ResolveBackendLaunchConfig(
 				"--project",
 				projectRoot.string(),
 				"python",
-				(coreDirectory / "pipeline.py").string(),
+				(coreDirectory / "backend.py").string(),
 				"--ipc",
 			},
 		};
