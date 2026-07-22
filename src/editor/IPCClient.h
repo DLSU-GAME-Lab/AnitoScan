@@ -10,8 +10,6 @@
 
 class IPCClientPlatform;
 
-// Start, Restart, and Shutdown are main-thread lifecycle operations. Send and
-// Poll synchronize their own transport/message access.
 class IPCClient {
 public:
 	IPCClient();
@@ -25,6 +23,7 @@ public:
 	bool Send(const std::string& jsonLine);
 	void Poll(std::vector<BackendMessage>& outMessages);
 	bool IsRunning() const;
+	bool IsBackendReady() const { return backendReady; }
 	void Shutdown();
 
 private:
@@ -35,6 +34,7 @@ private:
 	std::string configuredExecutable;
 	std::vector<std::string> configuredArguments;
 	bool hasConfiguration = false;
+	bool backendReady = false;
 
 	std::mutex messageMutex;
 	std::queue<BackendMessage> queuedMessages;

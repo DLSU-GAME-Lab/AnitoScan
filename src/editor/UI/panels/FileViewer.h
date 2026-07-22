@@ -1,8 +1,9 @@
 #pragma once
 
-//#include "../../Types.h"
 #include "../UIPanel.h"
 #include "OverviewPanel.h"
+
+enum class Phase;
 
 class FileViewer : public UIPanel {
 public:

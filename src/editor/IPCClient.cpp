@@ -30,6 +30,7 @@ bool IPCClient::Start(const std::string& executable, const std::vector<std::stri
 	configuredExecutable = executable;
 	configuredArguments = arguments;
 	hasConfiguration = true;
+	backendReady = false;
 
 	{
 		std::lock_guard<std::mutex> lock(messageMutex);
@@ -93,6 +94,7 @@ void IPCClient::Shutdown() {
 	if (platform) {
 		platform->Shutdown();
 	}
+	backendReady = false;
 }
 
 void IPCClient::HandleStdoutLine(std::string line) {
@@ -107,10 +109,11 @@ void IPCClient::HandleStdoutLine(std::string line) {
 	try {
 		const auto json = nlohmann::json::parse(message.raw);
 		message.type = json.value("type", "unknown");
+		if (message.type == "backend_ready") {
+			backendReady = true;
+		}
 	}
 	catch (const nlohmann::json::exception&) {
-		// Protocol cleanup will make stdout JSON-only. Until then, preserve the
-		// line as an unknown message instead of dropping backend output.
 	}
 
 	std::lock_guard<std::mutex> lock(messageMutex);

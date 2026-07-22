@@ -3,6 +3,7 @@
 #include "../UIPanel.h"
 #include "../UIManager.h"
 #include "../../IPCClient.h"
+#include "../../IPCProtocol.h"
 
 #include <mutex>
 
@@ -19,9 +20,12 @@ public:
 	~OverviewPanel();
 
 	void Draw() override;
-	void SetPhaseProgress(Phase phase, float value, const String& label);
+	void SetPhaseStarted(Phase phase, const String& label);
+	void SetPhaseProgress(Phase phase, float value, float overallValue, const String& label);
 	void SetPhaseComplete(Phase phase);
 	void SetDone();
+	void SetCancelled();
+	void HandleError(const IPCProtocol::ErrorEvent& err);
 	void SetScanning(bool scanning);
 	void SetInput(String input, String output, int minFrames, String quality);
 	String GetExportQuality();
@@ -32,16 +36,15 @@ private:
 	void DrawActions();
 	void DrawOverallProgress();
 	void DrawPhaseBreakdown();
-	float CalculateOverallProgress();
 	void ResetAllProgress();
-	bool DeleteRunFolder(String path, int maxAttempts);
 
 private:
 	IPCClient& ipc;
 	bool isScanning = false;
+	bool isCancelling = false;
 	bool inputReady = false;
-	bool isCleaningUp = false;
-	PhaseStatus phases[5];
+	float overallProgressValue = 0.0f;
+	PhaseStatus phases[6]; // Index 1..5 for canonical Phase 1..5
 	Phase currentPhase = Phase::NONE;
 	String inputFile, outputFolder, quality;
 	int minFrames;

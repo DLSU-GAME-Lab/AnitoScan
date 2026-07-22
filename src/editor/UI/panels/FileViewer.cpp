@@ -1,9 +1,7 @@
 #include "FileViewer.h"
 
-// Configures the embedded file browser flags and filters out image format extensions for browsing
 FileViewer::FileViewer(String name, Phase phase) : UIPanel(name) {
 	this->fileDialog = ImGui::FileBrowser(ImGuiFileBrowserFlags_Embedded | ImGuiFileBrowserFlags_NoModal);
-	//this->fileDialog.SetTitle("FileBrowser");
 	this->fileDialog.SetTypeFilters({ ".png", ".jpg", ".jpeg" });
 	this->previewTexture = NULL;
 	this->phase = phase;
@@ -11,14 +9,13 @@ FileViewer::FileViewer(String name, Phase phase) : UIPanel(name) {
 	switch (phase) {
 		case Phase::CAPTURE: this->type = UIType::FILE_VIEWER_CAPTURE; break;
 		case Phase::MASKING: this->type = UIType::FILE_VIEWER_MASKING; break;
+		default: break;
 	}
 }
 
 FileViewer::~FileViewer() {}
 
-// Manages a refresh timer to poll the storage directory for changes and calls the draw function for the browser
 void FileViewer::Draw() {
-	//update timer
 	ImGuiIO& io = ImGui::GetIO();
 
 	if (this->isRefreshing) {
@@ -33,13 +30,11 @@ void FileViewer::Draw() {
 
 	if (this->hasRootFolder) {
 		DrawDefaultBrowser();
-		//DrawBrowserTable();
 	}
 
 	ImGui::End();
 }
 
-// Displays the directory and preview panel in a vertical layout
 void FileViewer::DrawDefaultBrowser() {
 	ImVec2 windowSize = ImGui::GetContentRegionAvail();
 	float browserH = windowSize.y * 0.6f;
@@ -63,11 +58,8 @@ void FileViewer::DrawDefaultBrowser() {
 	ImGui::EndChild();
 }
 
-// Displays the directory and preview panel side-by-side
 void FileViewer::DrawBrowserTable() {
-	if (ImGui::BeginTable("layout", 2,
-		ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
-
+	if (ImGui::BeginTable("layout", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable)) {
 		ImGui::TableSetupColumn("Browser", ImGuiTableColumnFlags_WidthFixed, 300.0f);
 		ImGui::TableSetupColumn("Preview", ImGuiTableColumnFlags_WidthStretch);
 
@@ -89,7 +81,6 @@ void FileViewer::DrawBrowserTable() {
 	}
 }
 
-// Decodes an image file into memory and uploads it as a 2D OpenGL texture via stb_image
 void FileViewer::LoadPreview(const String& path) {
 	if (path == this->lastPreviewPath) return;
 	ClearPreview();
@@ -117,7 +108,6 @@ void FileViewer::LoadPreview(const String& path) {
 	this->lastPreviewPath = path;
 }
 
-// Preview image clean up
 void FileViewer::ClearPreview() {
 	if (this->previewTexture) {
 		glDeleteTextures(1, &this->previewTexture);
@@ -127,8 +117,6 @@ void FileViewer::ClearPreview() {
 	this->lastPreviewPath.clear();
 }
 
-// Computes aspect ratio uniform scaling and positions the image in the center of the viewport box
-// Shifts ImGui rendering cursors to center align, and draws the output texture
 void FileViewer::DrawFittedImage(GLuint texture, int imgW, int imgH, ImVec2 availSpace) {
 	float scaleX = availSpace.x / (float)imgW;
 	float scaleY = availSpace.y / (float)imgH;
@@ -144,7 +132,6 @@ void FileViewer::DrawFittedImage(GLuint texture, int imgW, int imgH, ImVec2 avai
 	ImGui::Image((ImTextureID)(intptr_t)texture, displaySize);
 }
 
-// Evaluates and targets a specific subdirectory run folder depending on the active stage process
 void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 	if (output.empty()) {
 		std::cerr << "[ERROR] FileViewer::SetRootFolderToView called with empty root" << std::endl;
@@ -159,9 +146,8 @@ void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 		case Phase::CAPTURE: temp = "01_capture"; break;
 		case Phase::MASKING: temp = "02_masking"; break;
 		case Phase::SPATIAL: temp = "03_spatial"; break;
+		default: break;
 	}
-
-	//std::filesystem::path fullPath = std::filesystem::current_path() / "data" / "runs" / this->output / temp;
 
 	std::filesystem::path projectRoot(PROJECT_ROOT_DIR);
 	std::filesystem::path fullPath = projectRoot / "data" / "runs" / this->output / temp;
@@ -173,7 +159,6 @@ void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 	}
 
 	this->fileDialog.SetPwd(fullPath);
-
 }
 
 void FileViewer::ClearOutputFolder() {
@@ -182,7 +167,6 @@ void FileViewer::ClearOutputFolder() {
 	this->fileDialog.SetPwd(std::filesystem::current_path());
 }
 
-// Controls whether the file dialog should continuously trigger directory polling updates inside the frame loop
 void FileViewer::ToggleRefresh(bool isRefreshing) {
 	this->isRefreshing = isRefreshing;
 }

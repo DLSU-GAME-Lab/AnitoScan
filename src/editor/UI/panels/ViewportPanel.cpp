@@ -1,14 +1,11 @@
 #include "ViewportPanel.h"
 
-ViewportPanel::ViewportPanel(String name, Scene& scene) 
+ViewportPanel::ViewportPanel(String name, Scene& scene)
 	: UIPanel(UIType::VIEWPORT, name), scene(scene) {}
 
 ViewportPanel::~ViewportPanel() {}
 
-// Displays the model viewer panel
 void ViewportPanel::Draw() {
-    //ImGui::Begin(this->name.c_str());
-
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
 	ImGui::Begin(this->name.c_str(), nullptr, flags);
@@ -22,7 +19,6 @@ void ViewportPanel::Draw() {
 
         GLuint tex = this->scene.GetColorTexture();
         if (tex != 0) {
-            // flipped UVs
             ImGui::Image(static_cast<ImTextureID>(tex),
                 panelSize, ImVec2(0, 1), ImVec2(1, 0));
         }
@@ -32,9 +28,7 @@ void ViewportPanel::Draw() {
     ImGui::PopStyleVar();
 }
 
-// Loads the scanned model to viewport
-void ViewportPanel::LoadOutputModel(String outputName, String quality) {
-    String modelPath = String(PROJECT_ROOT_DIR) + "/data/output/" + outputName + "/" + outputName + "_" + quality + ".obj";
+void ViewportPanel::LoadOutputModel(const String& modelPath) {
     this->scene.LoadModel(modelPath);
 }
 
