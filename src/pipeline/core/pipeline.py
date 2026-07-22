@@ -14,6 +14,7 @@ MODULES_DIR = SCRIPT_PATH.parent.parent / "modules"
 
 sys.path.insert(0, str(MODULES_DIR))
 
+from src.pipeline.core.config import PipelineConfig
 from capture import run_capture
 from export import run_export_and_baking
 from geometry import run_surface_reconstruction
@@ -28,23 +29,24 @@ def run_pipeline_with_args(
     action_cb=None,
     is_cancelled=None,
 ) -> dict[str, str]:
-    """
-    Executes all 5 pipeline phases cleanly in process, passing down
-    logging, progress, action, and cancellation hooks.
-    """
+    """Executes all 5 pipeline phases cleanly in process using PipelineConfig."""
     def log(text: str):
         if log_cb:
             log_cb(text)
 
-    run_name = args.get("run_name") or args.get("name") or ""
-    input_str = args.get("input") or ""
+    # Instantiate and validate pipeline configuration
+    config = PipelineConfig.from_dict(args)
+    if not config.input_path.is_absolute():
+        config.input_path = (PROJECT_ROOT / "data" / "input" / config.input_path).resolve()
 
-    base_dir = (WORKSPACE_DIR / run_name).resolve()
+    config.validate(check_path_exists=True)
+
+    base_dir = (WORKSPACE_DIR / config.run_name).resolve()
     capture_dir = base_dir / "01_capture"
     mask_dir = base_dir / "02_masking"
     spatial_dir = base_dir / "03_spatial"
     geometry_dir = base_dir / "04_geometry"
-    export_dir = (PROJECT_ROOT / "data" / "output" / run_name).resolve()
+    export_dir = (PROJECT_ROOT / "data" / "output" / config.run_name).resolve()
     manifest_path = base_dir / "manifest.json"
 
     capture_dir.mkdir(parents=True, exist_ok=True)
@@ -53,42 +55,11 @@ def run_pipeline_with_args(
     geometry_dir.mkdir(parents=True, exist_ok=True)
     export_dir.mkdir(parents=True, exist_ok=True)
 
-    input_path = Path(PROJECT_ROOT / "data" / "input" / input_str).resolve()
-    if not input_path.exists():
-        raise FileNotFoundError(f"Input source not found: {input_path}")
-
-    manifest = {
-        "run_name": run_name,
-        "input_source": str(input_path),
-        "mode": args.get("mode", "disk"),
-        "settings": {
-            "minimum_frames": args.get("minimum_frames", 45),
-            "blur_threshold": args.get("blur_threshold", 200.0),
-            "proxy_width": args.get("proxy_width", 640.0),
-            "jpg_quality": args.get("jpg_quality", 85),
-            "max_search": args.get("max_search", 3),
-            "quality": args.get("quality", "fast"),
-        },
-        "status": {
-            "phase": 1,
-            "completed": [],
-        },
-        "paths": {
-            "run_root": str(base_dir),
-            "raw_frames": str(capture_dir),
-            "masked_frames": str(mask_dir),
-            "spatial": str(spatial_dir),
-            "geometry": str(geometry_dir),
-            "export": str(export_dir),
-        },
-    }
-
-    with open(manifest_path, "w") as f:
-        json.dump(manifest, f, indent=4)
-
+    # Save initial manifest directly from PipelineConfig
+    config.save_manifest(manifest_path)
     log(f"Workspace initialized: {base_dir}")
 
-    force = bool(args.get("force", False))
+    force = config.spatial.force or config.export.force
 
     # --- Phase 1: Capture ---
     log("Starting Phase 1: Capture")
@@ -106,9 +77,9 @@ def run_pipeline_with_args(
     log("Starting Phase 2: Masking")
     run_remove_background(
         manifest_path=manifest_path,
-        yoloe_model_size=args.get("yoloe_model_size", "s"),
-        iou_threshold=float(args.get("iou_threshold", 0.50)),
-        drift_limit=int(args.get("drift_limit", 200)),
+        yoloe_model_size=config.masking.yoloe_model_size,
+        iou_threshold=config.masking.iou_threshold,
+        drift_limit=config.masking.drift_limit,
         force=force,
         action_cb=action_cb,
         progress_cb=progress_cb,
@@ -128,19 +99,11 @@ def run_pipeline_with_args(
 
     # --- Phase 4: Geometry ---
     log("Starting Phase 4: Geometry")
-    quality = args.get("quality", "fast")
-    if quality == "fast":
-        train_iters, densify, opacity = 7000, 5000, 1000
-    elif quality == "medium":
-        train_iters, densify, opacity = 15000, 7500, 3000
-    else:
-        train_iters, densify, opacity = 30000, 15000, 3000
-
     run_surface_reconstruction(
         manifest_path=manifest_path,
-        train_iterations=train_iters,
-        densify_until_iter=densify,
-        opacity_reset_interval=opacity,
+        train_iterations=config.geometry.train_iterations,
+        densify_until_iter=config.geometry.densify_until_iter,
+        opacity_reset_interval=config.geometry.opacity_reset_interval,
         force=force,
         progress_cb=progress_cb,
         log_cb=log_cb,
@@ -160,7 +123,7 @@ def run_pipeline_with_args(
     log("Scan Complete")
 
     return {
-        "run_name": run_name,
+        "run_name": config.run_name,
         "workspace": str(base_dir),
         "output": output_obj_path,
     }
