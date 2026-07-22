@@ -1,6 +1,9 @@
 set(FETCHCONTENT_BASE_DIR "${CMAKE_SOURCE_DIR}/vendor")
 include(FetchContent)
 
+find_package(OpenGL REQUIRED)
+find_package(Threads REQUIRED)
+
 # ImGUI
 FetchContent_Declare(
     imgui
@@ -81,7 +84,7 @@ target_include_directories(vendor_imgui PUBLIC
 
 target_link_libraries(vendor_imgui PUBLIC
     SDL2::SDL2
-    opengl32
+    OpenGL::GL
 )
 
 # stb
@@ -101,7 +104,8 @@ add_library(deps::engine ALIAS engine_deps)
 target_link_libraries(engine_deps INTERFACE
     SDL2::SDL2
     SDL2::SDL2main
-    opengl32
+    OpenGL::GL
+    Threads::Threads
     glad
     glm::glm
     nlohmann_json::nlohmann_json

@@ -10,7 +10,7 @@
 #include "../Types.h"
 #include "UIPanel.h"
 #include "panels/OverviewPanel.h"
-#include "panels/Dockspace.h"
+#include "panels/DockSpace.h"
 #include "panels/FileViewer.h"
 #include "panels/LogPanel.h"
 #include "panels/MaskingPopup.h"
@@ -53,8 +53,8 @@ private:
 private:
 	UIManager();
 	~UIManager();
-	UIManager(UIManager const&) {};
-	UIManager& operator=(UIManager const&) {};
+	UIManager(const UIManager&) = delete;
+	UIManager& operator=(const UIManager&) = delete;
 	static UIManager* sharedInstance;
 
 private:

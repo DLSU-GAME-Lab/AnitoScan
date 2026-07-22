@@ -4,6 +4,8 @@
 #include "../UIManager.h"
 #include "../../IPCClient.h"
 
+#include <mutex>
+
 struct PhaseStatus {
 	float progress = 0.0f;
 	String label = "Waiting...";

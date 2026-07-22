@@ -1,5 +1,10 @@
 #include "OverviewPanel.h"
 
+#include <chrono>
+#include <thread>
+
+#include <nlohmann/json.hpp>
+
 OverviewPanel::OverviewPanel(String name, IPCClient& ipc)
 	: UIPanel(UIType::OVERVIEW, name), ipc(ipc) {}
 
@@ -146,8 +151,9 @@ void OverviewPanel::DrawActions() {
 			}
 		}).detach();
 
-		//this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc");
-		this->ipc.RunThroughUV(std::filesystem::path("src") / "pipeline" / "core" / "pipeline.py");
+		if (!this->ipc.Restart()) {
+			std::cerr << "[ERROR]: Failed to restart the configured backend." << std::endl;
+		}
 	}
 	ImGui::EndDisabled();
 

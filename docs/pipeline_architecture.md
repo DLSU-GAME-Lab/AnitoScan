@@ -23,6 +23,20 @@ flowchart TD
     Pipeline --> Export[Export]
 ```
 
+## Platform support
+
+| Component | Windows | macOS |
+|---|---:|---:|
+| C++ editor | Supported | Supported |
+| IPC transport | Supported | Supported |
+| Dummy backend | Supported | Supported |
+| Production reconstruction backend | Supported | Not supported |
+| 2DGS reconstruction | Supported | Not supported |
+
+macOS uses the dummy backend for editor integration and workflow testing. Production reconstruction, CUDA behavior, and 2DGS output are validated on Windows.
+
+The editor rejects production-backend launch requests on unsupported platforms rather than attempting to import or synchronize production dependencies.
+
 ## Target package structure
 
 ```text

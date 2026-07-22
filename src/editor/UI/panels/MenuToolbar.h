@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../UIPanel.h"
-#include "Dockspace.h"
+#include "DockSpace.h"
 
 class MenuToolbar : public UIPanel {
 public:

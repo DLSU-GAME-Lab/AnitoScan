@@ -1,5 +1,7 @@
 #include "MaskingPopup.h"
 
+#include <nlohmann/json.hpp>
+
 //Initializes the popup's UI properties, default preview texture states, and binds the IPC client reference
 MaskingPopup::MaskingPopup(String name, IPCClient& ipc)
     : UIPanel(UIType::MASKING_MODAL, name, false), ipc(ipc) {
