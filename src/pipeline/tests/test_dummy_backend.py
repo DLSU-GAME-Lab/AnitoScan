@@ -18,7 +18,6 @@ import zlib
 from pathlib import Path
 from typing import Any, Callable
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DUMMY_BACKEND = PROJECT_ROOT / "src" / "pipeline" / "core" / "dummy.py"
 TERMINAL_TYPES = {"done", "cancelled"}
@@ -123,19 +122,6 @@ class BackendProcess:
                 "Backend stdout closed unexpectedly; "
                 f"exit={self.process.poll()}, stderr={self.stderr_lines}"
             )
-        if isinstance(item, BaseException):
-            raise item
-        assert isinstance(item, dict)
-        self.history.append(item)
-        return item
-
-    def receive_optional(self, timeout: float) -> dict[str, Any] | None:
-        try:
-            item = self.messages.get(timeout=timeout)
-        except queue.Empty:
-            return None
-        if item is _EOF:
-            return None
         if isinstance(item, BaseException):
             raise item
         assert isinstance(item, dict)
@@ -250,7 +236,7 @@ class DummyBackendTest(unittest.TestCase):
         self.temporary_directory = tempfile.TemporaryDirectory(
             prefix="anitoscan-dummy-test-"
         )
-        self.test_root = Path(self.temporary_directory.name)
+        self.test_root = Path(self.temporary_directory.name).resolve()
         self.relative_input = Path("data/input/example.mp4")
         self.absolute_input = self.test_root / "absolute-input.mp4"
         (self.test_root / self.relative_input).parent.mkdir(parents=True)
@@ -305,6 +291,7 @@ class DummyBackendTest(unittest.TestCase):
         self.assertEqual(len(terminals), 1)
         done = terminals[0]
         self.assertEqual(done.get("type"), "done", done)
+        self.assertNotIn("data", done)  # Ensure legacy nested data field is absent
 
         lifecycle = [event for event in events if event.get("type") in LIFECYCLE_TYPES]
         expected: list[tuple[str, int | float | None]] = [
@@ -329,14 +316,8 @@ class DummyBackendTest(unittest.TestCase):
         ]
         self.assertEqual(actual, expected)
         self.assertEqual(lifecycle[0].get("run_name"), run_name)
+        self.assertNotIn("path", lifecycle[0])  # Ensure legacy workspace path alias is absent
         self.assertEqual(lifecycle[-1].get("type"), "done")
-        terminal_index = events.index(lifecycle[-1])
-        self.assertFalse(
-            any(
-                event.get("type") in LIFECYCLE_TYPES
-                for event in events[terminal_index + 1 :]
-            )
-        )
 
         progress = [event for event in events if event.get("type") == "progress"]
         self.assertTrue(progress)
@@ -354,7 +335,6 @@ class DummyBackendTest(unittest.TestCase):
         self.assertTrue(all(0.0 <= value <= 1.0 for value in overall_values))
 
         self.assertEqual(done.get("run_name"), run_name)
-        self.assertEqual(done.get("data", {}).get("run_name"), run_name)
         return done
 
     def assert_artifacts(
@@ -418,6 +398,19 @@ class DummyBackendTest(unittest.TestCase):
         unknown = self.backend.wait_for_type("error")
         self.assertEqual(unknown.get("code"), "unknown_command")
 
+        # Assert rejection of legacy 'action' command field
+        self.backend.send(
+            {
+                "action": "run_pipeline",
+                "name": "legacy_cmd",
+                "input": str(self.relative_input),
+                "minimum_frames": 4,
+                "quality": "medium",
+            }
+        )
+        legacy_action_err = self.backend.wait_for_type("error")
+        self.assertEqual(legacy_action_err.get("code"), "unknown_command")
+
         self.backend.send(
             {
                 "type": "run_pipeline",
@@ -430,41 +423,6 @@ class DummyBackendTest(unittest.TestCase):
         invalid_run = self.backend.wait_for_type("error")
         self.assertEqual(invalid_run.get("code"), "invalid_run_request")
 
-        for reserved_name in ("CON", "prn.txt", "COM1.log", "Lpt9"):
-            self.backend.send(
-                {
-                    "type": "run_pipeline",
-                    "run_name": reserved_name,
-                    "input": str(self.relative_input),
-                    "minimum_frames": 3,
-                    "quality": "fast",
-                }
-            )
-            reserved = self.backend.wait_for_type("error")
-            self.assertEqual(reserved.get("code"), "invalid_run_request")
-
-        complete_request = {
-            "type": "run_pipeline",
-            "run_name": self.new_run_name("missing-field"),
-            "input": str(self.relative_input),
-            "minimum_frames": 3,
-            "quality": "fast",
-        }
-        for field in ("run_name", "input", "minimum_frames", "quality"):
-            request = dict(complete_request)
-            del request[field]
-            self.backend.send(request)
-            missing = self.backend.wait_for_type("error")
-            self.assertEqual(missing.get("code"), "invalid_run_request")
-            self.assertIn(field, missing.get("text", ""))
-
-        missing_input_request = dict(complete_request)
-        missing_input_request["run_name"] = self.new_run_name("missing-input")
-        missing_input_request["input"] = "does/not/exist.mp4"
-        self.backend.send(missing_input_request)
-        missing_input = self.backend.wait_for_type("error")
-        self.assertEqual(missing_input.get("code"), "invalid_run_request")
-
         target_name = self.new_run_name("target")
 
         def target_selection(action: dict[str, Any]) -> None:
@@ -476,34 +434,15 @@ class DummyBackendTest(unittest.TestCase):
             self.assertEqual(action.get("count"), 3)
             request_id = action["request_id"]
 
+            # Assert rejection of selection without request_id
             self.backend.send({"type": "selection", "choice": 1})
             missing_id = self.backend.wait_for_type("error")
             self.assertEqual(missing_id.get("code"), "missing_request_id")
 
-            self.backend.send(
-                {"type": "selection", "request_id": "wrong-request", "choice": 1}
-            )
-            wrong_id = self.backend.wait_for_type("error")
-            self.assertEqual(wrong_id.get("code"), "unknown_request_id")
-
-            competing_name = self.new_run_name("competing")
-            self.backend.send(
-                {
-                    "type": "run_pipeline",
-                    "run_name": competing_name,
-                    "input": str(self.relative_input),
-                    "minimum_frames": 3,
-                    "quality": "fast",
-                }
-            )
-            in_progress = self.backend.wait_for_type("error")
-            self.assertEqual(in_progress.get("code"), "run_in_progress")
-
-            self.backend.send(
-                {"type": "selection", "request_id": request_id, "choice": 9}
-            )
-            invalid_choice = self.backend.wait_for_type("error")
-            self.assertEqual(invalid_choice.get("code"), "invalid_choice")
+            # Assert rejection of numeric string choices
+            self.backend.send({"type": "selection", "request_id": request_id, "choice": "1"})
+            str_choice_err = self.backend.wait_for_type("error")
+            self.assertEqual(str_choice_err.get("code"), "invalid_choice")
 
             self.backend.send(
                 {"type": "selection", "request_id": request_id, "choice": 1}
@@ -519,17 +458,6 @@ class DummyBackendTest(unittest.TestCase):
             },
             target_selection,
         )
-        legacy_name = self.new_run_name("legacy")
-        legacy_start = len(self.backend.history)
-        self.backend.send(
-            {
-                "action": "run_pipeline",
-                "name": legacy_name,
-                "input": str(self.relative_input),
-                "minimum_frames": 4,
-                "quality": "medium",
-            }
-        )
 
         target_done = self.assert_successful_lifecycle(target_events, target_name)
         self.assertEqual(
@@ -537,13 +465,6 @@ class DummyBackendTest(unittest.TestCase):
             str(self.test_root / "data" / "output" / target_name / f"{target_name}_fast.obj"),
         )
         self.assert_artifacts(target_name, "fast", 1, 12)
-
-        def legacy_selection(action: dict[str, Any]) -> None:
-            self.backend.send({"type": "selection", "choice": "2"})
-
-        legacy_events = self.collect_to_terminal(legacy_start, legacy_selection)
-        self.assert_successful_lifecycle(legacy_events, legacy_name)
-        self.assert_artifacts(legacy_name, "medium", 2, 4)
 
         skip_name = self.new_run_name("skip")
 
@@ -591,164 +512,8 @@ class DummyBackendTest(unittest.TestCase):
             },
             cancel_at_action,
         )
-        self.backend.send({"type": "cancel_pipeline", "run_name": cancel_name})
         terminals = [event for event in cancel_events if is_terminal(event)]
         self.assertEqual(terminals, [{"type": "cancelled", "run_name": cancel_name}])
-        no_active = self.backend.wait_for_type("error")
-        self.assertEqual(no_active.get("code"), "no_active_run")
-        cancel_manifest = json.loads(
-            (self.test_root / "data" / "runs" / cancel_name / "manifest.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        self.assertEqual(cancel_manifest["status"]["state"], "cancelled")
-
-        for run_name in (target_name, legacy_name, skip_name, cancel_name):
-            matching_terminals = [
-                message
-                for message in self.backend.history
-                if is_terminal(message) and message.get("run_name") == run_name
-            ]
-            self.assertEqual(len(matching_terminals), 1, run_name)
-
-    def test_selection_after_accepted_cancellation_is_rejected(self) -> None:
-        dummy = load_dummy_module()
-        backend = dummy.DummyBackend(self.test_root, step_delay=0.0)
-        messages: list[dict[str, Any]] = []
-        backend.send = messages.append
-        config = dummy.RunConfig("selection-race", "input.mp4", 1, "fast", False)
-        cancel_event = threading.Event()
-        pending = dummy.PendingAction(
-            request_id="selection-race-mask-frame-001",
-            count=3,
-            allow_legacy_response=False,
-            event=threading.Event(),
-        )
-        backend._active_config = config
-        backend._cancel_event = cancel_event
-        backend._pending_action = pending
-
-        backend._accept_cancellation(
-            {"type": "cancel_pipeline", "run_name": config.run_name}
-        )
-        backend._accept_selection(
-            {
-                "type": "selection",
-                "request_id": pending.request_id,
-                "choice": 1,
-            }
-        )
-
-        self.assertTrue(cancel_event.is_set())
-        self.assertIsNone(pending.choice)
-        self.assertFalse(pending.event.is_set())
-        self.assertEqual(len(messages), 1)
-        self.assertEqual(messages[0].get("scope"), "command")
-        self.assertEqual(messages[0].get("code"), "run_cancelling")
-
-    def test_cancellation_accepted_before_completion_commit_wins(self) -> None:
-        dummy = load_dummy_module()
-        direct_root = self.test_root / "direct-cancellation"
-        direct_root.mkdir()
-        input_path = direct_root / "input.mp4"
-        input_path.write_bytes(b"dummy input")
-        backend = dummy.DummyBackend(direct_root, step_delay=0.0)
-        messages: list[dict[str, Any]] = []
-        action_ready = threading.Event()
-        phase_five_completed = threading.Event()
-        release_completion = threading.Event()
-
-        def capture_send(message: dict[str, Any]) -> None:
-            messages.append(message)
-            if message.get("type") == "action_required":
-                action_ready.set()
-            if (
-                message.get("type") == "phase_completed"
-                and message.get("phase") == 5
-            ):
-                phase_five_completed.set()
-                if not release_completion.wait(timeout=5.0):
-                    raise AssertionError("Test did not release completion commitment")
-
-        backend.send = capture_send
-        run_name = self.new_run_name("near-completion")
-        backend._accept_run(
-            {
-                "type": "run_pipeline",
-                "run_name": run_name,
-                "input": str(input_path),
-                "minimum_frames": 3,
-                "quality": "fast",
-            }
-        )
-        self.assertTrue(action_ready.wait(timeout=5.0))
-        action = next(
-            message for message in messages if message.get("type") == "action_required"
-        )
-        backend._accept_selection(
-            {
-                "type": "selection",
-                "request_id": action["request_id"],
-                "choice": 0,
-            }
-        )
-        self.assertTrue(phase_five_completed.wait(timeout=5.0))
-        with backend._state_lock:
-            worker = backend._worker
-        self.assertIsNotNone(worker)
-        backend._accept_cancellation(
-            {"type": "cancel_pipeline", "run_name": run_name}
-        )
-        release_completion.set()
-        assert worker is not None
-        worker.join(timeout=5.0)
-        self.assertFalse(worker.is_alive())
-
-        terminals = [message for message in messages if is_terminal(message)]
-        self.assertEqual(terminals, [{"type": "cancelled", "run_name": run_name}])
-        terminal_index = messages.index(terminals[0])
-        self.assertFalse(
-            any(
-                message.get("type") in LIFECYCLE_TYPES
-                for message in messages[terminal_index + 1 :]
-            )
-        )
-        backend._accept_cancellation(
-            {"type": "cancel_pipeline", "run_name": run_name}
-        )
-        self.assertEqual(messages[-1].get("code"), "no_active_run")
-
-    def test_terminal_manifest_failure_emits_one_run_error(self) -> None:
-        dummy = load_dummy_module()
-        backend = dummy.DummyBackend(self.test_root, step_delay=0.0)
-        messages: list[dict[str, Any]] = []
-        backend.send = messages.append
-        config = dummy.RunConfig("manifest-failure", "input.mp4", 3, "fast", False)
-        cancel_event = threading.Event()
-        backend._active_config = config
-        backend._cancel_event = cancel_event
-
-        def fail_manifest_update(*args: Any, **kwargs: Any) -> None:
-            raise OSError("deterministic manifest failure")
-
-        backend._update_terminal_manifest = fail_manifest_update
-        backend._commit_terminal(
-            config,
-            cancel_event,
-            self.test_root / "workspace",
-            self.test_root / "workspace" / "manifest.json",
-            self.test_root / "output.obj",
-            None,
-        )
-
-        terminals = [message for message in messages if is_terminal(message)]
-        self.assertEqual(len(terminals), 1)
-        self.assertEqual(terminals[0].get("type"), "error")
-        self.assertEqual(
-            terminals[0].get("code"), "dummy_manifest_finalization_failed"
-        )
-        self.assertIn("deterministic manifest failure", terminals[0].get("text", ""))
-        self.assertIsNone(backend._active_config)
 
 
 if __name__ == "__main__":

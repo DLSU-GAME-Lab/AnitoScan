@@ -1,27 +1,40 @@
-"""Standard-library dummy backend for editor development and integration tests."""
+"""Standard-library dummy backend enforcing strict Protocol v1 for editor development and integration tests."""
 
 from __future__ import annotations
+
+from pathlib import Path
+import sys
+
+# Ensure repository root is in sys.path when dummy.py is executed as a standalone script
+DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(DEFAULT_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(DEFAULT_PROJECT_ROOT))
 
 import argparse
 import binascii
 import json
-import re
 import struct
-import sys
 import threading
 import zlib
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Callable
 
-
-PROTOCOL_VERSION = 1
-QUALITY_PRESETS = {"fast", "medium", "detailed"}
-SAFE_RUN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-WINDOWS_RESERVED_RUN_NAME = re.compile(
-    r"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$", re.IGNORECASE
+from src.pipeline.core.protocol import (
+    CancelPipelineCommand,
+    Phase,
+    RunPipelineCommand,
+    SelectionCommand,
+    make_action_required,
+    make_backend_ready,
+    make_cancelled,
+    make_done,
+    make_error,
+    make_log,
+    make_phase_completed,
+    make_phase_started,
+    make_progress,
+    make_workspace_ready,
 )
-DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 class RunCancelled(Exception):
@@ -34,14 +47,12 @@ class RunConfig:
     input_source: str
     minimum_frames: int
     quality: str
-    legacy_mode: bool
 
 
 @dataclass
 class PendingAction:
     request_id: str
     count: int
-    allow_legacy_response: bool
     event: threading.Event
     choice: int | str | None = None
 
@@ -68,7 +79,7 @@ class DummyBackend:
                 self._stdout_available = False
 
     def send_log(self, text: str) -> None:
-        self.send({"type": "log", "text": text})
+        self.send(make_log(text))
 
     def send_command_error(
         self,
@@ -78,20 +89,18 @@ class DummyBackend:
         run_name: str | None = None,
         request_id: str | None = None,
     ) -> None:
-        message: dict[str, Any] = {
-            "type": "error",
-            "scope": "command",
-            "code": code,
-            "text": text,
-        }
-        if run_name is not None:
-            message["run_name"] = run_name
-        if request_id is not None:
-            message["request_id"] = request_id
-        self.send(message)
+        self.send(
+            make_error(
+                "command",
+                code,
+                text,
+                run_name=run_name,
+                request_id=request_id,
+            )
+        )
 
     def run_command_loop(self) -> None:
-        self.send({"type": "backend_ready", "protocol_version": PROTOCOL_VERSION})
+        self.send(make_backend_ready())
 
         for raw_line in sys.stdin:
             raw_line = raw_line.strip()
@@ -122,8 +131,8 @@ class DummyBackend:
     def _dispatch(self, command: dict[str, Any]) -> None:
         message_type = command.get("type")
         if not isinstance(message_type, str):
-            # TODO(protocol-cleanup): remove support for legacy editor action fields.
-            message_type = command.get("action")
+            self.send_command_error("unknown_command", "Command missing required 'type' string field")
+            return
 
         if message_type == "run_pipeline":
             self._accept_run(command)
@@ -140,11 +149,25 @@ class DummyBackend:
             )
 
     def _accept_run(self, command: dict[str, Any]) -> None:
-        legacy_mode = command.get("type") != "run_pipeline"
-        config, error = self._parse_run_config(command, legacy_mode)
-        if config is None:
-            self.send_command_error("invalid_run_request", error)
+        try:
+            parsed = RunPipelineCommand.from_dict(command)
+        except ValueError as err:
+            self.send_command_error("invalid_run_request", str(err))
             return
+
+        input_path = Path(parsed.input)
+        if not input_path.is_absolute():
+            input_path = self.project_root / input_path
+        if not input_path.exists():
+            self.send_command_error("invalid_run_request", "input path does not exist")
+            return
+
+        config = RunConfig(
+            run_name=parsed.run_name,
+            input_source=parsed.input,
+            minimum_frames=parsed.minimum_frames,
+            quality=parsed.quality,
+        )
 
         workspace = self.project_root / "data" / "runs" / config.run_name
         output_directory = self.project_root / "data" / "output" / config.run_name
@@ -178,55 +201,6 @@ class DummyBackend:
             self._worker = worker
             worker.start()
 
-    def _parse_run_config(
-        self, command: dict[str, Any], legacy_mode: bool
-    ) -> tuple[RunConfig | None, str]:
-        run_name_field = "name" if legacy_mode else "run_name"
-        required_fields = (run_name_field, "input", "minimum_frames", "quality")
-        missing_fields = [field for field in required_fields if field not in command]
-        if missing_fields:
-            return None, f"missing required field: {missing_fields[0]}"
-
-        run_name = command.get(run_name_field)
-        if not isinstance(run_name, str) or not SAFE_RUN_NAME.fullmatch(run_name):
-            return None, "run_name must be a safe, non-empty directory name"
-        if run_name.endswith((".", " ")):
-            return None, "run_name must not end with a period or space"
-        if WINDOWS_RESERVED_RUN_NAME.fullmatch(run_name):
-            return None, "run_name must not be a reserved Windows device name"
-
-        input_source = command.get("input")
-        if not isinstance(input_source, str) or not input_source.strip():
-            return None, "input must be a non-empty string"
-        input_path = Path(input_source)
-        if not input_path.is_absolute():
-            input_path = self.project_root / input_path
-        if not input_path.exists():
-            return None, "input path does not exist"
-
-        minimum_frames = command.get("minimum_frames")
-        if (
-            isinstance(minimum_frames, bool)
-            or not isinstance(minimum_frames, int)
-            or minimum_frames <= 0
-        ):
-            return None, "minimum_frames must be a positive integer"
-
-        quality = command.get("quality")
-        if not isinstance(quality, str) or quality not in QUALITY_PRESETS:
-            return None, "quality must be fast, medium, or detailed"
-
-        return (
-            RunConfig(
-                run_name=run_name,
-                input_source=input_source,
-                minimum_frames=minimum_frames,
-                quality=quality,
-                legacy_mode=legacy_mode,
-            ),
-            "",
-        )
-
     def _accept_selection(self, command: dict[str, Any]) -> None:
         with self._state_lock:
             pending = self._pending_action
@@ -240,45 +214,29 @@ class DummyBackend:
             )
             return
 
-        request_id = command.get("request_id")
-        if request_id is None and not pending.allow_legacy_response:
+        try:
+            parsed = SelectionCommand.from_dict(command)
+        except ValueError as err:
+            code = "missing_request_id" if "require request_id" in str(err) else "invalid_choice"
             self.send_command_error(
-                "missing_request_id",
-                "Target selection commands require request_id",
+                code,
+                str(err),
                 run_name=active.run_name if active is not None else None,
                 request_id=pending.request_id,
             )
             return
-        if request_id is not None and request_id != pending.request_id:
+
+        if parsed.request_id != pending.request_id:
             self.send_command_error(
                 "unknown_request_id",
                 "Selection does not match the pending interactive action",
                 run_name=active.run_name if active is not None else None,
-                request_id=str(request_id),
+                request_id=parsed.request_id,
             )
             return
 
-        choice = command.get("choice")
-        if isinstance(choice, bool):
-            normalized_choice: int | str | None = None
-        elif isinstance(choice, int):
-            normalized_choice = choice
-        elif choice == "skip":
-            normalized_choice = "skip"
-        elif (
-            pending.allow_legacy_response
-            and isinstance(choice, str)
-            and choice.isdecimal()
-        ):
-            # TODO(protocol-cleanup): remove numeric string compatibility.
-            normalized_choice = int(choice)
-        else:
-            normalized_choice = None
-
-        if normalized_choice is None or (
-            isinstance(normalized_choice, int)
-            and not 0 <= normalized_choice < pending.count
-        ):
+        choice = parsed.choice
+        if isinstance(choice, int) and not 0 <= choice < pending.count:
             self.send_command_error(
                 "invalid_choice",
                 f"choice must be an index from 0 to {pending.count - 1}, or 'skip'",
@@ -288,10 +246,7 @@ class DummyBackend:
             return
 
         with self._state_lock:
-            if (
-                self._active_config is not active
-                or self._pending_action is not pending
-            ):
+            if self._active_config is not active or self._pending_action is not pending:
                 self.send_command_error(
                     "no_pending_action",
                     "The interactive action is no longer pending",
@@ -314,22 +269,27 @@ class DummyBackend:
                     request_id=pending.request_id,
                 )
                 return
-            pending.choice = normalized_choice
+            pending.choice = choice
             pending.event.set()
 
     def _accept_cancellation(self, command: dict[str, Any]) -> None:
-        run_name = command.get("run_name")
+        try:
+            parsed = CancelPipelineCommand.from_dict(command)
+        except ValueError as err:
+            self.send_command_error("run_mismatch", str(err))
+            return
+
         with self._state_lock:
             active = self._active_config
             cancel_event = self._cancel_event
             if active is None or cancel_event is None:
                 self.send_command_error("no_active_run", "No pipeline run is active")
                 return
-            if not isinstance(run_name, str) or run_name != active.run_name:
+            if parsed.run_name != active.run_name:
                 self.send_command_error(
                     "run_mismatch",
                     "cancel_pipeline must identify the active run",
-                    run_name=str(run_name) if run_name is not None else None,
+                    run_name=parsed.run_name,
                 )
                 return
 
@@ -376,36 +336,25 @@ class DummyBackend:
         with self._state_lock:
             if cancel_event.is_set():
                 manifest_state = "cancelled"
-                terminal: dict[str, Any] = {
-                    "type": "cancelled",
-                    "run_name": config.run_name,
-                }
+                terminal = make_cancelled(config.run_name)
                 manifest_error = None
             elif failure is not None:
                 manifest_state = "failed"
-                terminal = {
-                    "type": "error",
-                    "scope": "run",
-                    "code": "dummy_run_failed",
-                    "text": str(failure),
-                    "run_name": config.run_name,
-                }
+                terminal = make_error(
+                    "run",
+                    "dummy_run_failed",
+                    str(failure),
+                    run_name=config.run_name,
+                )
                 manifest_error = str(failure)
             else:
                 assert output_path is not None
                 manifest_state = "completed"
-                terminal = {
-                    "type": "done",
-                    "run_name": config.run_name,
-                    "workspace": str(workspace),
-                    "output": str(output_path),
-                }
-                # TODO(protocol-cleanup): remove nested data once App consumes flat fields.
-                terminal["data"] = {
-                    "run_name": config.run_name,
-                    "workspace": str(workspace),
-                    "output": str(output_path),
-                }
+                terminal = make_done(
+                    config.run_name,
+                    str(workspace),
+                    str(output_path),
+                )
                 manifest_error = None
 
             try:
@@ -416,13 +365,12 @@ class DummyBackend:
                     error=manifest_error,
                 )
             except Exception as exception:
-                terminal = {
-                    "type": "error",
-                    "scope": "run",
-                    "code": "dummy_manifest_finalization_failed",
-                    "text": f"Unable to finalize dummy manifest: {exception}",
-                    "run_name": config.run_name,
-                }
+                terminal = make_error(
+                    "run",
+                    "dummy_manifest_finalization_failed",
+                    f"Unable to finalize dummy manifest: {exception}",
+                    run_name=config.run_name,
+                )
 
             self._pending_action = None
             self._active_config = None
@@ -472,21 +420,13 @@ class DummyBackend:
         }
         self._write_json(manifest_path, manifest)
 
-        self.send(
-            {
-                "type": "workspace_ready",
-                "run_name": config.run_name,
-                "workspace": str(workspace),
-                # TODO(protocol-cleanup): remove the legacy path alias.
-                "path": str(workspace),
-            }
-        )
+        self.send(make_workspace_ready(config.run_name, str(workspace)))
 
         self._run_standard_phase(
             cancel_event,
             manifest,
             manifest_path,
-            1,
+            Phase.CAPTURE,
             "Capture",
             lambda: self._create_capture_artifacts(
                 capture_directory, config.minimum_frames
@@ -504,7 +444,7 @@ class DummyBackend:
             cancel_event,
             manifest,
             manifest_path,
-            3,
+            Phase.SPATIAL,
             "Spatial",
             lambda: self._create_spatial_artifacts(
                 spatial_directory, config.minimum_frames
@@ -514,7 +454,7 @@ class DummyBackend:
             cancel_event,
             manifest,
             manifest_path,
-            4,
+            Phase.GEOMETRY,
             "Geometry",
             lambda: self._create_geometry_artifacts(geometry_directory),
         )
@@ -524,7 +464,7 @@ class DummyBackend:
             cancel_event,
             manifest,
             manifest_path,
-            5,
+            Phase.EXPORT,
             "Export",
             lambda: self._create_export_artifacts(output_path),
         )
@@ -537,7 +477,7 @@ class DummyBackend:
         cancel_event: threading.Event,
         manifest: dict[str, Any],
         manifest_path: Path,
-        phase: int,
+        phase: Phase,
         label: str,
         create_artifacts: Callable[[], dict[str, Any]],
     ) -> None:
@@ -565,7 +505,7 @@ class DummyBackend:
         capture_directory: Path,
         masking_directory: Path,
     ) -> None:
-        phase = 2
+        phase = Phase.MASKING
         self._start_phase(manifest, manifest_path, phase, "Masking")
         self._send_progress(phase, 0.0, "Starting Masking")
         self._wait_step(cancel_event)
@@ -580,7 +520,6 @@ class DummyBackend:
         pending = PendingAction(
             request_id=request_id,
             count=3,
-            allow_legacy_response=config.legacy_mode,
             event=threading.Event(),
         )
         frame_path = capture_directory / "frame_001.png"
@@ -589,15 +528,14 @@ class DummyBackend:
             self._raise_if_cancelled(cancel_event)
             self._pending_action = pending
             self.send(
-                {
-                    "type": "action_required",
-                    "request_id": request_id,
-                    "action": "mask_selection",
-                    "phase": phase,
-                    "frame": frame_path.name,
-                    "preview": str(preview_path),
-                    "count": pending.count,
-                }
+                make_action_required(
+                    request_id=request_id,
+                    action="mask_selection",
+                    phase=phase,
+                    frame=frame_path.name,
+                    preview=str(preview_path),
+                    count=pending.count,
+                )
             )
 
         while not pending.event.wait(timeout=0.05):
@@ -623,29 +561,28 @@ class DummyBackend:
         self,
         manifest: dict[str, Any],
         manifest_path: Path,
-        phase: int,
+        phase: Phase,
         label: str,
     ) -> None:
-        manifest["status"]["phase"] = phase
+        manifest["status"]["phase"] = int(phase)
         self._write_json(manifest_path, manifest)
-        self.send({"type": "phase_started", "phase": phase, "label": label})
+        self.send(make_phase_started(phase, label))
 
     def _complete_phase(
-        self, manifest: dict[str, Any], manifest_path: Path, phase: int
+        self, manifest: dict[str, Any], manifest_path: Path, phase: Phase
     ) -> None:
-        manifest["status"]["completed"].append(phase)
+        manifest["status"]["completed"].append(int(phase))
         self._write_json(manifest_path, manifest)
-        self.send({"type": "phase_completed", "phase": phase})
+        self.send(make_phase_completed(phase))
 
-    def _send_progress(self, phase: int, value: float, label: str) -> None:
+    def _send_progress(self, phase: Phase, value: float, label: str) -> None:
         self.send(
-            {
-                "type": "progress",
-                "phase": phase,
-                "value": value,
-                "overall_value": ((phase - 1) + value) / 5.0,
-                "label": label,
-            }
+            make_progress(
+                phase=phase,
+                value=value,
+                overall_value=((int(phase) - 1) + value) / 5.0,
+                label=label,
+            )
         )
 
     def _wait_step(self, cancel_event: threading.Event) -> None:
