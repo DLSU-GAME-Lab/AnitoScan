@@ -17,3 +17,29 @@ include(Dependencies)
 include(Config)
 
 add_subdirectory(src/editor)
+
+if(BUILD_TESTING)
+    file(STRINGS "${CMAKE_SOURCE_DIR}/.python-version" ANITOSCAN_PYTHON_VERSION LIMIT_COUNT 1)
+    string(STRIP "${ANITOSCAN_PYTHON_VERSION}" ANITOSCAN_PYTHON_VERSION)
+    if(ANITOSCAN_PYTHON_VERSION STREQUAL "")
+        message(FATAL_ERROR ".python-version must contain the dummy test Python version")
+    endif()
+
+    add_test(
+        NAME dummy_backend_protocol
+        COMMAND
+            "${ANITOSCAN_UV_EXECUTABLE}"
+            run
+            --isolated
+            --no-project
+            --python "${ANITOSCAN_PYTHON_VERSION}"
+            --
+            python
+            -u
+            "${CMAKE_SOURCE_DIR}/src/pipeline/tests/test_dummy_backend.py"
+    )
+    set_tests_properties(dummy_backend_protocol PROPERTIES
+        TIMEOUT 120
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    )
+endif()
