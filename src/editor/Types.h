@@ -21,8 +21,3 @@ enum class Phase {
 typedef std::string String;
 typedef std::vector<UIPanel*> UIList;
 typedef std::unordered_map<String, UIPanel*> UIMap;
-
-struct BackendMessage {
-	String type;
-	String raw;
-};

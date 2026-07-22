@@ -99,7 +99,16 @@ void InputWindow::Draw() {
         static int indexFrames = 0;
 
         ImGui::SeparatorText("Select the number of Minimum Frames");
-        ImGui::Combo("Minimum Frames", &indexFrames, this->items.data(), this->items.size());
+        auto itemGetter = [](void* data, int index) -> const char* {
+            const auto& values = *static_cast<std::vector<String>*>(data);
+            return values.at(static_cast<std::size_t>(index)).c_str();
+        };
+        ImGui::Combo(
+            "Minimum Frames",
+            &indexFrames,
+            itemGetter,
+            &this->items,
+            static_cast<int>(this->items.size()));
         ImGui::EndDisabled();
         ImGui::NewLine();
 
@@ -148,13 +157,11 @@ void InputWindow::InitializeDropDown() {
     //}
     //this->items.clear();
 
-    int gap = 10;
-    std::vector<String> tempItems;
+    constexpr int gap = 10;
 
     int min = this->minOption;
     while (min <= this->maxOption) {
-        String temp = std::to_string(min);
-        this->items.push_back(_strdup(temp.c_str()));
+        this->items.push_back(std::to_string(min));
         min += gap;
     }
 }

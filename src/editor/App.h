@@ -9,6 +9,7 @@
 #include <backends/imgui_impl_opengl3.h>
 
 #include "Types.h"
+#include "BackendLaunchConfig.h"
 #include "render/Scene.h"
 #include "IPCClient.h"
 
@@ -16,10 +17,10 @@ class IPCClient;
 
 class App {
 public:
-	App(int width, int height);
+	App(int width, int height, BackendLaunchConfig backendConfig);
 	~App();
 
-	void Initialize();
+	bool Initialize();
 	void Run();
 
 private:
@@ -38,6 +39,7 @@ private:
 	int screenWidth;
 	int screenHeight;
 
+	BackendLaunchConfig backendConfig;
 	IPCClient ipc;
 	std::unique_ptr<Scene> scene;
 	bool mouseDragging = false;

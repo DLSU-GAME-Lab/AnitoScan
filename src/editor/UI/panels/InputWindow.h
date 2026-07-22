@@ -35,5 +35,5 @@ private:
 
 	const int minOption = 60;
 	const int maxOption = 300;
-	std::vector<const char*> items;
+	std::vector<String> items;
 };

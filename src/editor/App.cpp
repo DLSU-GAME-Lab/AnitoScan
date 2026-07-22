@@ -1,7 +1,12 @@
 #include "App.h"
 #include "UI/UIManager.h"
 
-App::App(int width, int height) {
+#include <utility>
+
+#include <nlohmann/json.hpp>
+
+App::App(int width, int height, BackendLaunchConfig backendConfig)
+	: backendConfig(std::move(backendConfig)) {
 	this->isRunning = false;
 	this->window = nullptr;
 	this->glContext = nullptr;
@@ -13,37 +18,36 @@ App::~App() {
 	Cleanup();
 }
 
-void App::Initialize() {
+bool App::Initialize() {
 	//SDL
 	if (!InitializeSDL()) {
 		std::cerr << "[ERROR]: SDL initialization failed: " << SDL_GetError() << std::endl;
-		return;
+		return false;
 	}
 
 	//OPENGL
 	if (!InitializeOpenGL()) {
 		std::cerr << "[ERROR]: OpenGL initialization failed: " << SDL_GetError() << std::endl;
-		return;
+		return false;
 	}
 
 	this->scene = std::make_unique<Scene>();
 	//IMGUI
 	if (!UIManager::GetInstance()->Initialize(this->window, this->glContext, this->ipc, *this->scene)) {
 		std::cerr << "[ERROR]: ImGui initialization failed: " << std::endl;
-		return;
+		return false;
 	}
 	
-	//IPC - pipeline.py
-	//if (!this->ipc.Start("src\\pipeline\\.venv\\Scripts\\python.exe", "src/pipeline/core/pipeline.py --ipc")) {
-	//	std::cerr << "[ERROR]: Failed to launch Python backend." << std::endl;
-	//	return;
-	//}
-
-	this->ipc.RunThroughUV(std::filesystem::path("src") / "pipeline" / "core" / "pipeline.py");
+	std::cout << "[DEBUG]: Launching " << this->backendConfig.displayName << " backend." << std::endl;
+	if (!this->ipc.Start(this->backendConfig.executable, this->backendConfig.arguments)) {
+		std::cerr << "[ERROR]: Failed to launch " << this->backendConfig.displayName << " backend." << std::endl;
+		return false;
+	}
 
 	this->lastTime = SDL_GetPerformanceCounter();
 	this->isRunning = true;
 	std::cout << "[DEBUG]: App is initialized and running." << std::endl;
+	return true;
 }
 
 bool App::InitializeSDL() {
@@ -55,8 +59,14 @@ bool App::InitializeSDL() {
 
 	// set OpenGL Attributes
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+#if defined(__APPLE__)
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+#else
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+#endif
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
@@ -69,11 +79,12 @@ bool App::InitializeSDL() {
 		SDL_WINDOWPOS_CENTERED,
 		SDL_WINDOWPOS_CENTERED,
 		logicalW, logicalH,
-		SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED
+		SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE |
+		SDL_WINDOW_MAXIMIZED | SDL_WINDOW_ALLOW_HIGHDPI
 	);
 
 	if (!window) {
-		std::cerr << "[ERROR]: Creating window failed: " << SDL_GetError << std::endl;
+		std::cerr << "[ERROR]: Creating window failed: " << SDL_GetError() << std::endl;
 		return false;
 	}
 
@@ -85,9 +96,13 @@ bool App::InitializeOpenGL() {
 	this->glContext = SDL_GL_CreateContext(this->window);
 	if (!glContext) {
 		std::cerr << "[ERROR]: OpenGL Context creation failed: " << SDL_GetError() << std::endl;
+		return false;
 	}
 
-	SDL_GL_MakeCurrent(this->window, this->glContext);
+	if (SDL_GL_MakeCurrent(this->window, this->glContext) != 0) {
+		std::cerr << "[ERROR]: Failed to activate OpenGL context: " << SDL_GetError() << std::endl;
+		return false;
+	}
 
 	// enable v-sync
 	SDL_GL_SetSwapInterval(1);

@@ -1,4 +1,4 @@
-#include "Dockspace.h"
+#include "DockSpace.h"
 
 Dockspace::Dockspace(String name)
 	: UIPanel(UIType::DOCKSPACE, name) {}

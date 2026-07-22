@@ -1,5 +1,5 @@
 set(PANEL_SOURCES
-    Dockspace.cpp
+    DockSpace.cpp
     OverviewPanel.cpp
     FileViewer.cpp
     LogPanel.cpp

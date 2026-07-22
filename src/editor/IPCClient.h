@@ -1,42 +1,41 @@
 #pragma once
 
-#include <stdexcept>
-#include <windows.h>
-#include <string>
+#include <memory>
 #include <mutex>
-#include <thread>
-#include <atomic>
-#include <functional>
 #include <queue>
+#include <string>
+#include <vector>
 
-#include "Types.h"
-#include "nlohmann/json.hpp"
+#include "IPCMessage.h"
 
+class IPCClientPlatform;
 
+// Start, Restart, and Shutdown are main-thread lifecycle operations. Send and
+// Poll synchronize their own transport/message access.
 class IPCClient {
 public:
 	IPCClient();
 	~IPCClient();
 
-	void RunThroughUV(std::filesystem::path pythonScript);
-	bool Start(const String& pythonExe, const String& scriptPath);
-	void Send(const String& jsonLine);
+	IPCClient(const IPCClient&) = delete;
+	IPCClient& operator=(const IPCClient&) = delete;
+
+	bool Start(const std::string& executable, const std::vector<std::string>& arguments);
+	bool Restart();
+	bool Send(const std::string& jsonLine);
 	void Poll(std::vector<BackendMessage>& outMessages);
-	bool IsRunning();
+	bool IsRunning() const;
 	void Shutdown();
 
 private:
-	void RenderThread();
+	void HandleStdoutLine(std::string line);
+	void HandleStderrLine(std::string line);
 
-private:
-	HANDLE hProcess;
-	HANDLE hStdin;
-	HANDLE hStdout;
-	HANDLE hJob = nullptr;
+	std::unique_ptr<IPCClientPlatform> platform;
+	std::string configuredExecutable;
+	std::vector<std::string> configuredArguments;
+	bool hasConfiguration = false;
 
-	std::thread thread;
-	std::atomic<bool> running;
-	std::mutex mutex;
-	std::queue<BackendMessage> qMessages;
-
+	std::mutex messageMutex;
+	std::queue<BackendMessage> queuedMessages;
 };

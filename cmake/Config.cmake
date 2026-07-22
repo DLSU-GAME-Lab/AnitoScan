@@ -4,6 +4,7 @@ add_library(engine::config ALIAS engine_config)
 target_compile_definitions(engine_config INTERFACE
     IMGUI_IMPL_OPENGL_LOADER_GLAD2
     PROJECT_ROOT_DIR="${MY_PROJECT_ROOT}"
+    UV_EXECUTABLE_PATH="${ANITOSCAN_UV_EXECUTABLE}"
 )
 
 if(MSVC)
