@@ -18,6 +18,9 @@ from typing import Any, Callable
 PROTOCOL_VERSION = 1
 QUALITY_PRESETS = {"fast", "medium", "detailed"}
 SAFE_RUN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+WINDOWS_RESERVED_RUN_NAME = re.compile(
+    r"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$", re.IGNORECASE
+)
 DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -178,17 +181,30 @@ class DummyBackend:
     def _parse_run_config(
         self, command: dict[str, Any], legacy_mode: bool
     ) -> tuple[RunConfig | None, str]:
-        run_name = command.get("name" if legacy_mode else "run_name")
+        run_name_field = "name" if legacy_mode else "run_name"
+        required_fields = (run_name_field, "input", "minimum_frames", "quality")
+        missing_fields = [field for field in required_fields if field not in command]
+        if missing_fields:
+            return None, f"missing required field: {missing_fields[0]}"
+
+        run_name = command.get(run_name_field)
         if not isinstance(run_name, str) or not SAFE_RUN_NAME.fullmatch(run_name):
             return None, "run_name must be a safe, non-empty directory name"
-        if run_name.endswith("."):
-            return None, "run_name must not end with a period"
+        if run_name.endswith((".", " ")):
+            return None, "run_name must not end with a period or space"
+        if WINDOWS_RESERVED_RUN_NAME.fullmatch(run_name):
+            return None, "run_name must not be a reserved Windows device name"
 
         input_source = command.get("input")
         if not isinstance(input_source, str) or not input_source.strip():
             return None, "input must be a non-empty string"
+        input_path = Path(input_source)
+        if not input_path.is_absolute():
+            input_path = self.project_root / input_path
+        if not input_path.exists():
+            return None, "input path does not exist"
 
-        minimum_frames = command.get("minimum_frames", 45)
+        minimum_frames = command.get("minimum_frames")
         if (
             isinstance(minimum_frames, bool)
             or not isinstance(minimum_frames, int)
@@ -196,7 +212,7 @@ class DummyBackend:
         ):
             return None, "minimum_frames must be a positive integer"
 
-        quality = command.get("quality", "fast")
+        quality = command.get("quality")
         if not isinstance(quality, str) or quality not in QUALITY_PRESETS:
             return None, "quality must be fast, medium, or detailed"
 
@@ -272,7 +288,26 @@ class DummyBackend:
             return
 
         with self._state_lock:
-            if self._pending_action is not pending or pending.choice is not None:
+            if (
+                self._active_config is not active
+                or self._pending_action is not pending
+            ):
+                self.send_command_error(
+                    "no_pending_action",
+                    "The interactive action is no longer pending",
+                    request_id=pending.request_id,
+                )
+                return
+            cancel_event = self._cancel_event
+            if cancel_event is None or cancel_event.is_set():
+                self.send_command_error(
+                    "run_cancelling",
+                    "The active run is being cancelled",
+                    run_name=active.run_name if active is not None else None,
+                    request_id=pending.request_id,
+                )
+                return
+            if pending.choice is not None:
                 self.send_command_error(
                     "action_already_resolved",
                     "The interactive action is no longer pending",
@@ -287,25 +322,26 @@ class DummyBackend:
         with self._state_lock:
             active = self._active_config
             cancel_event = self._cancel_event
+            if active is None or cancel_event is None:
+                self.send_command_error("no_active_run", "No pipeline run is active")
+                return
+            if not isinstance(run_name, str) or run_name != active.run_name:
+                self.send_command_error(
+                    "run_mismatch",
+                    "cancel_pipeline must identify the active run",
+                    run_name=str(run_name) if run_name is not None else None,
+                )
+                return
 
-        if active is None or cancel_event is None:
-            self.send_command_error("no_active_run", "No pipeline run is active")
-            return
-        if not isinstance(run_name, str) or run_name != active.run_name:
-            self.send_command_error(
-                "run_mismatch",
-                "cancel_pipeline must identify the active run",
-                run_name=str(run_name) if run_name is not None else None,
-            )
-            return
-
-        cancel_event.set()
+            cancel_event.set()
 
     def _run_worker(self, config: RunConfig, cancel_event: threading.Event) -> None:
         workspace = self.project_root / "data" / "runs" / config.run_name
         output_directory = self.project_root / "data" / "output" / config.run_name
         manifest_path = workspace / "manifest.json"
 
+        output_path: Path | None = None
+        failure: Exception | None = None
         try:
             output_path = self._execute_run(
                 config,
@@ -314,41 +350,85 @@ class DummyBackend:
                 output_directory,
                 manifest_path,
             )
-            self._raise_if_cancelled(cancel_event)
-            self._update_terminal_manifest(manifest_path, "completed", output=output_path)
-            done: dict[str, Any] = {
-                "type": "done",
-                "run_name": config.run_name,
-                "workspace": str(workspace),
-                "output": str(output_path),
-            }
-            # TODO(protocol-cleanup): remove nested data once App consumes flat fields.
-            done["data"] = {
-                "run_name": config.run_name,
-                "workspace": str(workspace),
-                "output": str(output_path),
-            }
-            self.send(done)
         except RunCancelled:
-            self._update_terminal_manifest(manifest_path, "cancelled")
-            self.send({"type": "cancelled", "run_name": config.run_name})
+            pass
         except Exception as exception:
-            self._update_terminal_manifest(manifest_path, "failed", error=str(exception))
-            self.send(
-                {
+            failure = exception
+
+        self._commit_terminal(
+            config,
+            cancel_event,
+            workspace,
+            manifest_path,
+            output_path,
+            failure,
+        )
+
+    def _commit_terminal(
+        self,
+        config: RunConfig,
+        cancel_event: threading.Event,
+        workspace: Path,
+        manifest_path: Path,
+        output_path: Path | None,
+        failure: Exception | None,
+    ) -> None:
+        with self._state_lock:
+            if cancel_event.is_set():
+                manifest_state = "cancelled"
+                terminal: dict[str, Any] = {
+                    "type": "cancelled",
+                    "run_name": config.run_name,
+                }
+                manifest_error = None
+            elif failure is not None:
+                manifest_state = "failed"
+                terminal = {
                     "type": "error",
                     "scope": "run",
                     "code": "dummy_run_failed",
-                    "text": str(exception),
+                    "text": str(failure),
                     "run_name": config.run_name,
                 }
-            )
-        finally:
-            with self._state_lock:
-                self._pending_action = None
-                self._active_config = None
-                self._cancel_event = None
-                self._worker = None
+                manifest_error = str(failure)
+            else:
+                assert output_path is not None
+                manifest_state = "completed"
+                terminal = {
+                    "type": "done",
+                    "run_name": config.run_name,
+                    "workspace": str(workspace),
+                    "output": str(output_path),
+                }
+                # TODO(protocol-cleanup): remove nested data once App consumes flat fields.
+                terminal["data"] = {
+                    "run_name": config.run_name,
+                    "workspace": str(workspace),
+                    "output": str(output_path),
+                }
+                manifest_error = None
+
+            try:
+                self._update_terminal_manifest(
+                    manifest_path,
+                    manifest_state,
+                    output=output_path if manifest_state == "completed" else None,
+                    error=manifest_error,
+                )
+            except Exception as exception:
+                terminal = {
+                    "type": "error",
+                    "scope": "run",
+                    "code": "dummy_manifest_finalization_failed",
+                    "text": f"Unable to finalize dummy manifest: {exception}",
+                    "run_name": config.run_name,
+                }
+
+            self._pending_action = None
+            self._active_config = None
+            self._cancel_event = None
+            self._worker = None
+            self.send(terminal)
 
     def _execute_run(
         self,
@@ -408,7 +488,9 @@ class DummyBackend:
             manifest_path,
             1,
             "Capture",
-            lambda: self._create_capture_artifacts(capture_directory),
+            lambda: self._create_capture_artifacts(
+                capture_directory, config.minimum_frames
+            ),
         )
         self._run_masking_phase(
             config,
@@ -424,7 +506,9 @@ class DummyBackend:
             manifest_path,
             3,
             "Spatial",
-            lambda: self._create_spatial_artifacts(spatial_directory),
+            lambda: self._create_spatial_artifacts(
+                spatial_directory, config.minimum_frames
+            ),
         )
         self._run_standard_phase(
             cancel_event,
@@ -499,23 +583,22 @@ class DummyBackend:
             allow_legacy_response=config.legacy_mode,
             event=threading.Event(),
         )
-        self._raise_if_cancelled(cancel_event)
-        with self._state_lock:
-            self._pending_action = pending
-
         frame_path = capture_directory / "frame_001.png"
         preview_path = masking_directory / "preview_001.png"
-        self.send(
-            {
-                "type": "action_required",
-                "request_id": request_id,
-                "action": "mask_selection",
-                "phase": phase,
-                "frame": frame_path.name,
-                "preview": str(preview_path),
-                "count": pending.count,
-            }
-        )
+        with self._state_lock:
+            self._raise_if_cancelled(cancel_event)
+            self._pending_action = pending
+            self.send(
+                {
+                    "type": "action_required",
+                    "request_id": request_id,
+                    "action": "mask_selection",
+                    "phase": phase,
+                    "frame": frame_path.name,
+                    "preview": str(preview_path),
+                    "count": pending.count,
+                }
+            )
 
         while not pending.event.wait(timeout=0.05):
             self._raise_if_cancelled(cancel_event)
@@ -574,19 +657,22 @@ class DummyBackend:
         if cancel_event.is_set():
             raise RunCancelled
 
-    def _create_capture_artifacts(self, directory: Path) -> dict[str, Any]:
+    def _create_capture_artifacts(
+        self, directory: Path, minimum_frames: int
+    ) -> dict[str, Any]:
         paths: list[str] = []
         palettes = ((40, 100, 210), (35, 170, 110), (205, 95, 55))
-        for index, base in enumerate(palettes, start=1):
+        for index in range(1, minimum_frames + 1):
+            base = palettes[(index - 1) % len(palettes)]
             path = directory / f"frame_{index:03d}.png"
             self._write_png(
                 path,
-                320,
-                180,
+                96,
+                54,
                 lambda x, y, base=base: (
-                    min(255, base[0] + x // 5),
-                    min(255, base[1] + y // 3),
-                    min(255, base[2] + (x + y) // 12),
+                    min(255, base[0] + x // 2),
+                    min(255, base[1] + y),
+                    min(255, base[2] + (x + y) // 4),
                 ),
             )
             paths.append(str(path))
@@ -619,17 +705,27 @@ class DummyBackend:
             "mask_images": [str(mask_path)],
         }
 
-    def _create_spatial_artifacts(self, directory: Path) -> dict[str, Any]:
+    def _create_spatial_artifacts(
+        self, directory: Path, minimum_frames: int
+    ) -> dict[str, Any]:
         path = directory / "camera_poses.json"
+        positions = (
+            [2.0, 1.0, 2.0],
+            [-2.0, 1.0, 2.0],
+            [0.0, 1.5, -2.5],
+        )
+        cameras = [
+            {
+                "frame": f"frame_{index:03d}.png",
+                "position": positions[(index - 1) % len(positions)],
+            }
+            for index in range(1, minimum_frames + 1)
+        ]
         self._write_json(
             path,
             {
                 "coordinate_system": "dummy-right-handed",
-                "cameras": [
-                    {"frame": "frame_001.png", "position": [2.0, 1.0, 2.0]},
-                    {"frame": "frame_002.png", "position": [-2.0, 1.0, 2.0]},
-                    {"frame": "frame_003.png", "position": [0.0, 1.5, -2.5]},
-                ],
+                "cameras": cameras,
             },
         )
         return {"camera_poses": str(path)}
@@ -662,21 +758,14 @@ class DummyBackend:
     ) -> None:
         if not manifest_path.exists():
             return
-        try:
-            with manifest_path.open("r", encoding="utf-8") as source:
-                manifest = json.load(source)
-            manifest["status"]["state"] = state
-            if output is not None:
-                manifest["artifacts"]["primary_output"] = str(output)
-            if error is not None:
-                manifest["error"] = error
-            self._write_json(manifest_path, manifest)
-        except (OSError, ValueError, TypeError, KeyError):
-            print(
-                f"Unable to finalize dummy manifest: {manifest_path}",
-                file=sys.stderr,
-                flush=True,
-            )
+        with manifest_path.open("r", encoding="utf-8") as source:
+            manifest = json.load(source)
+        manifest["status"]["state"] = state
+        if output is not None:
+            manifest["artifacts"]["primary_output"] = str(output)
+        if error is not None:
+            manifest["error"] = error
+        self._write_json(manifest_path, manifest)
 
     @staticmethod
     def _write_png(
@@ -705,8 +794,9 @@ class DummyBackend:
 
     @staticmethod
     def _write_obj(path: Path) -> None:
-        path.write_text(
-            """# AnitoScan dummy placeholder model
+        with path.open("w", encoding="utf-8", newline="\n") as output:
+            output.write(
+                """# AnitoScan dummy placeholder model
 o DummyCube
 v -1.0 -1.0 -1.0
 v  1.0 -1.0 -1.0
@@ -734,10 +824,8 @@ f 1//5 2//5 6//5
 f 1//5 6//5 5//5
 f 4//6 8//6 7//6
 f 4//6 7//6 3//6
-""",
-            encoding="utf-8",
-            newline="\n",
-        )
+"""
+            )
 
 
 def parse_args() -> argparse.Namespace:
