@@ -11,7 +11,6 @@ if str(DEFAULT_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(DEFAULT_PROJECT_ROOT))
 
 # Redirect sys.stdout to stderr for process-wide diagnostics containment.
-# Protocol IPC messages will strictly use REAL_STDOUT via ipc.send.
 _REAL_STDOUT = sys.stdout
 sys.stdout = sys.stderr
 
@@ -21,6 +20,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
+from src.pipeline.core.config import ConfigValidationError, PipelineConfig
 from src.pipeline.core.ipc import send
 from src.pipeline.core.protocol import (
     CancelPipelineCommand,
@@ -134,15 +134,19 @@ class ProductionBackend:
     def _accept_run(self, command: dict[str, Any]) -> None:
         try:
             parsed = RunPipelineCommand.from_dict(command)
-        except ValueError as err:
-            self.send_command_error("invalid_run_request", str(err))
-            return
+            input_path = Path(parsed.input)
+            if not input_path.is_absolute():
+                input_path = self.project_root / input_path
 
-        input_path = Path(parsed.input)
-        if not input_path.is_absolute():
-            input_path = self.project_root / input_path
-        if not input_path.exists():
-            self.send_command_error("invalid_run_request", "input path does not exist")
+            config = PipelineConfig.from_dict({
+                "run_name": parsed.run_name,
+                "input_path": input_path,
+                "minimum_frames": parsed.minimum_frames,
+                "quality": parsed.quality,
+            })
+            config.validate(check_path_exists=True)
+        except (ValueError, ConfigValidationError) as err:
+            self.send_command_error("invalid_run_request", str(err))
             return
 
         workspace = self.project_root / "data" / "runs" / parsed.run_name
@@ -274,65 +278,32 @@ class ProductionBackend:
     def _run_worker(
         self, parsed_cmd: RunPipelineCommand, cancel_event: threading.Event
     ) -> None:
-        from src.pipeline.core.pipeline import execute_pipeline
+        from src.pipeline.core.pipeline import run_pipeline_with_args
 
         output_path: str | None = None
         failure: Exception | None = None
 
-        def on_workspace_ready(run_name: str, workspace: str) -> None:
-            send(make_workspace_ready(run_name, workspace))
-
-        def on_phase_started(phase: Phase, label: str | None) -> None:
-            send(make_phase_started(phase, label))
-
-        def on_progress(phase: Phase, val: float, overall: float, label: str | None) -> None:
-            send(make_progress(phase, val, overall, label))
-
-        def on_action_required(
-            request_id: str, action: str, phase: Phase, frame: str, preview: str, count: int
-        ) -> int | str | None:
-            pending = PendingAction(
-                request_id=request_id,
-                count=count,
-                event=threading.Event(),
-            )
-            with self._state_lock:
-                if cancel_event.is_set():
-                    raise RunCancelled
-                self._pending_action = pending
-                send(make_action_required(request_id, action, phase, frame, preview, count))
-
-            while not pending.event.wait(timeout=0.05):
-                if cancel_event.is_set():
-                    raise RunCancelled
-
-            with self._state_lock:
-                if self._pending_action is pending:
-                    self._pending_action = None
-            return pending.choice
-
-        def on_phase_completed(phase: Phase) -> None:
-            send(make_phase_completed(phase))
-
-        def on_log(text: str) -> None:
-            send(make_log(text))
+        def on_progress(val: float, label: str | None = None) -> None:
+            pass
 
         try:
-            output_path = execute_pipeline(
-                config=parsed_cmd,
-                project_root=self.project_root,
-                cancel_event=cancel_event,
-                on_workspace_ready=on_workspace_ready,
-                on_phase_started=on_phase_started,
-                on_progress=on_progress,
-                on_action_required=on_action_required,
-                on_phase_completed=on_phase_completed,
-                on_log=on_log,
+            res = run_pipeline_with_args(
+                args={
+                    "run_name": parsed_cmd.run_name,
+                    "input": parsed_cmd.input,
+                    "minimum_frames": parsed_cmd.minimum_frames,
+                    "quality": parsed_cmd.quality,
+                    **parsed_cmd.extra_fields,
+                },
+                progress_cb=on_progress,
+                log_cb=self.send_log,
+                is_cancelled=cancel_event.is_set,
             )
+            output_path = res.get("output")
         except RunCancelled:
             pass
         except Exception as exc:
-            failure = err = exc
+            failure = exc
 
         with self._state_lock:
             if cancel_event.is_set():
