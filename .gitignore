@@ -57,6 +57,9 @@ Thumbs.db
 /out
 /output
 /build-vs
+/build
+
+.cache/
 
 # Vendor
 # Block the heavy dependency folders entirely
@@ -66,9 +69,6 @@ Thumbs.db
 /vendor/tinyobjloader/
 /vendor/glm/
 
-/vendor/NeuS2/configs/nerf/**.json
 /vendor/2d-gaussian-splatting/
 
-# Whitelist
-!vendor/NeuS2/configs/nerf/base.json
-!vendor/NeuS2/configs/nerf/dtu.json
+imgui.ini

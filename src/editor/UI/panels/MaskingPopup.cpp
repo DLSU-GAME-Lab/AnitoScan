@@ -1,7 +1,7 @@
 #include "MaskingPopup.h"
 
 //Initializes the popup's UI properties, default preview texture states, and binds the IPC client reference
-MaskingPopup::MaskingPopup(String name, IPCClient& ipc) 
+MaskingPopup::MaskingPopup(String name, IPCClient& ipc)
     : UIPanel(UIType::MASKING_MODAL, name, false), ipc(ipc) {
 	this->lastPreviewPath = "";
 	this->previewTexture = NULL;
@@ -50,7 +50,7 @@ void MaskingPopup::Draw() {
     }
 }
 
-// Prepares and activates the popup to display a specfic image. 
+// Prepares and activates the popup to display a specfic image.
 // Flags the UI to open and loads the target preview image
 void MaskingPopup::ShowCandidates(String previewPath, String frame, int count) {
 	this->count = count;
@@ -83,6 +83,12 @@ void MaskingPopup::LoadPreview(const String& path) {
 	glBindTexture(GL_TEXTURE_2D, this->previewTexture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+	glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, this->previewW, this->previewH, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 	stbi_image_free(data);
 	this->lastPreviewPath = path;

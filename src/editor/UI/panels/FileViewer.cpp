@@ -106,6 +106,12 @@ void FileViewer::LoadPreview(const String& path) {
 	glBindTexture(GL_TEXTURE_2D, this->previewTexture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+	glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, this->previewW, this->previewH, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 	stbi_image_free(data);
 	this->lastPreviewPath = path;
@@ -163,7 +169,7 @@ void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
 	std::error_code ec;
 	if (!std::filesystem::exists(fullPath, ec)) {
 		std::cerr << "[ERROR] Path does not exist: " << fullPath << std::endl;
-		return; 
+		return;
 	}
 
 	this->fileDialog.SetPwd(fullPath);
