@@ -4,18 +4,17 @@
 #include <vector>
 #include <unordered_map>
 #include <imgui.h>
-//#include "UI/UIHelper.h"
 
 class UIPanel;
 
 enum class Phase {
-	NONE = -1,
-	CAPTURE = 0,
-	MASKING = 1,
-	SPATIAL = 2,
-	GEOMETRY = 3,
-	EXPORT = 4,
-	COUNT = 5
+	NONE = 0,
+	CAPTURE = 1,
+	MASKING = 2,
+	SPATIAL = 3,
+	GEOMETRY = 4,
+	EXPORT = 5,
+	COUNT = 6
 };
 
 typedef std::string String;
