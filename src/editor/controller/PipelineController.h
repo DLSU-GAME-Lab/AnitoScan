@@ -8,19 +8,21 @@ class PipelineController {
 public:
     PipelineController(EditorState& state, IPCClient& ipc);
 
-    // Main thread API invoked by UI
+    // Backend Lifecycle
+    void StartBackend(const std::string& executable, const std::vector<std::string>& arguments);
+    void StopBackend();
+    void RestartBackend();
+
+    // Pipeline Commands
     void StartRun(const std::string& runName, const std::string& input, int minFrames, const std::string& quality);
     void CancelRun();
     void SubmitSelection(const std::string& requestId, int choice);
     void SkipSelection(const std::string& requestId);
 
-    // Processes IPC messages and mutates EditorState
+    // Main thread tick
     void Tick();
 
 private:
-    void HandleDecodedEvent(const IPCProtocol::DecodedEvent& event);
-
     EditorState& state;
     IPCClient& ipc;
-    bool wasBackendRunning = false;
 };

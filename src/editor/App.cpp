@@ -28,10 +28,7 @@ bool App::Initialize() {
         return false;
     }
 
-    if (!this->ipc.Start(this->backendConfig.executable, this->backendConfig.arguments)) {
-        std::cerr << "[ERROR]: Failed to launch backend." << std::endl;
-        return false;
-    }
+    this->controller->StartBackend(this->backendConfig.executable, this->backendConfig.arguments);
 
     this->lastTime = SDL_GetPerformanceCounter();
     this->isRunning = true;
@@ -175,6 +172,12 @@ void App::Run() {
         );
 
         this->controller->Tick();
+
+        if (this->state.outputEventAvailable) {
+            this->scene->LoadModel(this->state.outputEventPath);
+            this->state.outputEventAvailable = false;
+            this->state.outputEventPath.clear();
+        }
 
         scene->Update(this->deltaTime);
 

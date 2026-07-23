@@ -6,18 +6,13 @@ ViewportPanel::ViewportPanel(String name, Scene& scene, const EditorState& state
 ViewportPanel::~ViewportPanel() {}
 
 void ViewportPanel::Draw() {
-    if (!state.pipeline.latestOutput.empty() && state.pipeline.latestOutput != loadedModelPath) {
-        this->scene.LoadModel(state.pipeline.latestOutput);
-        this->loadedModelPath = state.pipeline.latestOutput;
-    }
-
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-	ImGui::Begin(this->name.c_str(), nullptr, flags);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::Begin(this->name.c_str(), nullptr, flags);
 
-	hoveredLastFrame = ImGui::IsWindowHovered();
+    hoveredLastFrame = ImGui::IsWindowHovered();
 
-	ImVec2 panelSize = ImGui::GetContentRegionAvail();
+    ImVec2 panelSize = ImGui::GetContentRegionAvail();
 
     if (panelSize.x > 0 && panelSize.y > 0) {
         this->scene.Render(static_cast<int>(panelSize.x), static_cast<int>(panelSize.y));
