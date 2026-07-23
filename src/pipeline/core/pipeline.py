@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -14,7 +15,7 @@ MODULES_DIR = SCRIPT_PATH.parent.parent / "modules"
 
 sys.path.insert(0, str(MODULES_DIR))
 
-from src.pipeline.core.config import PipelineConfig
+from src.pipeline.core.config import ConfigValidationError, PipelineConfig
 from capture import run_capture
 from export import run_export_and_baking
 from geometry import run_surface_reconstruction
@@ -135,3 +136,52 @@ def run_pipeline_with_args(
         "workspace": str(base_dir),
         "output": str(export_result.primary_obj_path),
     }
+
+
+def main() -> None:
+    """CLI entrypoint that builds PipelineConfig from args and executes the pipeline."""
+    parser = argparse.ArgumentParser(
+        description="Run 3D reconstruction pipeline via CLI using PipelineConfig."
+    )
+    parser.add_argument("--run-name", "-n", required=True, type=str, help="Unique run identifier.")
+    parser.add_argument("--input", "-i", required=True, type=str, dest="input_path", help="Input video or image directory.")
+    parser.add_argument("--quality", choices=["fast", "medium", "detailed"], default="fast", help="Quality preset.")
+
+    # Processing mode flags
+    parser.add_argument("--image", action="store_true", help="Force image processing mode.")
+    parser.add_argument("--video", action="store_true", help="Force video processing mode.")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing intermediate files/outputs.")
+
+    # Sub-configuration overrides
+    parser.add_argument("--minimum-frames", type=int, default=None, help="Minimum required capture frames.")
+    parser.add_argument("--blur-threshold", type=float, default=None, help="Blur threshold.")
+    parser.add_argument("--proxy-width", type=int, default=None, help="Proxy width.")
+    parser.add_argument("--jpg-quality", type=int, default=None, help="JPG quality (1-100).")
+    parser.add_argument("--max-search", type=int, default=None, help="Max search distance.")
+
+    parser.add_argument("--iou-threshold", type=float, default=None, help="Masking IoU threshold.")
+    parser.add_argument("--drift-limit", type=int, default=None, help="Masking drift limit.")
+    parser.add_argument("--yoloe-model-size", choices=["n", "s", "m", "l", "x"], default=None, help="YOLO model size.")
+
+    parser.add_argument("--train-iterations", type=int, default=None, help="Total training iterations.")
+    parser.add_argument("--densify-until-iter", type=int, default=None, help="Densify until iteration.")
+    parser.add_argument("--opacity-reset-interval", type=int, default=None, help="Opacity reset interval.")
+
+    parsed = parser.parse_args()
+
+    # Omit None entries so PipelineConfig / preset defaults take effect
+    args_dict = {k: v for k, v in vars(parsed).items() if v is not None}
+
+    try:
+        results = run_pipeline_with_args(args=args_dict, log_cb=print)
+        print(f"Pipeline finished successfully: {json.dumps(results, indent=2)}")
+    except ConfigValidationError as err:
+        print(f"Configuration Error: {err}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as err:
+        print(f"Pipeline Error: {err}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
