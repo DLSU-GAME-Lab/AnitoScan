@@ -8,7 +8,7 @@
 
 class MaskingPopup : public UIPanel {
 public:
-	MaskingPopup(String name, PipelineController* controller);
+    MaskingPopup(String name, const EditorState& state, PipelineController* controller);
 	~MaskingPopup();
 
 	void Draw() override;
@@ -23,6 +23,7 @@ private:
 	void DisplaySkipButton();
 
 private:
+    const EditorState& state;
 	PipelineController* controller;
 	bool showPopup;
 	GLuint previewTexture;

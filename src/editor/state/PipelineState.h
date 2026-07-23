@@ -48,6 +48,7 @@ struct PipelineState {
     std::string pendingRequestId;
     std::string pendingActionType;
     std::string pendingPreviewPath;
+    std::string pendingFrame;
     int pendingCandidateCount = 0;
     SubmissionStatus actionStatus = SubmissionStatus::NONE;
 
@@ -59,6 +60,7 @@ struct PipelineState {
         pendingRequestId.clear();
         pendingActionType.clear();
         pendingPreviewPath.clear();
+        pendingFrame.clear();
         pendingCandidateCount = 0;
         actionStatus = SubmissionStatus::NONE;
     }

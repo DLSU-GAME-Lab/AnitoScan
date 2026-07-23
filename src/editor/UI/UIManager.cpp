@@ -47,11 +47,11 @@ void UIManager::CreateUIPanels(EditorState& state, PipelineController* controlle
     this->uiList.push_back(overview);
     this->uiMap[overview->GetName()] = overview;
 
-    UIPanel* captureViewer = new FileViewer("Capture", Phase::CAPTURE);
+    UIPanel* captureViewer = new FileViewer("Capture", Phase::CAPTURE, state);
     this->uiList.push_back(captureViewer);
     this->uiMap[captureViewer->GetName()] = captureViewer;
 
-    UIPanel* maskingViewer = new FileViewer("Masking", Phase::MASKING);
+    UIPanel* maskingViewer = new FileViewer("Masking", Phase::MASKING, state);
     this->uiList.push_back(maskingViewer);
     this->uiMap[maskingViewer->GetName()] = maskingViewer;
 
@@ -59,7 +59,7 @@ void UIManager::CreateUIPanels(EditorState& state, PipelineController* controlle
     this->uiList.push_back(logPanel);
     this->uiMap[logPanel->GetName()] = logPanel;
 
-    UIPanel* maskingPopup = new MaskingPopup("Masking Popup", controller);
+    UIPanel* maskingPopup = new MaskingPopup("Masking Popup", state, controller);
     this->uiList.push_back(maskingPopup);
     this->uiMap[maskingPopup->GetName()] = maskingPopup;
 
@@ -172,13 +172,11 @@ void UIManager::ApplyLayout(UILayout layout) {
 	switch (layout) {
 	case UILayout::DEFAULT:{
 		for (UIPanel* panel : this->uiList) {
-			if (Contains(panel->GetType(),
-				UIType::FILE_VIEWER_CAPTURE, UIType::FILE_VIEWER_MASKING, UIType::LOG_PANEL, UIType::OVERVIEW, UIType::VIEWPORT)) {
-				panel->SetActive(true);
-			}
-			else {
-				panel->SetActive(false);
-			}
+		    if (Contains(panel->GetType(), UIType::FILE_VIEWER_CAPTURE, UIType::FILE_VIEWER_MASKING, UIType::LOG_PANEL, UIType::OVERVIEW, UIType::VIEWPORT, UIType::MASKING_MODAL)) {
+                panel->SetActive(true);
+            } else {
+                panel->SetActive(false);
+            }
 		}
 		dockspace->RequestDefaultLayout();
 ;		break;

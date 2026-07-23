@@ -2,12 +2,13 @@
 
 #include "../UIPanel.h"
 #include "OverviewPanel.h"
+#include "../../state/EditorState.h"
 
 enum class Phase;
 
 class FileViewer : public UIPanel {
 public:
-	FileViewer(String name, Phase phase);
+    FileViewer(String name, Phase phase, const EditorState& state);
 	~FileViewer();
 
 	void Draw() override;
@@ -24,6 +25,7 @@ private:
 
 
 private:
+    const EditorState& state;
 	ImGui::FileBrowser fileDialog;
 	GLuint previewTexture;
 	String lastPreviewPath;

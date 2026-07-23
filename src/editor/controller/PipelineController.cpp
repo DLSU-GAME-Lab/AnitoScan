@@ -116,6 +116,7 @@ void PipelineController::Tick() {
                 state.pipeline.pendingRequestId = event.actionRequired.requestId;
                 state.pipeline.pendingActionType = event.actionRequired.action;
                 state.pipeline.pendingPreviewPath = event.actionRequired.preview;
+                state.pipeline.pendingFrame = event.actionRequired.frame;
                 state.pipeline.pendingCandidateCount = event.actionRequired.count;
                 state.pipeline.actionStatus = SubmissionStatus::PENDING;
                 break;

@@ -2,7 +2,8 @@
 
 #include "../../WorkspacePath.h"
 
-FileViewer::FileViewer(String name, Phase phase) : UIPanel(name) {
+FileViewer::FileViewer(String name, Phase phase, const EditorState& state)
+    : UIPanel(name), phase(phase), state(state) {
 	this->fileDialog = ImGui::FileBrowser(ImGuiFileBrowserFlags_Embedded | ImGuiFileBrowserFlags_NoModal);
 	this->fileDialog.SetTypeFilters({ ".png", ".jpg", ".jpeg" });
 	this->previewTexture = 0;
@@ -20,6 +21,14 @@ FileViewer::~FileViewer() {
 }
 
 void FileViewer::Draw() {
+    if (this->workspace.string() != state.pipeline.activeWorkspace) {
+        if (state.pipeline.activeWorkspace.empty()) {
+            ClearWorkspace();
+        } else {
+            SetWorkspaceToView(state.pipeline.activeWorkspace);
+        }
+    }
+
 	ImGuiIO& io = ImGui::GetIO();
 
 	if (this->isRefreshing) {

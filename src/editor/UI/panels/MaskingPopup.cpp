@@ -1,10 +1,10 @@
 #include "MaskingPopup.h"
 
-MaskingPopup::MaskingPopup(String name, PipelineController* controller)
-    : UIPanel(UIType::MASKING_MODAL, name, false), controller(controller) {
-	this->lastPreviewPath = "";
-	this->previewTexture = 0;
-	this->showPopup = activeSelf;
+MaskingPopup::MaskingPopup(String name, const EditorState& state, PipelineController* controller)
+    : UIPanel(UIType::MASKING_MODAL, name, true), state(state), controller(controller) {
+    this->lastPreviewPath = "";
+    this->previewTexture = 0;
+    this->showPopup = false;
 }
 
 MaskingPopup::~MaskingPopup() {
@@ -12,6 +12,22 @@ MaskingPopup::~MaskingPopup() {
 }
 
 void MaskingPopup::Draw() {
+    // Observe state to see if an action is pending
+    bool isPending = (state.pipeline.runState == RunState::AWAITING_ACTION &&
+                        state.pipeline.actionStatus == SubmissionStatus::PENDING);
+
+    // If it's pending and we haven't processed this request yet, trigger the popup
+    if (isPending && this->requestId != state.pipeline.pendingRequestId) {
+        this->requestId = state.pipeline.pendingRequestId;
+        this->frame = state.pipeline.pendingFrame;
+        this->count = state.pipeline.pendingCandidateCount;
+        LoadPreview(state.pipeline.pendingPreviewPath);
+        this->showPopup = true;
+    } else if (!isPending) {
+        // Reset so we can catch the next one
+        this->requestId.clear();
+    }
+
     if (this->showPopup) {
         ImGui::OpenPopup(this->GetName().c_str());
         this->showPopup = false;
