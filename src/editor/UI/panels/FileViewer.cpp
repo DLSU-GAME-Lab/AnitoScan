@@ -5,7 +5,7 @@
 FileViewer::FileViewer(String name, Phase phase) : UIPanel(name) {
 	this->fileDialog = ImGui::FileBrowser(ImGuiFileBrowserFlags_Embedded | ImGuiFileBrowserFlags_NoModal);
 	this->fileDialog.SetTypeFilters({ ".png", ".jpg", ".jpeg" });
-	this->previewTexture = NULL;
+	this->previewTexture = 0;
 	this->phase = phase;
 
 	switch (phase) {
@@ -15,7 +15,9 @@ FileViewer::FileViewer(String name, Phase phase) : UIPanel(name) {
 	}
 }
 
-FileViewer::~FileViewer() {}
+FileViewer::~FileViewer() {
+    ClearPreview();
+}
 
 void FileViewer::Draw() {
 	ImGuiIO& io = ImGui::GetIO();

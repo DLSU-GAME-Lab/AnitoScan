@@ -12,38 +12,42 @@
 #include "BackendLaunchConfig.h"
 #include "render/Scene.h"
 #include "IPCClient.h"
+#include "state/EditorState.h"
+#include "controller/PipelineController.h"
 
 class IPCClient;
 
 class App {
 public:
-	App(int width, int height, BackendLaunchConfig backendConfig);
-	~App();
+    App(int width, int height, BackendLaunchConfig backendConfig);
+    ~App();
 
-	bool Initialize();
-	void Run();
-
-private:
-	bool InitializeSDL();
-	bool InitializeOpenGL();
-	void PollBackend();
-	void ProcessMouseEvents(SDL_Event event);
-	void ProcessKeyboardEvents(SDL_Event event);
-	void Cleanup();
+    bool Initialize();
+    void Run();
 
 private:
-	bool isRunning;
-	SDL_Window* window;
-	SDL_GLContext glContext;
+    bool InitializeSDL();
+    bool InitializeOpenGL();
+    void ProcessMouseEvents(SDL_Event event);
+    void ProcessKeyboardEvents(SDL_Event event);
+    void Cleanup();
 
-	int screenWidth;
-	int screenHeight;
+private:
+    bool isRunning;
+    SDL_Window* window;
+    SDL_GLContext glContext;
 
-	BackendLaunchConfig backendConfig;
-	IPCClient ipc;
-	std::unique_ptr<Scene> scene;
-	bool mouseDragging = false;
-	bool middleMousehold = false;
-	Uint64 lastTime = 0;
-	float deltaTime;
+    int screenWidth;
+    int screenHeight;
+
+    BackendLaunchConfig backendConfig;
+    IPCClient ipc;
+    EditorState state;
+    std::unique_ptr<PipelineController> controller;
+    std::unique_ptr<Scene> scene;
+
+    bool mouseDragging = false;
+    bool middleMousehold = false;
+    Uint64 lastTime = 0;
+    float deltaTime;
 };

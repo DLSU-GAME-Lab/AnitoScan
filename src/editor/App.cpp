@@ -1,49 +1,41 @@
 #include "App.h"
 #include "UI/UIManager.h"
 #include "IPCProtocol.h"
-
 #include <utility>
 
 App::App(int width, int height, BackendLaunchConfig backendConfig)
-	: backendConfig(std::move(backendConfig)) {
-	this->isRunning = false;
-	this->window = nullptr;
-	this->glContext = nullptr;
-	this->screenWidth = width;
-	this->screenHeight = height;
+    : backendConfig(std::move(backendConfig)) {
+    this->isRunning = false;
+    this->window = nullptr;
+    this->glContext = nullptr;
+    this->screenWidth = width;
+    this->screenHeight = height;
 }
 
 App::~App() {
-	Cleanup();
+    Cleanup();
 }
 
 bool App::Initialize() {
-	if (!InitializeSDL()) {
-		std::cerr << "[ERROR]: SDL initialization failed: " << SDL_GetError() << std::endl;
-		return false;
-	}
+    if (!InitializeSDL()) return false;
+    if (!InitializeOpenGL()) return false;
 
-	if (!InitializeOpenGL()) {
-		std::cerr << "[ERROR]: OpenGL initialization failed: " << SDL_GetError() << std::endl;
-		return false;
-	}
+    this->controller = std::make_unique<PipelineController>(this->state, this->ipc);
+    this->scene = std::make_unique<Scene>();
 
-	this->scene = std::make_unique<Scene>();
-	if (!UIManager::GetInstance()->Initialize(this->window, this->glContext, this->ipc, *this->scene)) {
-		std::cerr << "[ERROR]: ImGui initialization failed: " << std::endl;
-		return false;
-	}
+    if (!UIManager::GetInstance()->Initialize(this->window, this->glContext, this->state, this->controller.get(), *this->scene)) {
+        std::cerr << "[ERROR]: ImGui initialization failed." << std::endl;
+        return false;
+    }
 
-	std::cout << "[DEBUG]: Launching " << this->backendConfig.displayName << " backend." << std::endl;
-	if (!this->ipc.Start(this->backendConfig.executable, this->backendConfig.arguments)) {
-		std::cerr << "[ERROR]: Failed to launch " << this->backendConfig.displayName << " backend." << std::endl;
-		return false;
-	}
+    if (!this->ipc.Start(this->backendConfig.executable, this->backendConfig.arguments)) {
+        std::cerr << "[ERROR]: Failed to launch backend." << std::endl;
+        return false;
+    }
 
-	this->lastTime = SDL_GetPerformanceCounter();
-	this->isRunning = true;
-	std::cout << "[DEBUG]: App is initialized and running." << std::endl;
-	return true;
+    this->lastTime = SDL_GetPerformanceCounter();
+    this->isRunning = true;
+    return true;
 }
 
 bool App::InitializeSDL() {
@@ -107,96 +99,6 @@ bool App::InitializeOpenGL() {
 	return true;
 }
 
-void App::PollBackend() {
-	std::vector<BackendMessage> messages;
-	this->ipc.Poll(messages);
-
-	if (messages.empty()) return;
-
-	OverviewPanel* overview = static_cast<OverviewPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::OVERVIEW));
-	LogPanel* log = static_cast<LogPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::LOG_PANEL));
-	MaskingPopup* popup = static_cast<MaskingPopup*>(UIManager::GetInstance()->GetPanelByType(UIType::MASKING_MODAL));
-	ViewportPanel* viewport = static_cast<ViewportPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::VIEWPORT));
-
-	for (BackendMessage& msg : messages) {
-		IPCProtocol::DecodedEvent event = IPCProtocol::DecodeEvent(msg.raw);
-
-		switch (event.type) {
-			case IPCProtocol::EventType::BACKEND_READY:
-				if (event.backendReady.protocolVersion != IPCProtocol::PROTOCOL_VERSION) {
-					std::cerr << "[ERROR]: Protocol version mismatch. Backend reported version "
-					          << event.backendReady.protocolVersion << ", expected "
-					          << IPCProtocol::PROTOCOL_VERSION << ". Shutting down." << std::endl;
-					if (log) log->PushLog("[ERROR] Backend protocol version mismatch!");
-					this->ipc.Shutdown();
-					this->isRunning = false;
-					return;
-				} else {
-					std::cout << "[DEBUG]: Backend ready, protocol_version: " << event.backendReady.protocolVersion << std::endl;
-				}
-				break;
-
-			case IPCProtocol::EventType::LOG:
-				if (log) log->PushLog(event.log.text);
-				break;
-
-			case IPCProtocol::EventType::WORKSPACE_READY:
-				UIManager::GetInstance()->SetWorkspaceForFileViewers(event.workspaceReady.workspace);
-				break;
-
-			case IPCProtocol::EventType::PHASE_STARTED:
-				if (overview) overview->SetPhaseStarted(event.phaseStarted.phase, event.phaseStarted.label);
-				break;
-
-			case IPCProtocol::EventType::PROGRESS:
-				if (overview) {
-					overview->SetPhaseProgress(
-						event.progress.phase,
-						event.progress.value,
-						event.progress.overallValue,
-						event.progress.label
-					);
-				}
-				break;
-
-			case IPCProtocol::EventType::ACTION_REQUIRED:
-				if (popup) {
-					popup->ShowCandidates(
-						event.actionRequired.requestId,
-						event.actionRequired.preview,
-						event.actionRequired.frame,
-						event.actionRequired.count
-					);
-				}
-				break;
-
-			case IPCProtocol::EventType::PHASE_COMPLETED:
-				if (overview) overview->SetPhaseComplete(event.phaseCompleted.phase);
-				break;
-
-			case IPCProtocol::EventType::DONE:
-				if (overview) overview->SetDone();
-				if (viewport && !event.done.output.empty()) {
-					viewport->LoadOutputModel(event.done.output);
-				}
-				break;
-
-			case IPCProtocol::EventType::CANCELLED:
-				if (overview) overview->SetCancelled();
-				break;
-
-			case IPCProtocol::EventType::ERROR:
-				if (log) log->PushLog("[ERROR] " + event.error.text);
-				if (overview) overview->HandleError(event.error);
-				break;
-
-			default:
-				if (log) log->PushLog(msg.raw);
-				break;
-		}
-	}
-}
-
 void App::ProcessMouseEvents(SDL_Event event) {
 	ViewportPanel* viewport = static_cast<ViewportPanel*>(UIManager::GetInstance()->GetPanelByType(UIType::VIEWPORT));
 	bool canStartOrbit = viewport && viewport->IsHovered();
@@ -250,55 +152,44 @@ void App::ProcessKeyboardEvents(SDL_Event event) {
 }
 
 void App::Run() {
-	SDL_Event event;
-	while (this->isRunning) {
-		Uint64 now = SDL_GetPerformanceCounter();
-		this->deltaTime = static_cast<float>(now - this->lastTime) / SDL_GetPerformanceFrequency();
-		this->lastTime = now;
-		this->deltaTime = (std::min)(deltaTime, 0.05f);
+    SDL_Event event;
+    while (this->isRunning) {
+        Uint64 now = SDL_GetPerformanceCounter();
+        this->deltaTime = static_cast<float>(now - this->lastTime) / SDL_GetPerformanceFrequency();
+        this->lastTime = now;
+        this->deltaTime = (std::min)(deltaTime, 0.05f);
 
-		while (SDL_PollEvent(&event)) {
-			ImGui_ImplSDL2_ProcessEvent(&event);
-			if (event.type == SDL_QUIT) {
-				this->isRunning = false;
-			}
+        while (SDL_PollEvent(&event)) {
+            ImGui_ImplSDL2_ProcessEvent(&event);
+            if (event.type == SDL_QUIT) {
+                this->isRunning = false;
+            }
+            ProcessMouseEvents(event);
+            ProcessKeyboardEvents(event);
+        }
 
-			ProcessMouseEvents(event);
-			ProcessKeyboardEvents(event);
-		}
+        const Uint8* keys = SDL_GetKeyboardState(nullptr);
+        scene->GetCamera().ProcessKeyboard(
+            keys[SDL_SCANCODE_LEFT], keys[SDL_SCANCODE_RIGHT],
+            keys[SDL_SCANCODE_UP], keys[SDL_SCANCODE_DOWN], deltaTime
+        );
 
-		const Uint8* keys = SDL_GetKeyboardState(nullptr);
-		scene->GetCamera().ProcessKeyboard(
-			keys[SDL_SCANCODE_LEFT],
-			keys[SDL_SCANCODE_RIGHT],
-			keys[SDL_SCANCODE_UP],
-			keys[SDL_SCANCODE_DOWN],
-			deltaTime
-		);
+        this->controller->Tick();
 
-		PollBackend();
+        scene->Update(this->deltaTime);
 
-		int drawableW, drawableH;
-		SDL_GL_GetDrawableSize(this->window, &drawableW, &drawableH);
-		scene->Update(0.0f);
-		scene->Render(drawableW, drawableH);
+        UIManager::GetInstance()->BeginNewFrame();
+        UIManager::GetInstance()->DrawAllUIs();
+        UIManager::GetInstance()->EndFrame();
 
-		UIManager::GetInstance()->BeginNewFrame();
-		UIManager::GetInstance()->DrawAllUIs();
-		UIManager::GetInstance()->EndFrame();
-
-		SDL_GL_SwapWindow(this->window);
-	}
+        SDL_GL_SwapWindow(this->window);
+    }
 }
 
 void App::Cleanup() {
-	this->ipc.Shutdown();
-	UIManager::GetInstance()->Shutdown();
-	if (this->glContext) {
-		SDL_GL_DeleteContext(this->glContext);
-	}
-	if (this->window) {
-		SDL_DestroyWindow(this->window);
-	}
-	SDL_Quit();
+    this->ipc.Shutdown();
+    UIManager::GetInstance()->Shutdown();
+    if (this->glContext) SDL_GL_DeleteContext(this->glContext);
+    if (this->window) SDL_DestroyWindow(this->window);
+    SDL_Quit();
 }

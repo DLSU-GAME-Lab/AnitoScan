@@ -1,13 +1,15 @@
 #include "MaskingPopup.h"
 
-MaskingPopup::MaskingPopup(String name, IPCClient& ipc)
-    : UIPanel(UIType::MASKING_MODAL, name, false), ipc(ipc) {
+MaskingPopup::MaskingPopup(String name, PipelineController* controller)
+    : UIPanel(UIType::MASKING_MODAL, name, false), controller(controller) {
 	this->lastPreviewPath = "";
-	this->previewTexture = NULL;
+	this->previewTexture = 0;
 	this->showPopup = activeSelf;
 }
 
-MaskingPopup::~MaskingPopup() {}
+MaskingPopup::~MaskingPopup() {
+    ClearPreview();
+}
 
 void MaskingPopup::Draw() {
     if (this->showPopup) {
@@ -141,8 +143,9 @@ void MaskingPopup::DisplayCandidatesButton() {
     for (int i = 0; i < this->count; i++) {
         String label = "  " + std::to_string(i) + "  ";
         if (ImGui::Button(label.c_str(), ImVec2(60, 36))) {
-            std::string cmd = IPCProtocol::SerializeSelection(this->requestId, i);
-            this->ipc.Send(cmd);
+            if (this->controller) {
+                this->controller->SubmitSelection(this->requestId, i);
+            }
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
@@ -151,8 +154,9 @@ void MaskingPopup::DisplayCandidatesButton() {
 
 void MaskingPopup::DisplaySkipButton() {
     if (ImGui::Button("Skip", ImVec2(60, 36))) {
-        std::string cmd = IPCProtocol::SerializeSelectionSkip(this->requestId);
-        this->ipc.Send(cmd);
+        if (this->controller) {
+            this->controller->SkipSelection(this->requestId);
+        }
         ImGui::CloseCurrentPopup();
     }
 }

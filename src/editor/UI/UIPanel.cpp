@@ -18,8 +18,6 @@ UIPanel::UIPanel(UIType type, String name, bool isActive) {
 	this->activeSelf = isActive;
 }
 
-UIPanel::~UIPanel() {}
-
 String UIPanel::GetName() {
 	return this->name;
 }

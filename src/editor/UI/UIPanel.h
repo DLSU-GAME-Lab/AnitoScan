@@ -15,13 +15,13 @@ public:
 	UIPanel(String name);
 	UIPanel(UIType type, String name);
 	UIPanel(UIType type, String name, bool isActive);
-	~UIPanel();
+	virtual ~UIPanel() = default;
 
 	UIType GetType();
 	String GetName();
 	bool IsActive();
 	void SetActive(bool isActive);
-	
+
 	virtual void Draw() = 0;
 
 protected:

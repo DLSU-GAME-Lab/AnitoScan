@@ -1,22 +1,21 @@
 #pragma once
-
 #include "../UIPanel.h"
-#include "../../IPCClient.h"
+#include "../../state/EditorState.h"
+#include <vector>
 
 class LogPanel : public UIPanel {
 public:
-	LogPanel(String name, IPCClient& ipc);
-	~LogPanel();
+    LogPanel(String name, EditorState& state);
+    ~LogPanel();
 
-	void Draw() override;
-	void PushLog(const String& line);
-
-private:
-	void DrawLogLines();
+    void Draw() override;
+    void PushLog(const String& line);
 
 private:
-	IPCClient& ipc;
-	std::vector<String> logLines;
-	char inputPath[512] = "";
-	bool scrollToBottom;
+    void DrawLogLines();
+
+private:
+    EditorState& state;
+    std::vector<String> logLines;
+    bool scrollToBottom = false;
 };

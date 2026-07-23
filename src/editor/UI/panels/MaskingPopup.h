@@ -4,11 +4,11 @@
 
 #include "../UIPanel.h"
 #include "OverviewPanel.h"
-#include "../../IPCProtocol.h"
+#include "../../controller/PipelineController.h"
 
 class MaskingPopup : public UIPanel {
 public:
-	MaskingPopup(String name, IPCClient& ipc);
+	MaskingPopup(String name, PipelineController* controller);
 	~MaskingPopup();
 
 	void Draw() override;
@@ -23,7 +23,7 @@ private:
 	void DisplaySkipButton();
 
 private:
-	IPCClient& ipc;
+	PipelineController* controller;
 	bool showPopup;
 	GLuint previewTexture;
 	String lastPreviewPath;
@@ -36,6 +36,5 @@ private:
 private:
 	float  zoom = 1.0f;
 	ImVec2 panOffset = ImVec2(0, 0);
-	bool   isPanning = false;
 	ImVec2 lastMouse = ImVec2(0, 0);
 };

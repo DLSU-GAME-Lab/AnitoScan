@@ -25,8 +25,6 @@ private:
 	bool hasInputVideo = false;
 	bool hasName = false;
 	bool hasCompleteInput = false;
-	bool validInput = false;
-	bool selectPrevRun = false;
 
 	ImGui::FileBrowser fileDialog;
 	char inputText[256] = "";

@@ -1,216 +1,134 @@
 #include "OverviewPanel.h"
 
-OverviewPanel::OverviewPanel(String name, IPCClient& ipc)
-	: UIPanel(UIType::OVERVIEW, name), ipc(ipc) {
-	ResetAllProgress();
-}
+OverviewPanel::OverviewPanel(String name, const EditorState& state, PipelineController* controller)
+    : UIPanel(UIType::OVERVIEW, name), state(state), controller(controller) {}
 
 OverviewPanel::~OverviewPanel() {}
 
-void OverviewPanel::SetPhaseStarted(Phase phase, const String& label) {
-	int i = static_cast<int>(phase);
-	if (i < 1 || i >= static_cast<int>(Phase::COUNT)) return;
-	this->phases[i].active = true;
-	this->phases[i].completed = false;
-	this->phases[i].label = label.empty() ? "In Progress" : label;
-	this->currentPhase = phase;
-}
-
-void OverviewPanel::SetPhaseProgress(Phase phase, float value, float overallValue, const String& label) {
-	int i = static_cast<int>(phase);
-	if (i >= 1 && i < static_cast<int>(Phase::COUNT)) {
-		this->phases[i].progress = value;
-		if (!label.empty()) this->phases[i].label = label;
-		this->phases[i].active = true;
-		this->currentPhase = phase;
-	}
-	this->overallProgressValue = overallValue;
-}
-
-void OverviewPanel::SetPhaseComplete(Phase phase) {
-	int i = static_cast<int>(phase);
-	if (i < 1 || i >= static_cast<int>(Phase::COUNT)) return;
-	this->phases[i].progress = 1.0f;
-	this->phases[i].active = false;
-	this->phases[i].completed = true;
-	this->phases[i].label = "Complete";
-}
-
-void OverviewPanel::SetDone() {
-	for (int i = 1; i < static_cast<int>(Phase::COUNT); i++) {
-		this->phases[i].progress = 1.0f;
-		this->phases[i].completed = true;
-		this->phases[i].active = false;
-		this->phases[i].label = "Complete";
-	}
-	this->overallProgressValue = 1.0f;
-	this->isScanning = false;
-	this->isCancelling = false;
-}
-
-void OverviewPanel::SetCancelled() {
-	this->isScanning = false;
-	this->isCancelling = false;
-}
-
-void OverviewPanel::HandleError(const IPCProtocol::ErrorEvent& err) {
-	if (err.scope == "run" || err.scope == "backend") {
-		this->isScanning = false;
-		this->isCancelling = false;
-	}
-}
-
-void OverviewPanel::SetScanning(bool scanning) {
-	this->isScanning = scanning;
-}
-
 void OverviewPanel::SetInput(String input, String output, int minFrames, String quality) {
-	this->inputFile = input;
-	this->outputFolder = output;
-	this->minFrames = minFrames;
-	this->quality = quality;
-	this->inputReady = true;
-}
-
-String OverviewPanel::GetExportQuality() {
-	return this->quality;
-}
-
-Phase OverviewPanel::GetCurrentPhase() {
-	return this->currentPhase;
+    this->inputFile = input;
+    this->outputFolder = output;
+    this->minFrames = minFrames;
+    this->quality = quality;
+    this->inputReady = true;
 }
 
 void OverviewPanel::DrawInputSection() {
-	InputWindow* input = static_cast<InputWindow*>(UIManager::GetInstance()->GetPanelByType(UIType::INPUT));
+    InputWindow* input = static_cast<InputWindow*>(UIManager::GetInstance()->GetPanelByType(UIType::INPUT));
 
-	if (!this->isScanning && !this->inputReady) {
-		if (ImGui::Button("Open Input Window"))
-			input->ShowWindow();
-		return;
-	}
+    // Determine if the pipeline is actively running based on EditorState
+    bool isScanning = (state.pipeline.runState == RunState::STARTING ||
+                       state.pipeline.runState == RunState::RUNNING ||
+                       state.pipeline.runState == RunState::AWAITING_ACTION);
 
-	if (this->isScanning) {
-		ImGui::SeparatorText("Current Input");
-	}
-	else {
-		if (ImGui::Button("Modify Input"))
-			input->ShowWindow();
-	}
+    if (!isScanning && !this->inputReady) {
+        if (ImGui::Button("Open Input Window"))
+            input->ShowWindow();
+        return;
+    }
 
-	ImGui::Spacing();
-	ImGui::Text("Selected: ");
-	ImGui::SameLine();
-	std::filesystem::path path(this->inputFile);
-	HighlightImGuiText(path.filename().string(), UIColor::GREEN);
+    if (isScanning) {
+        ImGui::SeparatorText("Current Input");
+    }
+    else {
+        if (ImGui::Button("Modify Input"))
+            input->ShowWindow();
+    }
 
-	ImGui::Text("Output folder: ");
-	ImGui::SameLine();
-	HighlightImGuiText(this->outputFolder, UIColor::GREEN);
+    ImGui::Spacing();
+    ImGui::Text("Selected: ");
+    ImGui::SameLine();
+    std::filesystem::path path(this->inputFile);
+    HighlightImGuiText(path.filename().string(), UIColor::GREEN);
 
-	ImGui::Text("Minimum Frames: ");
-	ImGui::SameLine();
-	HighlightImGuiText(std::to_string(this->minFrames), UIColor::GREEN);
+    ImGui::Text("Output folder: ");
+    ImGui::SameLine();
+    HighlightImGuiText(this->outputFolder, UIColor::GREEN);
 
-	ImGui::Text("Quality: ");
-	ImGui::SameLine();
-	HighlightImGuiText(this->quality, UIColor::GREEN);
-	ImGui::Spacing();
+    ImGui::Text("Minimum Frames: ");
+    ImGui::SameLine();
+    HighlightImGuiText(std::to_string(this->minFrames), UIColor::GREEN);
+
+    ImGui::Text("Quality: ");
+    ImGui::SameLine();
+    HighlightImGuiText(this->quality, UIColor::GREEN);
+    ImGui::Spacing();
 }
 
 void OverviewPanel::DrawActions() {
-	// Disable if backend is not ready, scanning, or cancelling
-	ImGui::BeginDisabled(!this->ipc.IsBackendReady() || this->isScanning || this->isCancelling || !this->inputReady);
-	if (ImGui::Button("Run Pipeline")) {
-		ResetAllProgress();
-		this->isScanning = true;
+    bool isRunning = (state.pipeline.runState == RunState::STARTING ||
+                      state.pipeline.runState == RunState::RUNNING ||
+                      state.pipeline.runState == RunState::AWAITING_ACTION);
 
-		std::string cmd = IPCProtocol::SerializeRunPipeline(
-			this->outputFolder,
-			this->inputFile,
-			this->minFrames,
-			this->quality
-		);
-		this->ipc.Send(cmd);
-	}
-	ImGui::EndDisabled();
-	ImGui::SameLine();
+    ImGui::BeginDisabled(isRunning || !this->inputReady);
+    if (ImGui::Button("Run Pipeline") && controller) {
+        controller->StartRun(this->outputFolder, this->inputFile, this->minFrames, this->quality);
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
 
-	// CANCEL
-	ImGui::BeginDisabled(!this->isScanning || this->isCancelling);
-	if (ImGui::Button("Cancel Scan")) {
-		this->isCancelling = true;
-		std::string cmd = IPCProtocol::SerializeCancelPipeline(this->outputFolder);
-		this->ipc.Send(cmd);
-	}
-	ImGui::EndDisabled();
-
-	ImGui::Spacing();
+    ImGui::BeginDisabled(!isRunning);
+    if (ImGui::Button("Cancel Scan") && controller) {
+        controller->CancelRun();
+    }
+    ImGui::EndDisabled();
+    ImGui::Spacing();
 }
 
 void OverviewPanel::DrawOverallProgress() {
-	ImGui::SeparatorText("Overall Progress");
-	ImGui::ProgressBar(this->overallProgressValue, ImVec2(-1, 20));
+    ImGui::SeparatorText("Overall Progress");
+    ImGui::ProgressBar(state.pipeline.overallProgress, ImVec2(-1, 20));
 }
 
 void OverviewPanel::DrawPhaseBreakdown() {
-	const char* phaseNames[]{
-		"",
-		"Phase 1: Capture",
-		"Phase 2: Masking",
-		"Phase 3: Spatial",
-		"Phase 4: Geometry",
-		"Phase 5: Export"
-	};
+    const char* phaseNames[]{ "", "Phase 1: Capture", "Phase 2: Masking", "Phase 3: Spatial", "Phase 4: Geometry", "Phase 5: Export" };
+    int activePhaseIdx = static_cast<int>(state.pipeline.activePhase);
 
-	for (int i = 1; i < static_cast<int>(Phase::COUNT); i++) {
-		auto& p = this->phases[i];
-		ImGui::PushID(i);
+    for (int i = 1; i <= 5; i++) {
+        ImGui::PushID(i);
 
-		UIColor barColor = UIColor::NONE;
-		if (p.completed) {
-			HighlightImGuiText(String("[DONE] ") + phaseNames[i], UIColor::GREEN);
-			barColor = UIColor::GREEN;
-		}
-		else if (p.active) {
-			HighlightImGuiText(String("[ >> ] ") + phaseNames[i], UIColor::YELLOW);
-			barColor = UIColor::YELLOW;
-		}
-		else {
-			ImGui::TextDisabled("[    ] %s", phaseNames[i]);
-		}
+        bool isCompleted = (state.pipeline.runState == RunState::COMPLETED) || (activePhaseIdx > i && activePhaseIdx != 0);
+        bool isActive = (activePhaseIdx == i && state.pipeline.runState != RunState::COMPLETED);
 
-		UpdateImGuiProgressBar(p.progress, ImVec2(-1, 12), barColor);
+        UIColor barColor = UIColor::NONE;
+        float progressValue = 0.0f;
+        String label = "Waiting...";
 
-		if (p.active || p.completed) {
-			ImGui::TextDisabled("  %s", p.label.c_str());
-		}
+        if (isCompleted) {
+            HighlightImGuiText(String("[DONE] ") + phaseNames[i], UIColor::GREEN);
+            barColor = UIColor::GREEN;
+            progressValue = 1.0f;
+            label = "Complete";
+        } else if (isActive) {
+            HighlightImGuiText(String("[ >> ] ") + phaseNames[i], UIColor::YELLOW);
+            barColor = UIColor::YELLOW;
+            progressValue = state.pipeline.phaseProgress;
+            label = state.pipeline.progressLabel.empty() ? "In Progress" : state.pipeline.progressLabel;
+        } else {
+            ImGui::TextDisabled("[    ] %s", phaseNames[i]);
+        }
 
-		ImGui::Spacing();
-		ImGui::PopID();
-	}
-}
+        UpdateImGuiProgressBar(progressValue, ImVec2(-1, 12), barColor);
 
-void OverviewPanel::ResetAllProgress() {
-	this->overallProgressValue = 0.0f;
-	for (int i = 1; i < static_cast<int>(Phase::COUNT); i++) {
-		this->phases[i].progress = 0.0f;
-		this->phases[i].active = false;
-		this->phases[i].completed = false;
-		this->phases[i].label = "Waiting...";
-	}
+        if (isActive || isCompleted) {
+            ImGui::TextDisabled("  %s", label.c_str());
+        }
+
+        ImGui::Spacing();
+        ImGui::PopID();
+    }
 }
 
 void OverviewPanel::Draw() {
-	ImGui::Begin(this->name.c_str());
+    ImGui::Begin(this->name.c_str());
+    DrawActions();
+    ImGui::Separator();
 
-	DrawActions();
-	ImGui::Separator();
-	DrawInputSection();
+    DrawInputSection();
 
-	if (this->isScanning || this->isCancelling) {
-		DrawOverallProgress();
-		DrawPhaseBreakdown();
-	}
-
-	ImGui::End();
+    if (state.pipeline.runState != RunState::IDLE) {
+        DrawOverallProgress();
+        DrawPhaseBreakdown();
+    }
+    ImGui::End();
 }
