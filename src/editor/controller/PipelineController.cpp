@@ -71,18 +71,6 @@ void PipelineController::Tick() {
     std::vector<BackendMessage> messages;
     ipc.Poll(messages);
 
-    // Transport/Process failure detection
-    if (state.pipeline.backendState == BackendState::READY || state.pipeline.backendState == BackendState::STARTING) {
-        if (!ipc.IsRunning()) {
-            state.pipeline.backendState = BackendState::FAILED;
-            if (state.pipeline.runState != RunState::IDLE && state.pipeline.runState != RunState::COMPLETED) {
-                state.pipeline.runState = RunState::FAILED;
-                state.pipeline.ClearPendingAction();
-            }
-            state.logQueue.push_back("[CRITICAL] Backend process terminated unexpectedly.");
-        }
-    }
-
     for (const auto& msg : messages) {
         IPCProtocol::DecodedEvent event = IPCProtocol::DecodeEvent(msg.raw);
 
