@@ -64,7 +64,8 @@ def run_pipeline_with_args(
     # --- Phase 1: Capture ---
     log("Starting Phase 1: Capture")
     run_capture(
-        manifest_path=manifest_path,
+        input_source=config.input_path,
+        output_dir=capture_dir,
         is_image_mode=bool(args.get("image", False)),
         is_video_mode=bool(args.get("video", False)),
         force=force,
@@ -76,7 +77,8 @@ def run_pipeline_with_args(
     # --- Phase 2: Masking ---
     log("Starting Phase 2: Masking")
     run_remove_background(
-        manifest_path=manifest_path,
+        raw_frames_dir=capture_dir,
+        output_dir=mask_dir,
         yoloe_model_size=config.masking.yoloe_model_size,
         iou_threshold=config.masking.iou_threshold,
         drift_limit=config.masking.drift_limit,
@@ -89,8 +91,9 @@ def run_pipeline_with_args(
 
     # --- Phase 3: Spatial ---
     log("Starting Phase 3: Spatial")
-    run_spatial_reconstruction(
-        manifest_path=manifest_path,
+    spatial_result = run_spatial_reconstruction(
+        masked_frames_dir=mask_dir,
+        output_dir=spatial_dir,
         force=force,
         progress_cb=progress_cb,
         log_cb=log_cb,
@@ -99,8 +102,9 @@ def run_pipeline_with_args(
 
     # --- Phase 4: Geometry ---
     log("Starting Phase 4: Geometry")
-    run_surface_reconstruction(
-        manifest_path=manifest_path,
+    geometry_result = run_surface_reconstruction(
+        input_2dgs_dir=spatial_result.input_2dgs_dir,
+        output_dir=geometry_dir,
         train_iterations=config.geometry.train_iterations,
         densify_until_iter=config.geometry.densify_until_iter,
         opacity_reset_interval=config.geometry.opacity_reset_interval,
@@ -112,8 +116,12 @@ def run_pipeline_with_args(
 
     # --- Phase 5: Export ---
     log("Starting Phase 5: Export")
-    output_obj_path = run_export_and_baking(
-        manifest_path=manifest_path,
+    quality_preset = getattr(config.export, "quality_preset", "fast")
+    export_result = run_export_and_baking(
+        fused_mesh_path=geometry_result.fused_mesh_path,
+        output_dir=export_dir,
+        run_name=config.run_name,
+        quality_preset=quality_preset,
         force=force,
         progress_cb=progress_cb,
         log_cb=log_cb,
@@ -125,5 +133,5 @@ def run_pipeline_with_args(
     return {
         "run_name": config.run_name,
         "workspace": str(base_dir),
-        "output": output_obj_path,
+        "output": str(export_result.primary_obj_path),
     }
