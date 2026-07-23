@@ -3,74 +3,73 @@
 UIManager* UIManager::sharedInstance = nullptr;
 
 // Creates and initializes ImGui context
-bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClient& ipc, Scene& scene) {
-	sharedInstance = new UIManager();
+bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext, EditorState& state, PipelineController* controller, Scene& scene) {
+    sharedInstance = new UIManager();
 
-	// create ImGui context and IO
-	IMGUI_CHECKVERSION();
+    IMGUI_CHECKVERSION();
+    if (!ImGui::CreateContext()) {
+        std::cerr << "[ERROR]: UIManager failed to create ImGui context." << std::endl;
+        return false;
+    }
 
-	if (!ImGui::CreateContext()) {
-		std::cerr << "[ERROR]: UIManager failed to create ImGui context." << std::endl;
-		return false;
-	}
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_NavEnableKeyboard;
+    ImGui::StyleColorsDark();
 
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_NavEnableKeyboard;
-	ImGui::StyleColorsDark();
+    if (!ImGui_ImplSDL2_InitForOpenGL(window, glContext)) {
+        std::cerr << "[ERROR]: UIManager failed to initialize ImGui for SDL2." << std::endl;
+        return false;
+    }
 
-	if (!ImGui_ImplSDL2_InitForOpenGL(window, glContext)) {
-		std::cerr << "[ERROR]: UIManager failed to initialize ImGui for SDL2." << std::endl;
-		return false;
-	}
+    if (!ImGui_ImplOpenGL3_Init("#version 330")) {
+        std::cerr << "[ERROR]: UIManager failed to initialize ImGui for OpenGL." << std::endl;
+        return false;
+    }
 
-	if (!ImGui_ImplOpenGL3_Init("#version 330")) {
-		std::cerr << "[ERROR]: UIManager failed to initialize ImGui for OpenGL." << std::endl;
-		return false;
-	}
+    // Pass the new state and controller to the panel creator
+    sharedInstance->CreateUIPanels(state, controller, scene);
 
-	sharedInstance->CreateUIPanels(ipc, scene);
-
-	return true;
+    return true;
 }
 
-// Create and register the UI Panels
-void UIManager::CreateUIPanels(IPCClient& ipc, Scene& scene) {
-	MenuToolbar* toolbar = new MenuToolbar("Menu Toolbar");
-	this->uiList.push_back(toolbar);
-	this->uiMap[toolbar->GetName()] = toolbar;
+void UIManager::CreateUIPanels(EditorState& state, PipelineController* controller, Scene& scene) {
+    MenuToolbar* toolbar = new MenuToolbar("Menu Toolbar");
+    Dockspace* dockSpace = new Dockspace("DockSpace");
+    toolbar->SetDockspace(dockSpace);
 
-	Dockspace* dockSpace = new Dockspace("DockSpace");
-	this->uiList.push_back(dockSpace);
-	this->uiMap[dockSpace->GetName()] = dockSpace;
-	toolbar->SetDockspace(dockSpace);
+    this->uiList.push_back(toolbar);
+    this->uiMap[static_cast<UIPanel*>(toolbar)->GetName()] = toolbar;
 
-	OverviewPanel* overview = new OverviewPanel("Overview", ipc);
-	this->uiList.push_back(overview);
-	this->uiMap[overview->GetName()] = overview;
+    this->uiList.push_back(dockSpace);
+    this->uiMap[static_cast<UIPanel*>(dockSpace)->GetName()] = dockSpace;
 
-	FileViewer* captureViewer = new FileViewer("Capture", Phase::CAPTURE);
-	this->uiList.push_back(captureViewer);
-	this->uiMap[captureViewer->GetName()] = captureViewer;
+    UIPanel* overview = new OverviewPanel("Overview", state, controller);
+    this->uiList.push_back(overview);
+    this->uiMap[overview->GetName()] = overview;
 
-	FileViewer* maskingViewer = new FileViewer("Masking", Phase::MASKING);
-	this->uiList.push_back(maskingViewer);
-	this->uiMap[maskingViewer->GetName()] = maskingViewer;
+    UIPanel* captureViewer = new FileViewer("Capture", Phase::CAPTURE);
+    this->uiList.push_back(captureViewer);
+    this->uiMap[captureViewer->GetName()] = captureViewer;
 
-	LogPanel* logPanel = new LogPanel("Log", ipc);
-	this->uiList.push_back(logPanel);
-	this->uiMap[logPanel->GetName()] = logPanel;
+    UIPanel* maskingViewer = new FileViewer("Masking", Phase::MASKING);
+    this->uiList.push_back(maskingViewer);
+    this->uiMap[maskingViewer->GetName()] = maskingViewer;
 
-	MaskingPopup* maskingPopup = new MaskingPopup("Masking Popup", ipc);
-	this->uiList.push_back(maskingPopup);
-	this->uiMap[maskingPopup->GetName()] = maskingPopup;
+    UIPanel* logPanel = new LogPanel("Log", state);
+    this->uiList.push_back(logPanel);
+    this->uiMap[logPanel->GetName()] = logPanel;
 
-	ViewportPanel* viewport = new ViewportPanel("Viewport", scene);
-	this->uiList.push_back(viewport);
-	this->uiMap[viewport->GetName()] = viewport;
+    UIPanel* maskingPopup = new MaskingPopup("Masking Popup", controller);
+    this->uiList.push_back(maskingPopup);
+    this->uiMap[maskingPopup->GetName()] = maskingPopup;
 
-	InputWindow* input = new InputWindow("Input Window");
-	this->uiList.push_back(input);
-	this->uiMap[input->GetName()] = input;
+    UIPanel* viewport = new ViewportPanel("Viewport", scene, state);
+    this->uiList.push_back(viewport);
+    this->uiMap[viewport->GetName()] = viewport;
+
+    UIPanel* input = new InputWindow("Input Window");
+    this->uiList.push_back(input);
+    this->uiMap[input->GetName()] = input;
 }
 
 UIManager* UIManager::GetInstance() {
@@ -78,7 +77,7 @@ UIManager* UIManager::GetInstance() {
 }
 
 UIManager::UIManager() {}
-	
+
 UIManager::~UIManager() {}
 
 // Initiates frame loops
@@ -197,13 +196,13 @@ void UIManager::ApplyLayout(UILayout layout) {
 		break;
 	}
 	}
-	
+
 }
 
 //void UIManager::ApplyLayout(UILayout layout) {
 //	switch (layout) {
 //	case UILayout::DEFAULT: {
-//		
+//
 //
 //
 //		/*this->uiMap["Overview"]->

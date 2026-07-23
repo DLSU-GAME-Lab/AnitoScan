@@ -29,12 +29,16 @@ public:
 private:
 	void HandleStdoutLine(std::string line);
 	void HandleStderrLine(std::string line);
+	void EnqueueInternalError(const std::string& code, const std::string& text);
 
 	std::unique_ptr<IPCClientPlatform> platform;
 	std::string configuredExecutable;
 	std::vector<std::string> configuredArguments;
 	bool hasConfiguration = false;
 	bool backendReady = false;
+
+	bool wasRunning = false;
+    bool expectShutdown = false;
 
 	std::mutex messageMutex;
 	std::queue<BackendMessage> queuedMessages;

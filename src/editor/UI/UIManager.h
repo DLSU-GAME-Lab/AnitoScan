@@ -21,11 +21,13 @@
 
 #include "../IPCClient.h"
 #include "../render/Scene.h"
+#include "../state/EditorState.h"
+#include "../controller/PipelineController.h"
 
 class UIManager {
 public:
 	static UIManager* GetInstance();
-	static bool Initialize(SDL_Window* window, SDL_GLContext glContext, IPCClient& ipc, Scene& scene);
+	static bool Initialize(SDL_Window* window, SDL_GLContext glContext, EditorState& state, PipelineController* controller, Scene& scene);
 
 	void BeginNewFrame();
 	void DrawAllUIs();
@@ -44,11 +46,11 @@ public:
 		return ((args == target) || ...);
 	}
 	/*void OnlyOpenPanels(Args... args) {
-		
+
 	}*/
 
 private:
-	void CreateUIPanels(IPCClient& ipc, Scene& scene);
+    void CreateUIPanels(EditorState& state, PipelineController* controller, Scene& scene);
 
 private:
 	UIManager();

@@ -50,6 +50,9 @@ bool IPCClient::Start(const std::string& executable, const std::vector<std::stri
 		return false;
 	}
 
+	this->expectShutdown = false;
+    this->wasRunning = true;
+
 	return true;
 }
 
@@ -66,25 +69,32 @@ bool IPCClient::Restart() {
 }
 
 bool IPCClient::Send(const std::string& jsonLine) {
-	if (!IsRunning()) {
-		std::cerr << "[ERROR]: Cannot send a message because the backend is not running." << std::endl;
-		return false;
-	}
+    if (!IsRunning()) {
+        EnqueueInternalError("transport_not_running", "Cannot send message: backend is not running.");
+        return false;
+    }
 
-	std::string error;
-	if (!platform->Send(jsonLine + "\n", error)) {
-		std::cerr << "[ERROR]: Failed to send backend message: " << error << std::endl;
-		return false;
-	}
-	return true;
+    std::string error;
+    if (!platform->Send(jsonLine + "\n", error)) {
+        EnqueueInternalError("transport_write_failed", "Failed to send backend message: " + error);
+        return false;
+    }
+    return true;
 }
 
 void IPCClient::Poll(std::vector<BackendMessage>& outMessages) {
-	std::lock_guard<std::mutex> lock(messageMutex);
-	while (!queuedMessages.empty()) {
-		outMessages.push_back(std::move(queuedMessages.front()));
-		queuedMessages.pop();
-	}
+    // Detect unexpected process exit before polling messages
+    bool currentlyRunning = IsRunning();
+    if (wasRunning && !currentlyRunning && !expectShutdown) {
+        EnqueueInternalError("process_terminated", "Backend process terminated unexpectedly.");
+        wasRunning = false; // Prevent spamming the queue
+    }
+
+    std::lock_guard<std::mutex> lock(messageMutex);
+    while (!queuedMessages.empty()) {
+        outMessages.push_back(std::move(queuedMessages.front()));
+        queuedMessages.pop();
+    }
 }
 
 bool IPCClient::IsRunning() const {
@@ -92,10 +102,12 @@ bool IPCClient::IsRunning() const {
 }
 
 void IPCClient::Shutdown() {
-	if (platform) {
-		platform->Shutdown();
-	}
-	backendReady = false;
+    this->expectShutdown = true;
+    if (platform) {
+        platform->Shutdown();
+    }
+    this->wasRunning = false;
+    backendReady = false;
 }
 
 void IPCClient::HandleStdoutLine(std::string line) {
@@ -132,4 +144,19 @@ void IPCClient::HandleStderrLine(std::string line) {
 	if (!line.empty()) {
 		std::cerr << "[BACKEND]: " << line << std::endl;
 	}
+}
+
+void IPCClient::EnqueueInternalError(const std::string& code, const std::string& text) {
+    nlohmann::json j;
+    j["type"] = "error";
+    j["scope"] = "backend";
+    j["code"] = code;
+    j["text"] = text;
+
+    BackendMessage msg;
+    msg.raw = j.dump();
+    msg.type = "error";
+
+    std::lock_guard<std::mutex> lock(messageMutex);
+    queuedMessages.push(std::move(msg));
 }

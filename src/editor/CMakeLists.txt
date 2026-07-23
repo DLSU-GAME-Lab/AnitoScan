@@ -1,3 +1,5 @@
+add_subdirectory(state)
+add_subdirectory(controller)
 add_subdirectory(render)
 add_subdirectory(UI)
 
@@ -48,6 +50,8 @@ target_link_libraries(${MAIN_TARGET} PRIVATE
     editor_ipc
     editor_render
     editor_ui
+    editor_controller
+    editor_state
     deps::engine
     engine::config
 )

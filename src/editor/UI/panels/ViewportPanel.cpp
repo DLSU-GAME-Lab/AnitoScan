@@ -1,18 +1,18 @@
 #include "ViewportPanel.h"
 
-ViewportPanel::ViewportPanel(String name, Scene& scene)
-	: UIPanel(UIType::VIEWPORT, name), scene(scene) {}
+ViewportPanel::ViewportPanel(String name, Scene& scene, const EditorState& state)
+    : UIPanel(UIType::VIEWPORT, name), scene(scene), state(state) {}
 
 ViewportPanel::~ViewportPanel() {}
 
 void ViewportPanel::Draw() {
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-	ImGui::Begin(this->name.c_str(), nullptr, flags);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::Begin(this->name.c_str(), nullptr, flags);
 
-	hoveredLastFrame = ImGui::IsWindowHovered();
+    hoveredLastFrame = ImGui::IsWindowHovered();
 
-	ImVec2 panelSize = ImGui::GetContentRegionAvail();
+    ImVec2 panelSize = ImGui::GetContentRegionAvail();
 
     if (panelSize.x > 0 && panelSize.y > 0) {
         this->scene.Render(static_cast<int>(panelSize.x), static_cast<int>(panelSize.y));
@@ -26,10 +26,6 @@ void ViewportPanel::Draw() {
 
     ImGui::End();
     ImGui::PopStyleVar();
-}
-
-void ViewportPanel::LoadOutputModel(const String& modelPath) {
-    this->scene.LoadModel(modelPath);
 }
 
 bool ViewportPanel::IsHovered() {
