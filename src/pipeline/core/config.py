@@ -39,6 +39,10 @@ class ConfigValidationError(ValueError):
     """Raised when configuration parameters fail validation rules."""
 
 
+class RunCancelled(Exception):
+    """Raised when a pipeline run is cancelled by user request."""
+
+
 @dataclass
 class CaptureConfig:
     minimum_frames: int = 45

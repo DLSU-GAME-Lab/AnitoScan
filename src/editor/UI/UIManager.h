@@ -35,8 +35,8 @@ public:
 	void OpenPanel(UIType type);
 	void ClosePanel(UIType type);
 	void Shutdown();
-	void SetOutputToFileViewers(std::filesystem::path output);
-	void ClearOutputFromFileViewers();
+	void SetWorkspaceForFileViewers(const std::filesystem::path& workspace);
+	void ClearWorkspaceFromFileViewers();
 	void ApplyLayout(UILayout layout);
 
 	template<typename... Args>

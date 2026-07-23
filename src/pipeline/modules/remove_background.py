@@ -6,12 +6,9 @@ import time
 import cv2
 import numpy as np
 
+from src.pipeline.core.config import RunCancelled
+
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
-
-
-class RunCancelled(Exception):
-    """Raised when pipeline execution is cancelled by user request."""
-    pass
 
 
 @dataclass

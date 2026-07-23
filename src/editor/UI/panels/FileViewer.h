@@ -11,8 +11,8 @@ public:
 	~FileViewer();
 
 	void Draw() override;
-	void SetOutputFolderToView(std::filesystem::path root);
-	void ClearOutputFolder();
+	void SetWorkspaceToView(const std::filesystem::path& workspace);
+	void ClearWorkspace();
 	void ToggleRefresh(bool isRefreshing);
 
 private:
@@ -31,7 +31,7 @@ private:
 	bool isRefreshing = true;
 	float refreshTimer = 0.0f;
 	const float refreshInterval = 0.3f;
-	std::filesystem::path output;
+	std::filesystem::path workspace;
 	Phase phase;
 	bool hasRootFolder = false;
 };

@@ -148,21 +148,21 @@ void UIManager::Shutdown() {
 	uiMap.clear();
 }
 
-// Sets the output folder to all file viewer instances (capture, masking, etc)
-void UIManager::SetOutputToFileViewers(std::filesystem::path output) {
+// Sets the authoritative backend workspace on all file viewer instances.
+void UIManager::SetWorkspaceForFileViewers(const std::filesystem::path& workspace) {
 	for (UIPanel* panel : this->uiList) {
 		if (panel->GetType() == UIType::FILE_VIEWER_CAPTURE || panel->GetType() == UIType::FILE_VIEWER_MASKING) {
 			FileViewer* temp = static_cast<FileViewer*>(panel);
-			temp->SetOutputFolderToView(output);
+			temp->SetWorkspaceToView(workspace);
 		}
 	}
 }
 
-void UIManager::ClearOutputFromFileViewers() {
+void UIManager::ClearWorkspaceFromFileViewers() {
 	for (UIPanel* panel : this->uiList) {
 		if (panel->GetType() == UIType::FILE_VIEWER_CAPTURE || panel->GetType() == UIType::FILE_VIEWER_MASKING) {
 			FileViewer* temp = static_cast<FileViewer*>(panel);
-			temp->ClearOutputFolder();
+			temp->ClearWorkspace();
 		}
 	}
 }

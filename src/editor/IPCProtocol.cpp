@@ -76,7 +76,8 @@ DecodedEvent DecodeEvent(const std::string& rawJsonLine) {
 		}
 		else if (typeStr == "workspace_ready") {
 			if (!j.contains("run_name") || !j["run_name"].is_string() ||
-			    !j.contains("workspace") || !j["workspace"].is_string()) {
+			    !j.contains("workspace") || !j["workspace"].is_string() ||
+			    j["workspace"].get_ref<const std::string&>().empty()) {
 				event.type = EventType::UNKNOWN;
 				return event;
 			}

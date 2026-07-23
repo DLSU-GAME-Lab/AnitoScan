@@ -11,10 +11,7 @@ MODULE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
 GS_PATH = PROJECT_ROOT / "vendor" / "2d-gaussian-splatting"
 
-
-class RunCancelled(Exception):
-    """Raised when pipeline execution is cancelled by user request."""
-    pass
+from src.pipeline.core.config import RunCancelled
 
 
 @dataclass

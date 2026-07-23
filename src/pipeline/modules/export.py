@@ -7,10 +7,7 @@ try:
 except ImportError:
     pymeshlab = None
 
-
-class RunCancelled(Exception):
-    """Raised when pipeline execution is cancelled by user request."""
-    pass
+from src.pipeline.core.config import RunCancelled
 
 
 @dataclass

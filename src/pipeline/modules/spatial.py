@@ -9,10 +9,7 @@ import time
 import cv2
 import numpy as np
 
-
-class RunCancelled(Exception):
-    """Raised when pipeline execution is cancelled by user request."""
-    pass
+from src.pipeline.core.config import RunCancelled
 
 
 @dataclass

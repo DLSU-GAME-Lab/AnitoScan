@@ -81,6 +81,12 @@ if(BUILD_TESTING)
     )
     add_test(NAME ipc_protocol_test COMMAND IPCProtocolTest)
 
+    add_executable(WorkspacePathTest
+        tests/WorkspacePathTest.cpp
+    )
+    target_include_directories(WorkspacePathTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME workspace_path_test COMMAND WorkspacePathTest)
+
     add_executable(IPCClientSmokeTest
         tests/IPCClientSmokeTest.cpp
     )

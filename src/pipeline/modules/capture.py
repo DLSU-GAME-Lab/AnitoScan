@@ -4,12 +4,9 @@ import shutil
 import time
 import cv2
 
+from src.pipeline.core.config import RunCancelled
+
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
-
-
-class RunCancelled(Exception):
-    """Raised when pipeline execution is cancelled by user request."""
-    pass
 
 
 @dataclass
@@ -17,6 +14,7 @@ class CaptureResult:
     extracted_frames: list[Path] = field(default_factory=list)
     frame_count: int = 0
     source_type: str = "image"
+    output_dir: Path = field(default_factory=Path)
 
 
 def run_capture(
@@ -66,6 +64,7 @@ def run_capture(
                 extracted_frames=existing_frames,
                 frame_count=len(existing_frames),
                 source_type="image" if input_source.is_dir() else "video",
+                output_dir=output_dir,
             )
 
     if force and output_dir.exists():
@@ -145,4 +144,5 @@ def run_capture(
         extracted_frames=extracted_frames,
         frame_count=len(extracted_frames),
         source_type=source_type,
+        output_dir=output_dir,
     )

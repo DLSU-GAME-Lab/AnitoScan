@@ -35,6 +35,19 @@ void TestEventDecoding() {
 	assert(ready.type == IPCProtocol::EventType::BACKEND_READY);
 	assert(ready.backendReady.protocolVersion == 1);
 
+	std::string workspaceJson = R"({"type":"workspace_ready","run_name":"r1","workspace":"/tmp/exact-workspace"})";
+	auto workspace = IPCProtocol::DecodeEvent(workspaceJson);
+	assert(workspace.type == IPCProtocol::EventType::WORKSPACE_READY);
+	assert(workspace.workspaceReady.workspace == "/tmp/exact-workspace");
+
+	std::string missingWorkspaceJson = R"({"type":"workspace_ready","run_name":"r1"})";
+	auto missingWorkspace = IPCProtocol::DecodeEvent(missingWorkspaceJson);
+	assert(missingWorkspace.type == IPCProtocol::EventType::UNKNOWN);
+
+	std::string emptyWorkspaceJson = R"({"type":"workspace_ready","run_name":"r1","workspace":""})";
+	auto emptyWorkspace = IPCProtocol::DecodeEvent(emptyWorkspaceJson);
+	assert(emptyWorkspace.type == IPCProtocol::EventType::UNKNOWN);
+
 	std::string progressJson = R"({"type":"progress","phase":1,"value":0.5,"overall_value":0.1,"label":"Extracting"})";
 	auto prog = IPCProtocol::DecodeEvent(progressJson);
 	assert(prog.type == IPCProtocol::EventType::PROGRESS);

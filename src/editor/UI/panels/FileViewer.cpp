@@ -1,5 +1,7 @@
 #include "FileViewer.h"
 
+#include "../../WorkspacePath.h"
+
 FileViewer::FileViewer(String name, Phase phase) : UIPanel(name) {
 	this->fileDialog = ImGui::FileBrowser(ImGuiFileBrowserFlags_Embedded | ImGuiFileBrowserFlags_NoModal);
 	this->fileDialog.SetTypeFilters({ ".png", ".jpg", ".jpeg" });
@@ -132,37 +134,34 @@ void FileViewer::DrawFittedImage(GLuint texture, int imgW, int imgH, ImVec2 avai
 	ImGui::Image((ImTextureID)(intptr_t)texture, displaySize);
 }
 
-void FileViewer::SetOutputFolderToView(std::filesystem::path output) {
-	if (output.empty()) {
-		std::cerr << "[ERROR] FileViewer::SetRootFolderToView called with empty root" << std::endl;
+void FileViewer::SetWorkspaceToView(const std::filesystem::path& workspace) {
+	this->hasRootFolder = false;
+	this->workspace.clear();
+
+	if (workspace.empty()) {
+		std::cerr << "[ERROR] FileViewer::SetWorkspaceToView called with an empty workspace" << std::endl;
 		return;
 	}
 
-	this->output = output;
-	this->hasRootFolder = true;
-
-	std::filesystem::path temp;
-	switch(this->phase) {
-		case Phase::CAPTURE: temp = "01_capture"; break;
-		case Phase::MASKING: temp = "02_masking"; break;
-		case Phase::SPATIAL: temp = "03_spatial"; break;
-		default: break;
+	const std::filesystem::path phasePath = WorkspacePathForPhase(workspace, this->phase);
+	if (phasePath.empty()) {
+		std::cerr << "[ERROR] FileViewer has no workspace directory for its phase" << std::endl;
+		return;
 	}
-
-	std::filesystem::path projectRoot(PROJECT_ROOT_DIR);
-	std::filesystem::path fullPath = projectRoot / "data" / "runs" / this->output / temp;
 
 	std::error_code ec;
-	if (!std::filesystem::exists(fullPath, ec)) {
-		std::cerr << "[ERROR] Path does not exist: " << fullPath << std::endl;
+	if (!std::filesystem::exists(phasePath, ec) || ec) {
+		std::cerr << "[ERROR] Workspace phase path does not exist: " << phasePath << std::endl;
 		return;
 	}
 
-	this->fileDialog.SetPwd(fullPath);
+	this->fileDialog.SetPwd(phasePath);
+	this->workspace = workspace;
+	this->hasRootFolder = true;
 }
 
-void FileViewer::ClearOutputFolder() {
-	this->output.clear();
+void FileViewer::ClearWorkspace() {
+	this->workspace.clear();
 	this->hasRootFolder = false;
 	this->fileDialog.SetPwd(std::filesystem::current_path());
 }

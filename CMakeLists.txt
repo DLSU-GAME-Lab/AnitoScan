@@ -42,4 +42,25 @@ if(BUILD_TESTING)
         TIMEOUT 120
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     )
+
+    add_test(
+        NAME python_pipeline_integration
+        COMMAND
+            "${ANITOSCAN_UV_EXECUTABLE}"
+            run
+            --isolated
+            --no-project
+            --python "${ANITOSCAN_PYTHON_VERSION}"
+            --
+            python
+            -u
+            -m
+            unittest
+            src.pipeline.tests.test_pipeline
+            src.pipeline.tests.test_backend
+    )
+    set_tests_properties(python_pipeline_integration PROPERTIES
+        TIMEOUT 30
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    )
 endif()

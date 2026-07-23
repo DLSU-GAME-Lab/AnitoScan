@@ -17,11 +17,11 @@ sys.stdout = sys.stderr
 import argparse
 import json
 import threading
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from src.pipeline.core.config import ConfigValidationError, PipelineConfig
-from src.pipeline.core.ipc import send
+from src.pipeline.core.config import ConfigValidationError, PipelineConfig, RunCancelled
 from src.pipeline.core.protocol import (
     CancelPipelineCommand,
     Phase,
@@ -39,9 +39,17 @@ from src.pipeline.core.protocol import (
     make_workspace_ready,
 )
 
+_PROTOCOL_SEND_LOCK = threading.Lock()
 
-class RunCancelled(Exception):
-    """Raised when pipeline cancellation is requested."""
+
+def send(message: dict[str, Any]) -> None:
+    """Write one protocol event to the original stdout stream."""
+    with _PROTOCOL_SEND_LOCK:
+        print(
+            json.dumps(message, separators=(",", ":")),
+            file=_REAL_STDOUT,
+            flush=True,
+        )
 
 
 @dataclass
@@ -282,36 +290,87 @@ class ProductionBackend:
 
         output_path: str | None = None
         failure: Exception | None = None
-
         workspace_path = self.project_root / "data" / "runs" / parsed_cmd.run_name
-        workspace_path.mkdir(parents=True, exist_ok=True)
+        input_path = Path(parsed_cmd.input)
+        if not input_path.is_absolute():
+            input_path = (self.project_root / input_path).resolve()
 
-        # 1. Emit workspace_ready event
-        send(make_workspace_ready(parsed_cmd.run_name, str(workspace_path)))
+        def on_workspace_ready(run_name: str, workspace: str) -> None:
+            send(make_workspace_ready(run_name, workspace))
 
-        # 2. Progress & Phase event emission callback
+        def on_phase_started(phase: Phase | int, label: str) -> None:
+            send(make_phase_started(phase, label))
+
         def on_progress(
-            phase: Phase | int,
-            val: float,
-            overall_val: float = 0.0,
-            label: str | None = None,
+            phase: Phase | int, value: float, label: str | None = None
         ) -> None:
-            send(make_progress(phase, val, overall_val, label))
+            bounded_value = max(0.0, min(1.0, float(value)))
+            overall_value = ((int(phase) - 1) + bounded_value) / 5.0
+            send(make_progress(phase, bounded_value, overall_value, label))
+
+        def on_phase_completed(phase: Phase | int) -> None:
+            send(make_phase_completed(phase))
+
+        def request_action(preview: str, count: int, frame: str) -> int | str | None:
+            if count <= 0:
+                return "skip"
+            pending = PendingAction(
+                request_id=f"{parsed_cmd.run_name}-{uuid.uuid4().hex}",
+                count=count,
+                event=threading.Event(),
+            )
+            with self._state_lock:
+                if cancel_event.is_set():
+                    raise RunCancelled("Pipeline cancelled while requesting an action")
+                if self._pending_action is not None:
+                    raise RuntimeError("Another interactive action is already pending")
+                self._pending_action = pending
+
+            send(
+                make_action_required(
+                    request_id=pending.request_id,
+                    action="mask_selection",
+                    phase=Phase.MASKING,
+                    frame=frame,
+                    preview=preview,
+                    count=count,
+                )
+            )
+            try:
+                while not pending.event.wait(timeout=0.05):
+                    if cancel_event.is_set():
+                        raise RunCancelled(
+                            "Pipeline cancelled while awaiting an interactive action"
+                        )
+                if cancel_event.is_set():
+                    raise RunCancelled(
+                        "Pipeline cancelled while awaiting an interactive action"
+                    )
+                return pending.choice
+            finally:
+                with self._state_lock:
+                    if self._pending_action is pending:
+                        self._pending_action = None
 
         try:
             res = run_pipeline_with_args(
                 args={
                     "run_name": parsed_cmd.run_name,
-                    "input": parsed_cmd.input,
+                    "input": str(input_path),
                     "minimum_frames": parsed_cmd.minimum_frames,
                     "quality": parsed_cmd.quality,
                     **parsed_cmd.extra_fields,
                 },
                 progress_cb=on_progress,
                 log_cb=self.send_log,
+                action_cb=request_action,
                 is_cancelled=cancel_event.is_set,
+                phase_started_cb=on_phase_started,
+                phase_completed_cb=on_phase_completed,
+                workspace_ready_cb=on_workspace_ready,
+                project_root=self.project_root,
             )
-            output_path = res.get("output")
+            output_path = res["output"]
         except RunCancelled:
             pass
         except Exception as exc:
