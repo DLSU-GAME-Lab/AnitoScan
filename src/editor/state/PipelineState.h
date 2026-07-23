@@ -32,7 +32,9 @@ enum class SubmissionStatus {
 struct PipelineState {
     BackendState backendState = BackendState::STOPPED;
     RunState runState = RunState::IDLE;
+    RunState preCancellationState = RunState::IDLE;
     Phase activePhase = Phase::NONE;
+    bool completedPhases[6] = { false };
 
     std::string runName;
     std::string activeWorkspace;

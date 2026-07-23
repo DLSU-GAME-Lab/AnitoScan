@@ -36,6 +36,7 @@ void PipelineController::StartRun(const std::string& runName, const std::string&
     state.pipeline.runState = RunState::STARTING;
     state.pipeline.runName = runName;
     state.pipeline.activePhase = Phase::NONE;
+    for (int i = 0; i < 6; i++) state.pipeline.completedPhases[i] = false;
     state.pipeline.phaseProgress = 0.0f;
     state.pipeline.overallProgress = 0.0f;
     state.pipeline.latestOutput.clear();
@@ -47,7 +48,8 @@ void PipelineController::StartRun(const std::string& runName, const std::string&
 void PipelineController::CancelRun() {
     if (state.pipeline.runState == RunState::IDLE || state.pipeline.runState == RunState::CANCELLING) return;
 
-    state.pipeline.runState = RunState::CANCELLING; // Graceful wait for 'cancelled' event
+    state.pipeline.preCancellationState = state.pipeline.runState;
+    state.pipeline.runState = RunState::CANCELLING;
     ipc.Send(IPCProtocol::SerializeCancelPipeline(state.pipeline.runName));
 }
 
@@ -131,6 +133,7 @@ void PipelineController::Tick() {
                 break;
 
             case IPCProtocol::EventType::PHASE_COMPLETED:
+                state.pipeline.completedPhases[static_cast<int>(event.phaseCompleted.phase)] = true;
                 state.pipeline.runState = RunState::RUNNING;
                 state.pipeline.ClearPendingAction();
                 break;
@@ -156,11 +159,13 @@ void PipelineController::Tick() {
                 state.logQueue.push_back("[ERROR] " + event.error.text);
 
                 if (event.error.scope == "command") {
-                    // Command-scoped: Reject command, preserve run
                     if (state.pipeline.actionStatus == SubmissionStatus::SUBMITTED) {
                         state.pipeline.actionStatus = SubmissionStatus::PENDING; // Allow retry
                     }
-                    if (state.pipeline.runState == RunState::STARTING) {
+                    if (state.pipeline.runState == RunState::CANCELLING) {
+                        state.pipeline.runState = state.pipeline.preCancellationState;
+                    }
+                    else if (state.pipeline.runState == RunState::STARTING) {
                         state.pipeline.runState = RunState::IDLE;
                     }
                 }

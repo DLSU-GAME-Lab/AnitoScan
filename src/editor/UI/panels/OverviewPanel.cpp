@@ -87,8 +87,8 @@ void OverviewPanel::DrawPhaseBreakdown() {
     for (int i = 1; i <= 5; i++) {
         ImGui::PushID(i);
 
-        bool isCompleted = (state.pipeline.runState == RunState::COMPLETED) || (activePhaseIdx > i && activePhaseIdx != 0);
-        bool isActive = (activePhaseIdx == i && state.pipeline.runState != RunState::COMPLETED);
+        bool isCompleted = state.pipeline.completedPhases[i] || (state.pipeline.runState == RunState::COMPLETED);
+        bool isActive = (activePhaseIdx == i && !isCompleted && state.pipeline.runState != RunState::COMPLETED);
 
         UIColor barColor = UIColor::NONE;
         float progressValue = 0.0f;
