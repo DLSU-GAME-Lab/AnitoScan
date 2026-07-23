@@ -123,7 +123,15 @@ void App::PollBackend() {
 
 		switch (event.type) {
 			case IPCProtocol::EventType::BACKEND_READY:
-				std::cout << "[DEBUG]: Backend ready, protocol_version: " << event.backendReady.protocolVersion << std::endl;
+				if (event.backendReady.protocolVersion != IPCProtocol::PROTOCOL_VERSION) {
+					std::cerr << "[ERROR]: Protocol version mismatch. Backend reported version "
+					          << event.backendReady.protocolVersion << ", expected "
+					          << IPCProtocol::PROTOCOL_VERSION << ". Shutting down." << std::endl;
+					if (log) log->PushLog("[ERROR] Backend protocol version mismatch!");
+					this->isRunning = false;
+				} else {
+					std::cout << "[DEBUG]: Backend ready, protocol_version: " << event.backendReady.protocolVersion << std::endl;
+				}
 				break;
 
 			case IPCProtocol::EventType::LOG:
@@ -131,7 +139,10 @@ void App::PollBackend() {
 				break;
 
 			case IPCProtocol::EventType::WORKSPACE_READY:
-				if (!event.workspaceReady.runName.empty()) {
+				// Use workspace path if available, otherwise fall back to runName
+				if (!event.workspaceReady.workspace.empty()) {
+					UIManager::GetInstance()->SetOutputToFileViewers(event.workspaceReady.workspace);
+				} else if (!event.workspaceReady.runName.empty()) {
 					UIManager::GetInstance()->SetOutputToFileViewers(event.workspaceReady.runName);
 				}
 				break;

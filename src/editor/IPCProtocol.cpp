@@ -52,40 +52,66 @@ DecodedEvent DecodeEvent(const std::string& rawJsonLine) {
 
 	try {
 		auto j = nlohmann::json::parse(rawJsonLine);
-		if (!j.is_object()) {
+		if (!j.is_object() || !j.contains("type") || !j["type"].is_string()) {
 			return event;
 		}
 
-		std::string typeStr = j.value("type", "");
+		std::string typeStr = j["type"].get<std::string>();
 
 		if (typeStr == "backend_ready") {
+			if (!j.contains("protocol_version") || !j["protocol_version"].is_number_integer()) {
+				event.type = EventType::UNKNOWN;
+				return event;
+			}
 			event.type = EventType::BACKEND_READY;
-			event.backendReady.protocolVersion = j.value("protocol_version", 0);
+			event.backendReady.protocolVersion = j["protocol_version"].get<int>();
 		}
 		else if (typeStr == "log") {
+			if (!j.contains("text") || !j["text"].is_string()) {
+				event.type = EventType::UNKNOWN;
+				return event;
+			}
 			event.type = EventType::LOG;
-			event.log.text = j.value("text", "");
+			event.log.text = j["text"].get<std::string>();
 		}
 		else if (typeStr == "workspace_ready") {
+			if (!j.contains("run_name") || !j["run_name"].is_string() ||
+			    !j.contains("workspace") || !j["workspace"].is_string()) {
+				event.type = EventType::UNKNOWN;
+				return event;
+			}
 			event.type = EventType::WORKSPACE_READY;
-			event.workspaceReady.runName = j.value("run_name", "");
-			event.workspaceReady.workspace = j.value("workspace", "");
+			event.workspaceReady.runName = j["run_name"].get<std::string>();
+			event.workspaceReady.workspace = j["workspace"].get<std::string>();
 		}
 		else if (typeStr == "phase_started") {
+			if (!j.contains("phase") || !j["phase"].is_number_integer()) {
+				event.type = EventType::UNKNOWN;
+				return event;
+			}
 			event.type = EventType::PHASE_STARTED;
-			event.phaseStarted.phase = IntToPhase(j.value("phase", 0));
+			event.phaseStarted.phase = IntToPhase(j["phase"].get<int>());
 			event.phaseStarted.label = j.value("label", "");
 		}
 		else if (typeStr == "progress") {
+			if (!j.contains("phase") || !j["phase"].is_number_integer() ||
+			    !j.contains("value") || !j["value"].is_number()) {
+				event.type = EventType::UNKNOWN;
+				return event;
+			}
 			event.type = EventType::PROGRESS;
-			event.progress.phase = IntToPhase(j.value("phase", 0));
-			event.progress.value = j.value("value", 0.0f);
+			event.progress.phase = IntToPhase(j["phase"].get<int>());
+			event.progress.value = j["value"].get<float>();
 			event.progress.overallValue = j.value("overall_value", 0.0f);
 			event.progress.label = j.value("label", "");
 		}
 		else if (typeStr == "action_required") {
+			if (!j.contains("request_id") || !j["request_id"].is_string()) {
+				event.type = EventType::UNKNOWN;
+				return event;
+			}
 			event.type = EventType::ACTION_REQUIRED;
-			event.actionRequired.requestId = j.value("request_id", "");
+			event.actionRequired.requestId = j["request_id"].get<std::string>();
 			event.actionRequired.action = j.value("action", "");
 			event.actionRequired.phase = IntToPhase(j.value("phase", 0));
 			event.actionRequired.frame = j.value("frame", "");
@@ -93,27 +119,44 @@ DecodedEvent DecodeEvent(const std::string& rawJsonLine) {
 			event.actionRequired.count = j.value("count", 0);
 		}
 		else if (typeStr == "phase_completed") {
+			if (!j.contains("phase") || !j["phase"].is_number_integer()) {
+				event.type = EventType::UNKNOWN;
+				return event;
+			}
 			event.type = EventType::PHASE_COMPLETED;
-			event.phaseCompleted.phase = IntToPhase(j.value("phase", 0));
+			event.phaseCompleted.phase = IntToPhase(j["phase"].get<int>());
 		}
 		else if (typeStr == "done") {
+			if (!j.contains("run_name") || !j["run_name"].is_string()) {
+				event.type = EventType::UNKNOWN;
+				return event;
+			}
 			event.type = EventType::DONE;
-			event.done.runName = j.value("run_name", "");
+			event.done.runName = j["run_name"].get<std::string>();
 			event.done.workspace = j.value("workspace", "");
 			event.done.output = j.value("output", "");
 		}
 		else if (typeStr == "cancelled") {
+			if (!j.contains("run_name") || !j["run_name"].is_string()) {
+				event.type = EventType::UNKNOWN;
+				return event;
+			}
 			event.type = EventType::CANCELLED;
-			event.cancelled.runName = j.value("run_name", "");
+			event.cancelled.runName = j["run_name"].get<std::string>();
 		}
 		else if (typeStr == "error") {
+			if (!j.contains("code") || !j["code"].is_string() ||
+			    !j.contains("text") || !j["text"].is_string()) {
+				event.type = EventType::UNKNOWN;
+				return event;
+			}
 			event.type = EventType::ERROR;
 			event.error.scope = j.value("scope", "command");
-			event.error.code = j.value("code", "unknown");
-			event.error.text = j.value("text", "");
+			event.error.code = j["code"].get<std::string>();
+			event.error.text = j["text"].get<std::string>();
 			event.error.runName = j.value("run_name", "");
-			if (j.contains("phase")) {
-				event.error.phase = IntToPhase(j.at("phase").get<int>());
+			if (j.contains("phase") && j["phase"].is_number_integer()) {
+				event.error.phase = IntToPhase(j["phase"].get<int>());
 			}
 			event.error.requestId = j.value("request_id", "");
 		}

@@ -283,8 +283,20 @@ class ProductionBackend:
         output_path: str | None = None
         failure: Exception | None = None
 
-        def on_progress(val: float, label: str | None = None) -> None:
-            pass
+        workspace_path = self.project_root / "data" / "runs" / parsed_cmd.run_name
+        workspace_path.mkdir(parents=True, exist_ok=True)
+
+        # 1. Emit workspace_ready event
+        send(make_workspace_ready(parsed_cmd.run_name, str(workspace_path)))
+
+        # 2. Progress & Phase event emission callback
+        def on_progress(
+            phase: Phase | int,
+            val: float,
+            overall_val: float = 0.0,
+            label: str | None = None,
+        ) -> None:
+            send(make_progress(phase, val, overall_val, label))
 
         try:
             res = run_pipeline_with_args(
@@ -316,10 +328,9 @@ class ProductionBackend:
                     run_name=parsed_cmd.run_name,
                 )
             else:
-                workspace = str(self.project_root / "data" / "runs" / parsed_cmd.run_name)
                 terminal = make_done(
                     parsed_cmd.run_name,
-                    workspace,
+                    str(workspace_path),
                     str(output_path),
                 )
 

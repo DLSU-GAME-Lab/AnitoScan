@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 
 #include "IPCClientPlatform.h"
+#include "IPCProtocol.h"
 
 IPCClient::IPCClient()
 	: platform(CreateIPCClientPlatform()) {}
@@ -110,7 +111,14 @@ void IPCClient::HandleStdoutLine(std::string line) {
 		const auto json = nlohmann::json::parse(message.raw);
 		message.type = json.value("type", "unknown");
 		if (message.type == "backend_ready") {
-			backendReady = true;
+			int version = json.value("protocol_version", -1);
+			if (version == IPCProtocol::PROTOCOL_VERSION) {
+				backendReady = true;
+			} else {
+				std::cerr << "[ERROR]: Backend protocol version mismatch. Expected "
+				          << IPCProtocol::PROTOCOL_VERSION << " but received " << version << std::endl;
+				backendReady = false;
+			}
 		}
 	}
 	catch (const nlohmann::json::exception&) {
