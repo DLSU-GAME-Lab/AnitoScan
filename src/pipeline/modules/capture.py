@@ -1,5 +1,4 @@
 import argparse
-import json
 import shutil
 import sys
 import time
@@ -10,23 +9,23 @@ import cv2
 core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
-from ipc import send, send_progress, send_log, status_update, status_error
+from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
+from manifest import load_manifest, update_manifest
 
-MODULE_PATH = Path(__file__).resolve()
-PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
 
 
-def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=False, ipc_mode=False):
-    with open(manifest_path, "r") as f:
-        manifest = json.load(f)
+def run_capture(manifest_path_string: str, is_image_mode=False, is_video_mode=False, force=False, ipc_mode=False):
+    set_ipc_mode(ipc_mode)
+    set_phase(phase=1)
+
+    manifest_path, manifest = load_manifest(manifest_path_string)
 
     input_source = Path(manifest["input_source"]).resolve()
     output_dir = Path(manifest["paths"]["raw_frames"]).resolve()
 
     if not input_source.exists():
-        status_error(f"Input not found: {input_source}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Input not found: {input_source}")
 
     # --- SKIP LOGIC ---
     if output_dir.exists() and not force:
@@ -34,18 +33,13 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
             f for f in output_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS
         ]
         if len(existing_frames) > 0:
-            status_update(f"Found {len(existing_frames)} existing frames in {output_dir}.")
-            status_update("Skipping capture phase...")
+            log_info(f"Found {len(existing_frames)} existing frames in {output_dir}.")
+            log_info("Skipping capture phase...")
 
-            # Ensure the manifest is correctly updated even when skipping
-            manifest["status"]["phase"] = 1
-            if "capture" not in manifest["status"]["completed"]:
-                manifest["status"]["completed"].append("capture")
-            with open(manifest_path, "w") as f:
-                json.dump(manifest, f, indent=4)
+            update_manifest(manifest_path, manifest, phase=1)
 
-            print("\nPROGRESS: 100")
-            status_update("Phase 1: Capture complete", progress=1.0, phase=1)
+            log_info("Phase 1: Capture complete")
+            log_progress(value=1.0, label="Capture phase skipped")
 
             return
     # -----------------------
@@ -60,31 +54,37 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
         is_image_mode = input_source.is_dir()
         is_video_mode = not input_source.is_dir()
 
-    target_min_frames = manifest["settings"].get("minimum_frames", 45)
+    if "minimum_frames" not in manifest["settings"]:
+        raise ValueError("Missing required setting 'minimum_frames' in manifest settings.")
+
+    target_min_frames = manifest["settings"]["minimum_frames"]
+    source_type = "image" if is_image_mode else "video"
+
 
     # ==========================================
     # IMAGE MODE LOGIC
     # ==========================================
     if is_image_mode:
-        status_update("Image directory source detected. Copying frames to workspace...")
+        log_info("Image directory source detected. Copying frames to workspace...")
 
         source_images = sorted(
             [f for f in input_source.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
         )
 
         if len(source_images) == 0:
-            status_error(f"Error: No valid images found in {input_source}")
-            sys.exit(1)
+            raise ValueError(f"No valid images found in {input_source}")
 
+        total_imgs = len(source_images)
         for i, img_path in enumerate(source_images):
             target_path = output_dir / f"frame_{i:04d}{img_path.suffix}"
             shutil.copy2(img_path, target_path)
 
-        manifest["settings"]["source_type"] = "image"
-        status_update(f"Transferred {len(source_images)} frames to capture directory.")
+            if i % 5 == 0 or i < total_imgs - 1:
+                log_progress(value=(i+1) / total_imgs, label=f"Copying frame {i+1}/{total_imgs}")
+
+        log_info(f"Transferred {len(source_images)} frames to capture directory.")
         if len(source_images) < target_min_frames:
-            status_error(f"[!] WARNING: Dataset size ({len(source_images)}) is lower than requested minimum ({target_min_frames}).")
-        print("PROGRESS: 100")
+            log_info(f"[!] WARNING: Dataset size ({len(source_images)}) is lower than requested minimum ({target_min_frames}).")
 
     # ==========================================
     # VIDEO MODE LOGIC (Dynamic Downsampling)
@@ -92,16 +92,15 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
     elif is_video_mode:
         cap = cv2.VideoCapture(str(input_source))
         if not cap.isOpened():
-            status_error(f"Could not open video file: {input_source}")
-            sys.exit(1)
+            raise RuntimeError(f"Could not open video file: {input_source}")
 
         total_frames_in = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # Calculate optimal skip index step based on required target frame constraint
         frame_skip = max(1, total_frames_in // target_min_frames)
 
-        status_update(f"Total Video Frames: {total_frames_in} | Targeted Minimum Dataset: {target_min_frames}")
-        status_update(f"Extracting every {frame_skip} frames directly to PNG...")
+        log_info(f"Total Video Frames: {total_frames_in} | Targeted Minimum Dataset: {target_min_frames}")
+        log_info(f"Extracting every {frame_skip} frames directly to PNG...")
 
         frame_idx = 0
         saved_count = 0
@@ -117,36 +116,23 @@ def run_capture(manifest_path, is_image_mode=False, is_video_mode=False, force=F
                 saved_count += 1
 
             if frame_idx % 30 == 0:
-                print(f"PROGRESS: {int((frame_idx / total_frames_in) * 100)}")
-                sys.stdout.flush()
-                
-                if ipc_mode:
-                    send_progress(
-                        frame_idx / total_frames_in,
-                        f"Extracting frame {saved_count} of ~{target_min_frames}",
-                        phase=1
-                    )
+                log_progress(
+                    value=frame_idx / total_frames_in,
+                    label=f"Extracting frame {saved_count} of ~{target_min_frames}"
+                )
 
             frame_idx += 1
 
-        status_update(f"Successfully extracted {saved_count} frames to capture directory.")
+        log_info(f"Successfully extracted {saved_count} frames to capture directory.")
 
         cap.release()
-        manifest["settings"]["source_type"] = "video"
 
     total_time = time.perf_counter() - start_perf
 
-    manifest["status"]["phase"] = 1
-    if "capture" not in manifest["status"]["completed"]:
-        manifest["status"]["completed"].append("capture")
+    update_manifest(manifest_path, manifest, phase=1, source_type=source_type)
 
-    with open(manifest_path, "w") as f:
-        json.dump(manifest, f, indent=4)
-
-    status_update(f"Total Extraction Time: {total_time:.2f}s",
-                    1.0,
-                    "Phase 1: Capture complete",
-                    phase=1)
+    log_info(f"Total Extraction Time: {total_time:.2f}s")
+    log_progress(value=1.0, label="Phase 1: Capture complete")
 
 
 if __name__ == "__main__":
@@ -155,18 +141,17 @@ if __name__ == "__main__":
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--image", action="store_true")
     parser.add_argument("--video", action="store_true")
-    parser.add_argument("--blur-threshold", type=float)
-    parser.add_argument("--proxy-width", type=int)
-    parser.add_argument("--jpg-quality", type=int)
-    parser.add_argument("--max_search", type=int)
     parser.add_argument("--ipc", action="store_true")
 
     args = parser.parse_args()
-    run_capture(
-        args.manifest,
-        is_image_mode=args.image,
-        is_video_mode=args.video,
-        force=args.force,
-        ipc_mode=args.ipc
-    )
-    
+    try:
+        run_capture(
+            args.manifest,
+            is_image_mode=args.image,
+            is_video_mode=args.video,
+            force=args.force,
+            ipc_mode=args.ipc
+        )
+    except (RuntimeError, ValueError, OSError) as error:
+        log_error(str(error))
+        sys.exit(1)

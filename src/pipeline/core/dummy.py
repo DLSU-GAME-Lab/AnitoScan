@@ -1,52 +1,25 @@
 import sys
-import json
-import time
+from pathlib import Path
 
-def send(obj: dict):
-    print(json.dumps(obj), flush=True)
+core_path = str(Path(__file__).resolve().parent.parent / "core")
+sys.path.insert(0, core_path)
 
-def main():
-    send({"type": "log", "text": "Backend ready"})
+from ipc_handlers import listen_for_ipc_commands
+from log import log_info
 
-    for raw_line in sys.stdin:
-        raw_line = raw_line.strip()
-        if not raw_line:
-            continue
 
-        try:
-            cmd = json.loads(raw_line)
-        except json.JSONDecodeError:
-            send({"type": "error", "text": "Bad JSON received"})
-            continue
+def mock_pipeline_runner(args: dict, ipc_mode: bool = False):
+    """A mock pipeline runner that mimics the signature of pipeline.py's run_pipeline_with_args."""
+    run_name = args.get("name", "unnamed")
+    log_info(f"Mock pipeline starting for: {run_name}")
 
-        action = cmd.get("action")
+    # Simulate work
+    import time
+    for i in range(1, 6):
+        time.sleep(2)
+        log_info(f"Mock completed Phase {i}")
 
-        if action == "ping":
-            send({"type": "log", "text": "pong"})
-
-        elif action == "run_scan":
-            send({"type": "log", "text": f"Starting scan: {cmd.get('name', 'unnamed')}"})
-        
-            phases = [
-                (0.00, "Phase 1: Capture"),
-                (0.25, "Phase 2: Masking"),
-                (0.50, "Phase 3: Spatial"),
-                (0.75, "Phase 4: Geometry"),
-                (1.00, "Complete"),
-            ]
-
-            for value, label in phases:
-                time.sleep(1)
-                send({"type": "progress", "value": value, "label": label})
-                send({"type": "log", "text": f"Done: {label}"})
-
-            send({"type": "done", "data": {"run_name": cmd.get("name", "unnamed")}})
-
-        else:
-            send({"type": "error", "text": f"Unknown action: {action}"})
-
-    send({"type": "log", "text": "Backend exiting"})
-
+    log_info(f"Mock pipeline complete for {run_name}")
 
 if __name__ == "__main__":
-    main()
+    listen_for_ipc_commands(mock_pipeline_runner)

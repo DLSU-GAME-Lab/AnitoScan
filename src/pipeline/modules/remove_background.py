@@ -1,9 +1,8 @@
 import argparse
-import json
 import shutil
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Generator
 from pathlib import Path
 
 import cv2
@@ -15,16 +14,16 @@ from ultralytics.models.yolo import YOLOE
 core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
-from ipc import send, send_log, send_progress, status_update, status_error
+from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
+from manifest import load_manifest, update_manifest
 
-# DIRECTORY RESOLUTION
 MODULE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
 MODELS_DIR = PROJECT_ROOT / "models" / "02_masking"
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
 
 
-def calculate_iou(boxA, boxB):
+def _calculate_iou(boxA, boxB):
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])
     xB = min(boxA[2], boxB[2])
@@ -36,24 +35,20 @@ def calculate_iou(boxA, boxB):
     return iou
 
 
-def calculate_centroid_drift(boxA, boxB):
+def _calculate_centroid_drift(boxA, boxB):
     centerA = np.array([(boxA[0] + boxA[2]) / 2, (boxA[1] + boxA[3]) / 2])
     centerB = np.array([(boxB[0] + boxB[2]) / 2, (boxB[1] + boxB[3]) / 2])
     return np.linalg.norm(centerA - centerB)
 
 
-def get_user_selection(img, detector, temp_dir, frame_name, device, input_callback=None):
-    """Runs YOLOE, draws uniquely colored candidates with collision avoidance, pops up a GUI, and gets terminal input.
-
-    Returns a tuple: (chosen_box_coordinates or None, elapsed_wait_time_seconds)
-    """
+def _get_user_selection(img, detector, temp_dir, frame_name, device):
+    """Yields an intervention request to the pipeline orchestrator."""
     start_wait = time.perf_counter()
-    print("\n")
-    status_update(f"Running YOLOE-26 on {frame_name}...")
+    log_info(f"Running YOLOE-26 on {frame_name}...")
     results = detector.predict(source=img, conf=0.35, device=device, verbose=False)[0]
 
     if results.boxes is None or len(results.boxes) == 0:
-        status_error("YOLOE found no valid subjects in this frame.")
+        log_error("YOLOE found no valid subjects in this frame.")
         return None, time.perf_counter() - start_wait
 
     h_img, w_img = img.shape[:2]
@@ -131,77 +126,38 @@ def get_user_selection(img, detector, temp_dir, frame_name, device, input_callba
 
     write_success = cv2.imwrite(str(preview_path), preview_img)
     if not write_success:
-        print("\n")
-        status_error(f"OpenCV failed to write the preview image to: {preview_path}")
-        sys.exit(1)
-
-    if input_callback is not None:
-        # IPC mode - send to editor and wait for response
-        choice = input_callback(str(preview_path), len(valid_boxes), frame_name)
-        if choice is None:
-            return None, time.perf_counter() - start_wait
-        if 0 <= choice < len(valid_boxes):
-            return valid_boxes[choice], time.perf_counter() - start_wait
-        return None, time.perf_counter() - start_wait
-    else:
-        # --- GUI Pop-Up Logic ---
-        window_title = f"Selection Required - {frame_name}"
-        cv2.namedWindow(window_title, cv2.WINDOW_NORMAL)
-
-        # Force the window to open at a generous starting size
-        cv2.resizeWindow(window_title, 1280, 720)
-
-        cv2.imshow(window_title, preview_img)
-
-        print("\n==================================================")
-        print(" ACTION REQUIRED: Click on the image window to focus it.")
-        print(
-            f" Press the number key (0-{len(valid_boxes) - 1}) corresponding to the correct subject."
+        raise RuntimeError(
+            f"OpenCV failed to write the preview image to: {preview_path}"
         )
-        print(" Press 's' to skip this frame.")
-        print("==================================================")
 
-        # Replace terminal input with an active OpenCV event loop
-        while True:
-            # waitKey(50) keeps the GUI perfectly responsive by checking for input every 50ms
-            key = cv2.waitKey(50) & 0xFF
+    choice, wait_time = (yield {
+        "type": "SELECTION_REQUIRED",
+        "preview_path": str(preview_path),
+        "total_candidates": len(valid_boxes),
+        "frame_name": frame_name,
+    })
 
-            # Failsafe: if the user clicks the 'X' button to manually close the window, treat it as a skip
-            if cv2.getWindowProperty(window_title, cv2.WND_PROP_VISIBLE) < 1:
-                return None, time.perf_counter() - start_wait
+    if choice is not None and 0 <= choice < len(valid_boxes):
+        return valid_boxes[choice], wait_time
 
-            # 's' key to skip
-            if key == ord("s"):
-                cv2.destroyWindow(window_title)
-                cv2.waitKey(1)  # Flush GUI events
-                return None, time.perf_counter() - start_wait
+    return None, wait_time
 
-            # Any number key from 0 to 9
-            elif ord("0") <= key <= ord("9"):
-                idx = int(chr(key))
-                if 0 <= idx < len(valid_boxes):
-                    cv2.destroyWindow(window_title)
-                    cv2.waitKey(1)  # Flush GUI events
-                    return valid_boxes[idx], time.perf_counter() - start_wait
-                else:
-                    print(f"[!] Invalid ID {idx}. Try again.")
-
-   
 
 def run_remove_background(
-    manifest_path, yoloe_model_size, iou_threshold, drift_limit,
-    force=False, ipc_mode=False, input_callback=None
-):
-    with open(manifest_path, "r") as f:
-        manifest = json.load(f)
+    manifest_path_string, yoloe_model_size, iou_threshold, drift_limit,
+    force=False, ipc_mode=False
+) -> Generator[dict, tuple[int | None, float], None]:
+    set_ipc_mode(ipc_mode)
+    set_phase(phase=2)
+
+    manifest_path, manifest = load_manifest(manifest_path_string)
 
     input_dir = Path(manifest["paths"]["raw_frames"]).resolve()
     output_dir = Path(manifest["paths"]["masked_frames"]).resolve()
     temp_dir = output_dir / "temp"
 
     if not input_dir.exists():
-        status_error(f"Input directory not found: {input_dir}")
-        sys.exit(1)
+        raise RuntimeError(f"Input directory not found: {input_dir}")
 
     source_images = sorted(
         [f for f in input_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
@@ -212,26 +168,20 @@ def run_remove_background(
     # --- SKIP LOGIC ---
     if output_dir.exists() and not force:
         existing_masks = [f for f in output_dir.iterdir() if f.suffix.lower() == ".png"]
-        # Allow resuming: only skip entirely if we process all frames
         if len(existing_masks) == total_frames and total_frames > 0:
-            # use --force to override
-            status_update(f"Found {len(existing_masks)} existing masked frames in {output_dir}.")
-            status_update("Skipping background removal phase...")
+            log_info(f"Found {len(existing_masks)} existing masked frames in {output_dir}.")
+            log_info("Skipping Masking phase...")
 
-            # Ensure the manifest is correctly updated even when skipping
-            manifest["status"]["phase"] = 2
-            if "masking" not in manifest["status"]["completed"]:
-                manifest["status"]["completed"].append("masking")
-            with open(manifest_path, "w") as f:
-                json.dump(manifest, f, indent=4)
+            update_manifest(manifest_path, manifest, phase=2)
 
-            print("\nPROGRESS: 100")
+            log_info("Phase 2: Masking complete")
+            log_progress(value=1.0, label="Masking phase skipped")
 
             return
     # -----------------------
 
     if force and output_dir.exists():
-        status_update(f"Force flag detected. Wiping: {output_dir}")
+        log_info(f"Force flag detected. Wiping: {output_dir}")
         shutil.rmtree(output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -239,8 +189,8 @@ def run_remove_background(
 
     target_min_frames = manifest["settings"].get("minimum_frames", 45)
 
-    status_update("Starting Background Removal Phase.")
-    status_update(f"[*] Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})")
+    log_info("Starting Masking Phase.")
+    log_info(f"[*] Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})")
 
     device = (
         "cuda"
@@ -257,22 +207,8 @@ def run_remove_background(
     total_user_time = 0.0  # Tracks elapsed human intervention overhead
     prev_box = None
 
-    #with ThreadPoolExecutor(max_workers=4) as executor:
+    total_imgs = len(source_images)
     for i, img_path in enumerate(source_images):
-        if ipc_mode:
-            current_frame_number = i + 1
-            progress_fraction = current_frame_number / total_frames
-
-            send_log("") 
-            send_progress(
-                value=progress_fraction,
-                label=f"Processing frame {current_frame_number} of {total_frames}",
-                phase=2
-            )
-        else:
-            sys.stdout.write(f"\r[*] Processed {i + 1}/{total_frames} frames")
-            #sys.stdout.flush()
-
         img = cv2.imread(str(img_path))
         if img is None:
             continue
@@ -298,9 +234,8 @@ def run_remove_background(
         chosen_box = None
         if prev_box is None:
             # First frame initialization anchor configuration
-            chosen_box, wait_time = get_user_selection(
-                img, detector, temp_dir, img_path.stem, device,
-                input_callback=input_callback
+            chosen_box, wait_time = yield from _get_user_selection(
+                img, detector, temp_dir, img_path.stem, device
             )
             total_user_time += wait_time
         elif valid_boxes:
@@ -308,28 +243,25 @@ def run_remove_background(
             best_match = None
 
             for candidate in valid_boxes:
-                iou = calculate_iou(prev_box, candidate)
-                drift = calculate_centroid_drift(prev_box, candidate)
+                iou = _calculate_iou(prev_box, candidate)
+                drift = _calculate_centroid_drift(prev_box, candidate)
 
-                if iou > iou_threshold and drift < drift_limit:
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_match = candidate
+                if iou > iou_threshold and drift < drift_limit and iou > best_iou:
+                    best_iou = iou
+                    best_match = candidate
 
             if best_match is not None:
                 chosen_box = best_match
             else:
                 print("\n")
-                status_error(f"Tracking signature broke on {img_path.name} (Strict limits violated).")
-                chosen_box, wait_time = get_user_selection(
-                    img, detector, temp_dir, img_path.stem, device,
-                    input_callback=input_callback
+                log_error(f"Tracking signature broke on {img_path.name} (Strict limits violated).")
+                chosen_box, wait_time = yield from _get_user_selection(
+                    img, detector, temp_dir, img_path.stem, device
                 )
                 total_user_time += wait_time
         else:
-            chosen_box, wait_time = get_user_selection(
-                img, detector, temp_dir, img_path.stem, device,
-                input_callback=input_callback
+            chosen_box, wait_time = yield from _get_user_selection(
+                img, detector, temp_dir, img_path.stem, device
             )
             total_user_time += wait_time
 
@@ -355,8 +287,8 @@ def run_remove_background(
             sam_results = segmenter.predict(
                 source=img, bboxes=[padded_box], device=device, verbose=False
             )[0]
-        except Exception as e:
-            status_update(f"[!] SAM failed on {img_path.name}: {e}")
+        except (RuntimeError, ValueError, OSError) as e:
+            log_info(f"[!] SAM failed on {img_path.name}: {e}")
             sam_results = None
 
         if sam_results is not None and sam_results.masks is not None and len(sam_results.masks.data) > 0:
@@ -380,44 +312,36 @@ def run_remove_background(
             cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
             prev_box = None
 
+        if i % 5 == 0 or i == total_imgs - 1:
+            log_progress(value=(i+1)/total_imgs, label=f"Processed frame {i+1}/{total_imgs}")
+
 
     total_time = time.perf_counter() - start_perf
     processing_time = total_time - total_user_time
-    print("\nPROGRESS: 100")
 
-    manifest["status"]["phase"] = 2
-    if "masking" not in manifest["status"]["completed"]:
-        manifest["status"]["completed"].append("masking")
-
-    with open(manifest_path, "w") as f:
-        json.dump(manifest, f, indent=4)
+    update_manifest(manifest_path, manifest, phase=2)
 
     if temp_dir.exists():
         shutil.rmtree(temp_dir)
 
-    print("\n")
-    status_update(f"Complete. Filtered segmentation masks saved to: {output_dir}")
-    status_update(f"[*] Total Gross Session Duration: {total_time:.2f}s")
-    status_update(f"Total User Interaction Hold Time: {total_user_time:.2f}s")
-    status_update(f"Pure AI Processing Execution Speed: {processing_time:.2f}s")
+    log_info(f"Complete. Filtered segmentation masks saved to: {output_dir}")
+    log_info(f"[*] Total Gross Session Duration: {total_time:.2f}s")
+    log_info(f"Total User Interaction Hold Time: {total_user_time:.2f}s")
+    log_info(f"Pure AI Processing Execution Speed: {processing_time:.2f}s")
+    log_progress(value=1.0, label="Phase 2: Masking complete")
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=str, required=True)
     parser.add_argument("--force", action="store_true")
-    parser.add_argument(
-        "--yoloe_model_size", type=str, choices=["n", "s", "m", "l", "x"], default="s"
-    )
-
+    parser.add_argument("--yoloe_model_size", type=str, choices=["n", "s", "m", "l", "x"], default="s")
     parser.add_argument("--iou_threshold", type=float, required=True)
     parser.add_argument("--drift_limit", type=int, required=True)
     parser.add_argument("--ipc", action="store_true")
-
     args = parser.parse_args()
 
-    run_remove_background(
+    gen = run_remove_background(
         args.manifest,
         yoloe_model_size=args.yoloe_model_size,
         iou_threshold=args.iou_threshold,
@@ -425,3 +349,47 @@ if __name__ == "__main__":
         force=args.force,
         ipc_mode=args.ipc
     )
+
+    try:
+        request = next(gen)
+        while True:
+            if request["type"] == "SELECTION_REQUIRED":
+                start_wait = time.perf_counter()
+
+                window_title = f"Selection Required - {request['frame_name']}"
+                cv2.namedWindow(window_title, cv2.WINDOW_NORMAL)
+                cv2.resizeWindow(window_title, 1280, 720)
+
+                preview_img = cv2.imread(request["preview_path"])
+                cv2.imshow(window_title, preview_img)
+
+                print("\n==================================================")
+                print(" ACTION REQUIRED: Click on the image window to focus it.")
+                print(f" Press the number key (0-{request['total_candidates'] - 1}) corresponding to the correct subject.")
+                print(" Press 's' to skip this frame.")
+                print("==================================================")
+
+                choice = None
+                while True:
+                    key = cv2.waitKey(50) & 0xFF
+                    if cv2.getWindowProperty(window_title, cv2.WND_PROP_VISIBLE) < 1:
+                        break
+                    if key == ord("s"):
+                        break
+                    elif ord("0") <= key <= ord("9"):
+                        idx = int(chr(key))
+                        if 0 <= idx < request["total_candidates"]:
+                            choice = idx
+                            break
+
+                cv2.destroyWindow(window_title)
+                cv2.waitKey(1)
+
+                wait_time = time.perf_counter() - start_wait
+                request = gen.send((choice, wait_time))
+
+    except StopIteration:
+        pass
+    except (RuntimeError, ValueError, OSError) as error:
+        log_error(str(error))
+        sys.exit(1)

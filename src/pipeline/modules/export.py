@@ -1,25 +1,22 @@
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
 
+import pymeshlab
+
 core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
-from ipc import send_log, send_progress, send_error, status_error, status_update
-
-try:
-    import pymeshlab
-except ImportError:
-    print("[!] ERROR: pymeshlab is not installed. Please run: pip install pymeshlab")
-    sys.exit(1)
+from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
+from manifest import load_manifest, update_manifest
 
 
-def run_export_and_baking(manifest_path, force=False, ipc_mode=False):
-    # 1. Load Manifest Context
-    with open(manifest_path, "r") as f:
-        manifest = json.load(f)
+def run_export_and_baking(manifest_path_string: str, force: bool = False, ipc_mode: bool = False):
+    set_ipc_mode(ipc_mode)
+    set_phase(5)
+
+    manifest_path, manifest = load_manifest(manifest_path_string)
 
     run_name = manifest["run_name"]
     quality_preset = manifest["settings"]["quality"]
@@ -30,8 +27,9 @@ def run_export_and_baking(manifest_path, force=False, ipc_mode=False):
     input_ply = geometry_dir / "fused_mesh.ply"
 
     if not input_ply.exists():
-        status_error(f"Could not find raw geometry at {input_ply}. Did Phase 4 complete?")
-        sys.exit(1)
+        raise FileNotFoundError(
+            f"Could not find raw geometry at {input_ply}. Did Phase 4 complete?"
+        )
 
     export_dir.mkdir(parents=True, exist_ok=True)
 
@@ -43,47 +41,37 @@ def run_export_and_baking(manifest_path, force=False, ipc_mode=False):
 
     # --- SKIP LOGIC ---
     if final_obj_path.exists() and not force:
-        status_update(f"Found existing exported asset: {final_obj_path}",
-                      progress=1.0,
-                      progress_msg="Phase 5: Export complete (cached)", 
-                      phase=5)
-        status_update("Skipping Phase 5 (Export & Baking)...")
-        print("PROGRESS: 100") 
-        
+        log_info(f"Found existing exported asset: {final_obj_path}")
+        log_info("Skipping Phase 5 (Export & Baking)...")
+        update_manifest(manifest_path, manifest, phase=5)
+        log_progress(1.0, "Phase 5: Export complete (cached)")
         return
     # ------------------
 
     start_time = time.perf_counter()
-    print("\n")
-    status_update("Starting Automated Retopology and Texture Baking Phase...",
-                  progress=0.0,
-                  progress_msg="Phase 5: Loading mesh...",
-                  phase=5)
+
+    log_info("Starting Automated Retopology and Texture Baking Phase...")
+    log_progress(0.0, "Phase 5: Loading mesh...")
 
     try:
         ms = pymeshlab.MeshSet()  # type: ignore
         ms.load_new_mesh(str(input_ply))
 
-        status_update("Mesh loaded. Cleaning raw topology...",
-                      progress=0.05,
-                      progress_msg="Phase 5: Cleaning topology...",
-                      phase=5)
+        log_info("Mesh loaded. Cleaning raw topology...")
+        log_progress(0.05, "Phase 5: Cleaning topology...")
         ms.meshing_remove_unreferenced_vertices()
         ms.meshing_remove_duplicate_faces()
         ms.meshing_repair_non_manifold_edges()
         ms.meshing_repair_non_manifold_vertices()
 
-        # --- NEW: AUTOMATED RETOPOLOGY / REMESHING ---
+        # --- AUTOMATED RETOPOLOGY / REMESHING ---
         # Map the pipeline quality preset to a target polycount
         target_faces = {"fast": 100000, "medium": 300000, "detailed": 600000}.get(
             quality_preset, 300000
         )
 
-        # DECIMATION
-        status_update(f"Decimating and smoothing mesh to {target_faces:,} faces...",
-                      progress=0.15,
-                      progress_msg=f"Phase 5: Decimating to {target_faces:,} faces...",
-                      phase=5)
+        log_info(f"Decimating and smoothing mesh to {target_faces:,} faces...")
+        log_progress(0.15, f"Phase 5: Decimating to {target_faces:,} faces...")
 
         ms.meshing_decimation_quadric_edge_collapse(
             targetfacenum=target_faces,
@@ -92,73 +80,62 @@ def run_export_and_baking(manifest_path, force=False, ipc_mode=False):
             preservetopology=True,
         )
 
-        # COMPUTE NORMALS
-        status_update("Generating smooth surface normals...",
-                      progress=0.45,
-                      progress_msg="Phase 5: Computing normals...",
-                      phase=5)
+        log_info("Generating smooth surface normals...")
+        log_progress(0.45, "Phase 5: Computing normals...")
         ms.compute_normal_per_vertex()
 
-        # UNWRAP UVs
-        status_update("Unwrapping UV Coordinates...",
-                      progress=0.50,
-                      progress_msg="Phase 5: Unwrapping UVs...",
-                      phase=5)
+        log_info("Unwrapping UV Coordinates...")
+        log_progress(0.50, "Phase 5: Unwrapping UVs...")
         try:
             # Primary Strategy: Voronoi Atlas
-            status_update("Attempting Voronoi Atlas parameterization...")
+            log_info("Attempting Voronoi Atlas parameterization...")
             ms.compute_texcoord_parametrization_voronoi_atlas()
-        except Exception as uv_error:
+        except pymeshlab.PyMeshLabException as uv_error:
             # Fallback Strategy: Trivial Per-Wedge
-            status_update("Voronoi failed. Falling back to Trivial Unwrapping...")
+            log_info(f"Voronoi failed ({uv_error}). Falling back to Trivial Unwrapping...")
             ms.compute_texcoord_parametrization_triangle_trivial_per_wedge(textdim=4096)
 
-        # BAKING
-        status_update(f"Baking vertex colors to {final_texture_name} (4K Resolution)...",
-                      progress=0.80,
-                      progress_msg="Phase 5: Baking 4K texture...",
-                      phase=5)
+        log_info(f"Baking vertex colors to {final_texture_name} (4K Resolution)...")
+        log_progress(0.80, "Phase 5: Baking 4K texture...")
         ms.transfer_attributes_to_texture_per_vertex(
             textname=final_texture_name, textw=4096, texth=4096
         )
 
-        # EXPORT
-        status_update(f"Exporting final optimized OBJ package to {export_dir}...",
-                      progress=0.95,
-                      progress_msg="Phase 5: Exporting OBJ...",
-                      phase=5)
+        log_info(f"Exporting final optimized OBJ package to {export_dir}...")
+        log_progress(0.95, "Phase 5: Exporting OBJ...")
         ms.save_current_mesh(str(final_obj_path))
 
-    except Exception as e:
-        print("\n")
-        status_error(f"A fatal error occurred during mesh processing: {e}")
-        sys.exit(1)
+    except (
+        pymeshlab.PyMeshLabException,
+        RuntimeError,
+        ValueError,
+        OSError,
+    ) as error:
+        raise RuntimeError(
+            f"A fatal error occurred during mesh processing: {error}"
+        ) from error
+
+    update_manifest(manifest_path, manifest, phase=5)
 
     total_time = time.perf_counter() - start_time
 
-    manifest["status"]["phase"] = 5
-    if "export" not in manifest["status"]["completed"]:
-        manifest["status"]["completed"].append("export")
-
-    with open(manifest_path, "w") as f:
-        json.dump(manifest, f, indent=4)
-
-    print("\nPROGRESS: 100")
-    status_update(f"Export Phase Complete. Final textured asset ready: {final_obj_path}")
-    status_update(f"Phase 5 Total Time: {total_time:.2f}s")
-    if ipc_mode: send_progress(1.0, "Phase 5: Export complete", phase=5)
+    log_info(f"Export Phase Complete. Final textured asset ready: {final_obj_path}")
+    log_info(f"Phase 5 Total Time: {total_time:.2f}s")
+    log_progress(1.0, "Phase 5: Export complete")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Phase 5: Export and Texture Bake")
-    parser.add_argument(
-        "--manifest", type=str, required=True, help="Path to project manifest.json"
-    )
-    parser.add_argument(
-        "--force", action="store_true", help="Overwrite existing export data"
-    )
+    parser.add_argument("--manifest", type=str, required=True, help="Path to project manifest.json")
+    parser.add_argument("--force", action="store_true", help="Overwrite existing export data")
     parser.add_argument("--ipc", action="store_true")
 
     args = parser.parse_args()
 
-    run_export_and_baking(manifest_path=args.manifest, force=args.force, ipc_mode=args.ipc)
+    try:
+        run_export_and_baking(
+            manifest_path_string=args.manifest, force=args.force, ipc_mode=args.ipc
+        )
+    except (RuntimeError, ValueError, OSError) as error:
+        log_error(str(error))
+        sys.exit(1)
