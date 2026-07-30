@@ -31,45 +31,6 @@ def _mesh_processing_exceptions() -> tuple[type[BaseException], ...]:
 MESH_PROCESSING_EXCEPTIONS = _mesh_processing_exceptions()
 
 
-def _compute_uv_parameterization(ms: Any) -> None:
-    uv_strategies = [
-        (
-            "Voronoi Atlas",
-            "compute_texcoord_parametrization_voronoi_atlas",
-            {},
-        ),
-        (
-            "Harmonic",
-            "compute_texcoord_parametrization_harmonic",
-            {},
-        ),
-        (
-            "Trivial Per-Wedge",
-            "compute_texcoord_parametrization_triangle_trivial_per_wedge",
-            {"textdim": 4096},
-        ),
-    ]
-
-    last_error: BaseException | None = None
-
-    for label, method_name, kwargs in uv_strategies:
-        method = getattr(ms, method_name, None)
-        if method is None:
-            log_info(f"{label} parameterization is unavailable in this PyMeshLab build.")
-            continue
-
-        try:
-            log_info(f"Attempting {label} parameterization...")
-            method(**kwargs)
-            return
-        except MESH_PROCESSING_EXCEPTIONS as uv_error:
-            last_error = uv_error
-            log_info(f"{label} failed ({uv_error}). Trying next UV unwrap strategy...")
-
-    error_details = f" Last error: {last_error}" if last_error else ""
-    raise RuntimeError(f"No supported UV parameterization method succeeded.{error_details}")
-
-
 def run_export_and_baking(manifest_path_string: str, force: bool = False, ipc_mode: bool = False):
     set_ipc_mode(ipc_mode)
     set_phase(5)
@@ -144,7 +105,8 @@ def run_export_and_baking(manifest_path_string: str, force: bool = False, ipc_mo
 
         log_info("Unwrapping UV Coordinates...")
         log_progress(0.50, "Phase 5: Unwrapping UVs...")
-        _compute_uv_parameterization(ms)
+        log_info("Using Trivial Per-Wedge parameterization...")
+        ms.compute_texcoord_parametrization_triangle_trivial_per_wedge(textdim=4096)
 
         log_info(f"Baking vertex colors to {final_texture_name} (4K Resolution)...")
         log_progress(0.80, "Phase 5: Baking 4K texture...")
