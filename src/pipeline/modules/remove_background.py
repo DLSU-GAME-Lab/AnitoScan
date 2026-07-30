@@ -190,7 +190,7 @@ def run_remove_background(
     target_min_frames = manifest["settings"].get("minimum_frames", 45)
 
     log_info("Starting Masking Phase.")
-    log_info(f"[*] Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})")
+    log_info(f"Total Frames Found in Workspace: {total_frames} (Target Minimum: {target_min_frames})")
 
     device = (
         "cuda"
@@ -325,7 +325,7 @@ def run_remove_background(
         shutil.rmtree(temp_dir)
 
     log_info(f"Complete. Filtered segmentation masks saved to: {output_dir}")
-    log_info(f"[*] Total Gross Session Duration: {total_time:.2f}s")
+    log_info(f"Total Gross Session Duration: {total_time:.2f}s")
     log_info(f"Total User Interaction Hold Time: {total_user_time:.2f}s")
     log_info(f"Pure AI Processing Execution Speed: {processing_time:.2f}s")
     log_progress(value=1.0, label="Phase 2: Masking complete")

@@ -17,7 +17,7 @@ MODULES_DIR = SCRIPT_PATH.parent.parent / "modules"  # /src/pipeline/modules/
 def _run_phase(phase_num: int, phase_name: str, cmd: list, ipc_mode: bool):
     result = subprocess.run(cmd, check=False)
     if result.returncode != 0:
-        msg = f"[!] Pipeline failed at Phase {phase_num} ({phase_name}). Exit code: {result.returncode}"
+        msg = f"Pipeline failed at Phase {phase_num} ({phase_name}). Exit code: {result.returncode}"
         if ipc_mode:
             raise RuntimeError(msg)
         log_error(msg)
