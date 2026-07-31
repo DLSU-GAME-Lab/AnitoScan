@@ -1,10 +1,18 @@
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
+from benchmark import (
+    BENCHMARK_INVOCATION_ENV,
+    append_phase_benchmark,
+    create_invocation_id,
+)
 from config import build_phase_cmd, parse_cli_args
 from ipc_handlers import await_ipc_selection, listen_for_ipc_commands
 from log import log_done, log_error, log_event, log_info, set_ipc_mode
+from manifest import load_manifest
 from workspace import init_workspace
 
 # DIRECTORY RESOLUTION
@@ -14,10 +22,46 @@ WORKSPACE_DIR = PROJECT_ROOT / "data" / "runs"  # /data/runs/
 MODULES_DIR = SCRIPT_PATH.parent.parent / "modules"  # /src/pipeline/modules/
 
 
+def _append_failed_phase_benchmark(
+    phase_num: int,
+    manifest_path: Path,
+    duration_seconds: float,
+    message: str,
+    metrics: dict,
+) -> None:
+    try:
+        _, manifest = load_manifest(manifest_path)
+        append_phase_benchmark(
+            manifest,
+            phase_num,
+            status="failed",
+            skipped=False,
+            duration_seconds=duration_seconds,
+            metrics=metrics,
+            paths={"manifest": manifest_path},
+            error=message,
+        )
+    except (OSError, ValueError, KeyError, TypeError) as benchmark_error:
+        log_error(f"Failed to write failure benchmark: {benchmark_error}")
+
+
 def _run_phase(phase_num: int, phase_name: str, cmd: list, ipc_mode: bool):
-    result = subprocess.run(cmd, check=False)
+    env = os.environ.copy()
+    start_time = time.perf_counter()
+    result = subprocess.run(cmd, check=False, env=env)
+    duration_seconds = time.perf_counter() - start_time
     if result.returncode != 0:
         msg = f"Pipeline failed at Phase {phase_num} ({phase_name}). Exit code: {result.returncode}"
+        if "--manifest" in cmd:
+            manifest_arg_index = cmd.index("--manifest") + 1
+            if manifest_arg_index < len(cmd):
+                _append_failed_phase_benchmark(
+                    phase_num,
+                    Path(cmd[manifest_arg_index]),
+                    duration_seconds,
+                    msg,
+                    {"exit_code": result.returncode},
+                )
         if ipc_mode:
             raise RuntimeError(msg)
         log_error(msg)
@@ -26,6 +70,7 @@ def _run_phase(phase_num: int, phase_name: str, cmd: list, ipc_mode: bool):
 
 # PHASE 2: MASKING
 def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False):
+    phase_start = time.perf_counter()
     if ipc_mode:
         try:
             sys.path.insert(0, str(MODULES_DIR))
@@ -50,9 +95,20 @@ def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False):
             except StopIteration:
                 pass # Generator successfully finished
         except (RuntimeError, ValueError, OSError) as error:
-            raise RuntimeError(
-                f"Pipeline failed at Phase 2 (Masking): {error}"
-            ) from error
+            message = f"Pipeline failed at Phase 2 (Masking): {error}"
+            _append_failed_phase_benchmark(
+                2,
+                Path(manifest_path),
+                time.perf_counter() - phase_start,
+                message,
+                {
+                    "force": args.get("force", False),
+                    "yoloe_model_size": args.get("yoloe_model_size", "s"),
+                    "iou_threshold": args.get("iou_threshold", 0.50),
+                    "drift_limit": args.get("drift_limit", 200),
+                },
+            )
+            raise RuntimeError(message) from error
     else:
         cmd = build_phase_cmd(2, parent_module_path, manifest_path, args, ipc_mode)
         _run_phase(2, "Masking", cmd, ipc_mode)
@@ -60,6 +116,7 @@ def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False):
 
 def run_pipeline_with_args(args: dict, ipc_mode: bool=False):
     set_ipc_mode(ipc_mode)
+    os.environ[BENCHMARK_INVOCATION_ENV] = create_invocation_id()
 
     base_dir, manifest_path = init_workspace(PROJECT_ROOT, WORKSPACE_DIR, args)
 

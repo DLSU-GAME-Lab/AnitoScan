@@ -14,6 +14,7 @@ from ultralytics.models.yolo import YOLOE
 core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
+from benchmark import append_failed_phase_benchmark, append_phase_benchmark
 from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
 from manifest import load_manifest, update_manifest
 
@@ -151,18 +152,52 @@ def run_remove_background(
     set_phase(phase=2)
 
     manifest_path, manifest = load_manifest(manifest_path_string)
+    phase_start = time.perf_counter()
 
     input_dir = Path(manifest["paths"]["raw_frames"]).resolve()
     output_dir = Path(manifest["paths"]["masked_frames"]).resolve()
     temp_dir = output_dir / "temp"
+    benchmark_settings = {
+        "force": force,
+        "yoloe_model_size": yoloe_model_size,
+        "iou_threshold": iou_threshold,
+        "drift_limit": drift_limit,
+        "device": "unknown",
+    }
+    benchmark_paths = {"input_dir": input_dir, "output_dir": output_dir}
+    benchmark_metrics = {
+        "input_frames": 0,
+        "output_masks": 0,
+        "successful_masks": 0,
+        "blank_masks": 0,
+        "unreadable_frames": 0,
+        "user_selection_requests": 0,
+        "user_skip_or_failed_selection_count": 0,
+        "tracking_breaks": 0,
+        "sam_failures": 0,
+        "processed_frames": 0,
+        "total_user_interaction_seconds": 0.0,
+        "ai_processing_seconds": 0.0,
+    }
 
     if not input_dir.exists():
-        raise RuntimeError(f"Input directory not found: {input_dir}")
+        error = RuntimeError(f"Input directory not found: {input_dir}")
+        append_failed_phase_benchmark(
+            manifest,
+            2,
+            start_time=phase_start,
+            settings=benchmark_settings,
+            metrics=benchmark_metrics,
+            paths=benchmark_paths,
+            error=error,
+        )
+        raise error
 
     source_images = sorted(
         [f for f in input_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS]
     )
     total_frames = len(source_images)
+    benchmark_metrics["input_frames"] = total_frames
 
 
     # --- SKIP LOGIC ---
@@ -173,6 +208,25 @@ def run_remove_background(
             log_info("Skipping Masking phase...")
 
             update_manifest(manifest_path, manifest, phase=2)
+            append_phase_benchmark(
+                manifest,
+                2,
+                status="skipped",
+                skipped=True,
+                duration_seconds=time.perf_counter() - phase_start,
+                settings={
+                    "force": force,
+                    "yoloe_model_size": yoloe_model_size,
+                    "iou_threshold": iou_threshold,
+                    "drift_limit": drift_limit,
+                },
+                metrics={
+                    "input_frames": total_frames,
+                    "existing_masks": len(existing_masks),
+                    "output_masks": len(existing_masks),
+                },
+                paths={"input_dir": input_dir, "output_dir": output_dir},
+            )
 
             log_info("Phase 2: Masking complete")
             log_progress(value=1.0, label="Masking phase skipped")
@@ -199,127 +253,223 @@ def run_remove_background(
         if torch.backends.mps.is_available()
         else "cpu"
     )
+    benchmark_settings["device"] = device
 
-    detector = YOLOE(str(MODELS_DIR / f"yoloe-26{yoloe_model_size}-seg-pf.pt"))
-    segmenter = SAM(str(MODELS_DIR / "sam2.1_s.pt"))
+    try:
+        detector = YOLOE(str(MODELS_DIR / f"yoloe-26{yoloe_model_size}-seg-pf.pt"))
+        segmenter = SAM(str(MODELS_DIR / "sam2.1_s.pt"))
+    except (RuntimeError, ValueError, OSError) as error:
+        append_failed_phase_benchmark(
+            manifest,
+            2,
+            start_time=phase_start,
+            settings=benchmark_settings,
+            metrics=benchmark_metrics,
+            paths=benchmark_paths,
+            error=error,
+        )
+        raise
 
     start_perf = time.perf_counter()
     total_user_time = 0.0  # Tracks elapsed human intervention overhead
+    user_selection_requests = 0
+    user_skip_or_failed_selection_count = 0
+    blank_mask_count = 0
+    successful_mask_count = 0
+    unreadable_frame_count = 0
+    tracking_break_count = 0
+    sam_failure_count = 0
     prev_box = None
 
     total_imgs = len(source_images)
-    for i, img_path in enumerate(source_images):
-        img = cv2.imread(str(img_path))
-        if img is None:
-            continue
+    try:
+        for i, img_path in enumerate(source_images):
+            benchmark_metrics["processed_frames"] = i
+            img = cv2.imread(str(img_path))
+            if img is None:
+                unreadable_frame_count += 1
+                benchmark_metrics["unreadable_frames"] = unreadable_frame_count
+                continue
 
-        h_img, w_img = img.shape[:2]
-        img_area = h_img * w_img
-        target_path = output_dir / f"{img_path.stem}.png"
+            h_img, w_img = img.shape[:2]
+            img_area = h_img * w_img
+            target_path = output_dir / f"{img_path.stem}.png"
 
-        # 1. YOLOE Bounding Box Prediction
-        det_results = detector.predict(
-            source=img, conf=0.25, device=device, verbose=False
-        )[0]
-        valid_boxes = []
+            # 1. YOLOE Bounding Box Prediction
+            det_results = detector.predict(
+                source=img, conf=0.25, device=device, verbose=False
+            )[0]
+            valid_boxes = []
 
-        if det_results.boxes is not None:
-            for box in det_results.boxes:
-                coords = box.xyxy[0].cpu().numpy()
-                box_area = (coords[2] - coords[0]) * (coords[3] - coords[1])
-                if (box_area / img_area) < 0.70:
-                    valid_boxes.append(coords.tolist())
+            if det_results.boxes is not None:
+                for box in det_results.boxes:
+                    coords = box.xyxy[0].cpu().numpy()
+                    box_area = (coords[2] - coords[0]) * (coords[3] - coords[1])
+                    if (box_area / img_area) < 0.70:
+                        valid_boxes.append(coords.tolist())
 
-        # 2. Strict Math Validation Heuristics (IoU & Drift Boundary Gates)
-        chosen_box = None
-        if prev_box is None:
-            # First frame initialization anchor configuration
-            chosen_box, wait_time = yield from _get_user_selection(
-                img, detector, temp_dir, img_path.stem, device
-            )
-            total_user_time += wait_time
-        elif valid_boxes:
-            best_iou = -1.0
-            best_match = None
-
-            for candidate in valid_boxes:
-                iou = _calculate_iou(prev_box, candidate)
-                drift = _calculate_centroid_drift(prev_box, candidate)
-
-                if iou > iou_threshold and drift < drift_limit and iou > best_iou:
-                    best_iou = iou
-                    best_match = candidate
-
-            if best_match is not None:
-                chosen_box = best_match
-            else:
-                print("\n")
-                log_error(f"Tracking signature broke on {img_path.name} (Strict limits violated).")
+            # 2. Strict Math Validation Heuristics (IoU & Drift Boundary Gates)
+            chosen_box = None
+            if prev_box is None:
+                # First frame initialization anchor configuration
+                user_selection_requests += 1
+                benchmark_metrics["user_selection_requests"] = user_selection_requests
                 chosen_box, wait_time = yield from _get_user_selection(
                     img, detector, temp_dir, img_path.stem, device
                 )
                 total_user_time += wait_time
-        else:
-            chosen_box, wait_time = yield from _get_user_selection(
-                img, detector, temp_dir, img_path.stem, device
-            )
-            total_user_time += wait_time
+                benchmark_metrics["total_user_interaction_seconds"] = total_user_time
+            elif valid_boxes:
+                best_iou = -1.0
+                best_match = None
 
-        # If skipped or failed, write zeroed blank structural mask frame matching target shape
-        if chosen_box is None:
-            cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
-            prev_box = None
-            continue
+                for candidate in valid_boxes:
+                    iou = _calculate_iou(prev_box, candidate)
+                    drift = _calculate_centroid_drift(prev_box, candidate)
 
-        prev_box = chosen_box
+                    if iou > iou_threshold and drift < drift_limit and iou > best_iou:
+                        best_iou = iou
+                        best_match = candidate
 
-        # 3. Static Segment Anything Model Extraction
-        box_w, box_h = chosen_box[2] - chosen_box[0], chosen_box[3] - chosen_box[1]
-        pad_x, pad_y = box_w * 0.08, box_h * 0.08
-        padded_box = [
-            max(0, chosen_box[0] - pad_x),
-            max(0, chosen_box[1] - pad_y),
-            min(w_img, chosen_box[2] + pad_x),
-            min(h_img, chosen_box[3] + pad_y),
-        ]
+                if best_match is not None:
+                    chosen_box = best_match
+                else:
+                    print("\n")
+                    tracking_break_count += 1
+                    benchmark_metrics["tracking_breaks"] = tracking_break_count
+                    log_error(f"Tracking signature broke on {img_path.name} (Strict limits violated).")
+                    user_selection_requests += 1
+                    benchmark_metrics["user_selection_requests"] = user_selection_requests
+                    chosen_box, wait_time = yield from _get_user_selection(
+                        img, detector, temp_dir, img_path.stem, device
+                    )
+                    total_user_time += wait_time
+                    benchmark_metrics["total_user_interaction_seconds"] = total_user_time
+            else:
+                user_selection_requests += 1
+                benchmark_metrics["user_selection_requests"] = user_selection_requests
+                chosen_box, wait_time = yield from _get_user_selection(
+                    img, detector, temp_dir, img_path.stem, device
+                )
+                total_user_time += wait_time
+                benchmark_metrics["total_user_interaction_seconds"] = total_user_time
 
-        try:
-            sam_results = segmenter.predict(
-                source=img, bboxes=[padded_box], device=device, verbose=False
-            )[0]
-        except (RuntimeError, ValueError, OSError) as e:
-            log_info(f"[!] SAM failed on {img_path.name}: {e}")
-            sam_results = None
+            # If skipped or failed, write zeroed blank structural mask frame matching target shape
+            if chosen_box is None:
+                cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
+                blank_mask_count += 1
+                user_skip_or_failed_selection_count += 1
+                benchmark_metrics["blank_masks"] = blank_mask_count
+                benchmark_metrics["user_skip_or_failed_selection_count"] = user_skip_or_failed_selection_count
+                prev_box = None
+                benchmark_metrics["processed_frames"] = i + 1
+                continue
 
-        if sam_results is not None and sam_results.masks is not None and len(sam_results.masks.data) > 0:
-            mask_np = sam_results.masks.data[0].cpu().numpy()
-            mask_resized = cv2.resize(
-                (mask_np > 0).astype(np.uint8) * 255,
-                (w_img, h_img),
-                interpolation=cv2.INTER_NEAREST,
-            )
+            prev_box = chosen_box
 
-            bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
-            bgra[:, :, :3] = cv2.bitwise_and(
-                bgra[:, :, :3], bgra[:, :, :3], mask=mask_resized
-            )
-            bgra[mask_resized == 0, :3] = 255
-            bgra[:, :, 3] = mask_resized
+            # 3. Static Segment Anything Model Extraction
+            box_w, box_h = chosen_box[2] - chosen_box[0], chosen_box[3] - chosen_box[1]
+            pad_x, pad_y = box_w * 0.08, box_h * 0.08
+            padded_box = [
+                max(0, chosen_box[0] - pad_x),
+                max(0, chosen_box[1] - pad_y),
+                min(w_img, chosen_box[2] + pad_x),
+                min(h_img, chosen_box[3] + pad_y),
+            ]
 
-            # executor.submit(cv2.imwrite, str(target_path), bgra)
-            cv2.imwrite(str(target_path), bgra)
-        else:
-            cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
-            prev_box = None
+            try:
+                sam_results = segmenter.predict(
+                    source=img, bboxes=[padded_box], device=device, verbose=False
+                )[0]
+            except (RuntimeError, ValueError, OSError) as e:
+                log_info(f"[!] SAM failed on {img_path.name}: {e}")
+                sam_failure_count += 1
+                benchmark_metrics["sam_failures"] = sam_failure_count
+                sam_results = None
 
-        if i % 5 == 0 or i == total_imgs - 1:
-            log_progress(value=(i+1)/total_imgs, label=f"Processed frame {i+1}/{total_imgs}")
+            if sam_results is not None and sam_results.masks is not None and len(sam_results.masks.data) > 0:
+                mask_np = sam_results.masks.data[0].cpu().numpy()
+                mask_resized = cv2.resize(
+                    (mask_np > 0).astype(np.uint8) * 255,
+                    (w_img, h_img),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+
+                bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+                bgra[:, :, :3] = cv2.bitwise_and(
+                    bgra[:, :, :3], bgra[:, :, :3], mask=mask_resized
+                )
+                bgra[mask_resized == 0, :3] = 255
+                bgra[:, :, 3] = mask_resized
+
+                # executor.submit(cv2.imwrite, str(target_path), bgra)
+                cv2.imwrite(str(target_path), bgra)
+                successful_mask_count += 1
+                benchmark_metrics["successful_masks"] = successful_mask_count
+            else:
+                cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
+                blank_mask_count += 1
+                benchmark_metrics["blank_masks"] = blank_mask_count
+                prev_box = None
+
+            benchmark_metrics["processed_frames"] = i + 1
+            if i % 5 == 0 or i == total_imgs - 1:
+                log_progress(value=(i+1)/total_imgs, label=f"Processed frame {i+1}/{total_imgs}")
+    except (RuntimeError, ValueError, OSError, cv2.error) as error:
+        output_mask_count = len([f for f in output_dir.iterdir() if f.suffix.lower() == ".png"])
+        benchmark_metrics["output_masks"] = output_mask_count
+        benchmark_metrics["ai_processing_seconds"] = max(
+            0.0, time.perf_counter() - start_perf - total_user_time
+        )
+        append_failed_phase_benchmark(
+            manifest,
+            2,
+            start_time=phase_start,
+            settings=benchmark_settings,
+            metrics=benchmark_metrics,
+            paths=benchmark_paths,
+            error=error,
+        )
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+        raise
 
 
     total_time = time.perf_counter() - start_perf
     processing_time = total_time - total_user_time
 
+    output_mask_count = len([f for f in output_dir.iterdir() if f.suffix.lower() == ".png"])
+
     update_manifest(manifest_path, manifest, phase=2)
+    append_phase_benchmark(
+        manifest,
+        2,
+        status="completed",
+        skipped=False,
+        duration_seconds=total_time,
+        settings={
+            "force": force,
+            "yoloe_model_size": yoloe_model_size,
+            "iou_threshold": iou_threshold,
+            "drift_limit": drift_limit,
+            "device": device,
+        },
+        metrics={
+            "input_frames": total_frames,
+            "output_masks": output_mask_count,
+            "successful_masks": successful_mask_count,
+            "blank_masks": blank_mask_count,
+            "unreadable_frames": unreadable_frame_count,
+            "user_selection_requests": user_selection_requests,
+            "user_skip_or_failed_selection_count": user_skip_or_failed_selection_count,
+            "tracking_breaks": tracking_break_count,
+            "sam_failures": sam_failure_count,
+            "processed_frames": benchmark_metrics["processed_frames"],
+            "total_user_interaction_seconds": total_user_time,
+            "ai_processing_seconds": processing_time,
+        },
+        paths={"input_dir": input_dir, "output_dir": output_dir},
+    )
 
     if temp_dir.exists():
         shutil.rmtree(temp_dir)
