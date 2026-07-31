@@ -10,24 +10,29 @@ PHASE_NAMES = {
     5: "export",
 }
 
-__all__ = ["initialize_manifest", "load_manifest", "update_manifest"]
+__all__ = ["build_manifest", "initialize_manifest", "load_manifest", "update_manifest"]
 
 
-def initialize_manifest(
-    manifest_path: Path,
+def build_manifest(
     name: str,
     input_path: Path,
     args: dict,
-    paths_dict: dict
+    paths_dict: dict,
 ) -> dict:
-    """Creates the initial manifest schema and saves it to disk."""
-    manifest = {
+    """Builds the manifest schema for a pipeline invocation without saving it."""
+    capture_mode = "image" if args.get("image") else "video" if args.get("video") else "auto"
+
+    return {
         "run_name": name,
         "input_source": str(input_path),
         "mode": args.get("mode", "disk"),
         "settings": {
             "minimum_frames": args.get("minimum_frames", 45),
-            "quality": args.get("quality", "fast")
+            "quality": args.get("quality", "fast"),
+            "capture_mode": capture_mode,
+            "yoloe_model_size": args.get("yoloe_model_size", "s"),
+            "iou_threshold": args.get("iou_threshold", 0.50),
+            "drift_limit": args.get("drift_limit", 200),
         },
         "status": {
             "phase": 0,
@@ -36,6 +41,16 @@ def initialize_manifest(
         "paths": paths_dict,
     }
 
+
+def initialize_manifest(
+    manifest_path: Path,
+    name: str,
+    input_path: Path,
+    args: dict,
+    paths_dict: dict,
+) -> dict:
+    """Creates the initial manifest schema and saves it to disk."""
+    manifest = build_manifest(name, input_path, args, paths_dict)
     _save_manifest(manifest_path, manifest)
     return manifest
 
