@@ -18,6 +18,7 @@ public:
         const std::vector<std::string>& logs,
         PipelineController& controller
     );
+    void Shutdown();
 
 private:
     LogView logView_;

@@ -1,16 +1,16 @@
-import base64
+import binascii
 import json
 import re
+import struct
 import sys
 import threading
+import zlib
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
-PREVIEW_PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
-)
+
 CUBE_OBJ = """# Dummy backend cube
 v -0.5 -0.5 -0.5
 v 0.5 -0.5 -0.5
@@ -40,6 +40,29 @@ def send(event):
 
 def diagnostic(message):
     print(message, file=sys.stderr, flush=True)
+
+
+def write_preview(path):
+    width = 480
+    height = 270
+    colors = ((220, 90, 90), (90, 190, 120), (90, 130, 220))
+    rows = bytearray()
+    for y in range(height):
+        rows.append(0)
+        for x in range(width):
+            color = colors[min(x * len(colors) // width, len(colors) - 1)]
+            shade = 25 if (x // 16 + y // 16) % 2 else 0
+            rows.extend(min(channel + shade, 255) for channel in color)
+
+    def chunk(kind, data):
+        payload = kind + data
+        return struct.pack(">I", len(data)) + payload + struct.pack(">I", binascii.crc32(payload))
+
+    png = b"\x89PNG\r\n\x1a\n"
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(bytes(rows)))
+    png += chunk(b"IEND", b"")
+    path.write_bytes(png)
 
 
 def emit_cancelled(session):
@@ -79,7 +102,7 @@ def run_worker(session):
 
             if phase == 2:
                 preview = (workspace / "mask-preview.png").resolve()
-                preview.write_bytes(PREVIEW_PNG)
+                write_preview(preview)
                 send({
                     "type": "selection_required",
                     "run_id": run_id,

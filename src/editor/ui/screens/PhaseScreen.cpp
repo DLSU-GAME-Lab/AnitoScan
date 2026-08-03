@@ -82,3 +82,7 @@ void PhaseScreen::Render(
     runControls_.Render(run, backendReady, controller);
     ImGui::End();
 }
+
+void PhaseScreen::Shutdown() {
+    maskingContent_.Shutdown();
+}

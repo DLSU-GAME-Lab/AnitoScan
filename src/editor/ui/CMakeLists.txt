@@ -18,5 +18,7 @@ target_link_libraries(editor_ui
     PUBLIC
         SDL2::SDL2
     PRIVATE
+        glad
         vendor::imgui
+        vendor::stb
 )

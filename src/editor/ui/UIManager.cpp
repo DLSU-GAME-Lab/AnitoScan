@@ -85,6 +85,8 @@ void UIManager::EndFrame() {
 }
 
 void UIManager::Shutdown() {
+    phaseScreen_.Shutdown();
+
     if (openGLBackendInitialized_) {
         ImGui_ImplOpenGL3_Shutdown();
         openGLBackendInitialized_ = false;
