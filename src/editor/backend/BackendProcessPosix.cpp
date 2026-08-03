@@ -6,6 +6,7 @@
 
 #include <cerrno>
 #include <csignal>
+#include <mutex>
 #include <spawn.h>
 #include <string>
 #include <time.h>
@@ -21,6 +22,8 @@ struct BackendProcess::Impl {
     int stdinFd_ = -1;
     int stdoutFd_ = -1;
     int stderrFd_ = -1;
+    std::mutex stdoutMutex_;
+    std::mutex stderrMutex_;
     std::string stdoutBuffer_;
     std::string stderrBuffer_;
 };
@@ -166,10 +169,16 @@ bool BackendProcess::Start(const std::filesystem::path& executable,
 
     impl_->pid_ = pid;
     impl_->stdinFd_ = stdinPipe[1];
-    impl_->stdoutFd_ = stdoutPipe[0];
-    impl_->stderrFd_ = stderrPipe[0];
-    impl_->stdoutBuffer_.clear();
-    impl_->stderrBuffer_.clear();
+    {
+        std::scoped_lock lock(impl_->stdoutMutex_);
+        impl_->stdoutFd_ = stdoutPipe[0];
+        impl_->stdoutBuffer_.clear();
+    }
+    {
+        std::scoped_lock lock(impl_->stderrMutex_);
+        impl_->stderrFd_ = stderrPipe[0];
+        impl_->stderrBuffer_.clear();
+    }
     return true;
 }
 
@@ -200,10 +209,16 @@ void BackendProcess::Stop() {
         impl_->pid_ = -1;
     }
 
-    CloseFd(impl_->stdoutFd_);
-    CloseFd(impl_->stderrFd_);
-    impl_->stdoutBuffer_.clear();
-    impl_->stderrBuffer_.clear();
+    {
+        std::scoped_lock lock(impl_->stdoutMutex_);
+        CloseFd(impl_->stdoutFd_);
+        impl_->stdoutBuffer_.clear();
+    }
+    {
+        std::scoped_lock lock(impl_->stderrMutex_);
+        CloseFd(impl_->stderrFd_);
+        impl_->stderrBuffer_.clear();
+    }
 }
 
 bool BackendProcess::IsRunning() {
@@ -244,9 +259,11 @@ bool BackendProcess::WriteLine(std::string_view line) {
 }
 
 bool BackendProcess::ReadStdoutLine(std::string& line) {
+    std::scoped_lock lock(impl_->stdoutMutex_);
     return impl_->stdoutFd_ >= 0 && ReadLine(impl_->stdoutFd_, impl_->stdoutBuffer_, line);
 }
 
 bool BackendProcess::ReadStderrLine(std::string& line) {
+    std::scoped_lock lock(impl_->stderrMutex_);
     return impl_->stderrFd_ >= 0 && ReadLine(impl_->stderrFd_, impl_->stderrBuffer_, line);
 }

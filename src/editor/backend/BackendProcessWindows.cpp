@@ -3,6 +3,7 @@
 
 #include "editor/backend/BackendProcess.h"
 
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -13,6 +14,8 @@ struct BackendProcess::Impl {
     HANDLE stdinWrite_ = nullptr;
     HANDLE stdoutRead_ = nullptr;
     HANDLE stderrRead_ = nullptr;
+    std::mutex stdoutMutex_;
+    std::mutex stderrMutex_;
     std::string stdoutBuffer_;
     std::string stderrBuffer_;
 };
@@ -106,16 +109,20 @@ bool BackendProcess::Start(const std::filesystem::path& executable,
 
     SECURITY_ATTRIBUTES security {sizeof(security), nullptr, TRUE};
     HANDLE stdinRead = nullptr;
+    HANDLE stdoutRead = nullptr;
     HANDLE stdoutWrite = nullptr;
+    HANDLE stderrRead = nullptr;
     HANDLE stderrWrite = nullptr;
     if (!CreatePipe(&stdinRead, &impl_->stdinWrite_, &security, 0) ||
-        !CreatePipe(&impl_->stdoutRead_, &stdoutWrite, &security, 0) ||
-        !CreatePipe(&impl_->stderrRead_, &stderrWrite, &security, 0) ||
+        !CreatePipe(&stdoutRead, &stdoutWrite, &security, 0) ||
+        !CreatePipe(&stderrRead, &stderrWrite, &security, 0) ||
         !SetHandleInformation(impl_->stdinWrite_, HANDLE_FLAG_INHERIT, 0) ||
-        !SetHandleInformation(impl_->stdoutRead_, HANDLE_FLAG_INHERIT, 0) ||
-        !SetHandleInformation(impl_->stderrRead_, HANDLE_FLAG_INHERIT, 0)) {
+        !SetHandleInformation(stdoutRead, HANDLE_FLAG_INHERIT, 0) ||
+        !SetHandleInformation(stderrRead, HANDLE_FLAG_INHERIT, 0)) {
         CloseHandleIfSet(stdinRead);
+        CloseHandleIfSet(stdoutRead);
         CloseHandleIfSet(stdoutWrite);
+        CloseHandleIfSet(stderrRead);
         CloseHandleIfSet(stderrWrite);
         Stop();
         return false;
@@ -127,7 +134,9 @@ bool BackendProcess::Start(const std::filesystem::path& executable,
     if (!impl_->job_ || !SetInformationJobObject(impl_->job_, JobObjectExtendedLimitInformation,
                                                   &limits, sizeof(limits))) {
         CloseHandleIfSet(stdinRead);
+        CloseHandleIfSet(stdoutRead);
         CloseHandleIfSet(stdoutWrite);
+        CloseHandleIfSet(stderrRead);
         CloseHandleIfSet(stderrWrite);
         Stop();
         return false;
@@ -138,7 +147,9 @@ bool BackendProcess::Start(const std::filesystem::path& executable,
         std::wstring wideArgument = Utf8ToWide(argument);
         if (!argument.empty() && wideArgument.empty()) {
             CloseHandleIfSet(stdinRead);
+            CloseHandleIfSet(stdoutRead);
             CloseHandleIfSet(stdoutWrite);
+            CloseHandleIfSet(stderrRead);
             CloseHandleIfSet(stderrWrite);
             Stop();
             return false;
@@ -164,6 +175,8 @@ bool BackendProcess::Start(const std::filesystem::path& executable,
     CloseHandleIfSet(stdoutWrite);
     CloseHandleIfSet(stderrWrite);
     if (!created) {
+        CloseHandleIfSet(stdoutRead);
+        CloseHandleIfSet(stderrRead);
         Stop();
         return false;
     }
@@ -172,8 +185,22 @@ bool BackendProcess::Start(const std::filesystem::path& executable,
     if (!AssignProcessToJobObject(impl_->job_, impl_->process_)) {
         TerminateProcess(impl_->process_, 1);
         CloseHandle(processInfo.hThread);
+        CloseHandleIfSet(stdoutRead);
+        CloseHandleIfSet(stderrRead);
         Stop();
         return false;
+    }
+    {
+        std::scoped_lock lock(impl_->stdoutMutex_);
+        impl_->stdoutRead_ = stdoutRead;
+        stdoutRead = nullptr;
+        impl_->stdoutBuffer_.clear();
+    }
+    {
+        std::scoped_lock lock(impl_->stderrMutex_);
+        impl_->stderrRead_ = stderrRead;
+        stderrRead = nullptr;
+        impl_->stderrBuffer_.clear();
     }
     if (ResumeThread(processInfo.hThread) == static_cast<DWORD>(-1)) {
         TerminateJobObject(impl_->job_, 1);
@@ -182,8 +209,6 @@ bool BackendProcess::Start(const std::filesystem::path& executable,
         return false;
     }
     CloseHandle(processInfo.hThread);
-    impl_->stdoutBuffer_.clear();
-    impl_->stderrBuffer_.clear();
     return true;
 }
 
@@ -197,12 +222,18 @@ void BackendProcess::Stop() {
     if (impl_->process_) {
         WaitForSingleObject(impl_->process_, 1000);
     }
-    CloseHandleIfSet(impl_->stdoutRead_);
-    CloseHandleIfSet(impl_->stderrRead_);
+    {
+        std::scoped_lock lock(impl_->stdoutMutex_);
+        CloseHandleIfSet(impl_->stdoutRead_);
+        impl_->stdoutBuffer_.clear();
+    }
+    {
+        std::scoped_lock lock(impl_->stderrMutex_);
+        CloseHandleIfSet(impl_->stderrRead_);
+        impl_->stderrBuffer_.clear();
+    }
     CloseHandleIfSet(impl_->process_);
     CloseHandleIfSet(impl_->job_);
-    impl_->stdoutBuffer_.clear();
-    impl_->stderrBuffer_.clear();
 }
 
 bool BackendProcess::IsRunning() {
@@ -232,9 +263,11 @@ bool BackendProcess::WriteLine(std::string_view line) {
 }
 
 bool BackendProcess::ReadStdoutLine(std::string& line) {
+    std::scoped_lock lock(impl_->stdoutMutex_);
     return impl_->stdoutRead_ && ReadLine(impl_->stdoutRead_, impl_->stdoutBuffer_, line);
 }
 
 bool BackendProcess::ReadStderrLine(std::string& line) {
+    std::scoped_lock lock(impl_->stderrMutex_);
     return impl_->stderrRead_ && ReadLine(impl_->stderrRead_, impl_->stderrBuffer_, line);
 }
