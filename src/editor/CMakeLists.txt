@@ -1,3 +1,4 @@
+add_subdirectory(controller)
 add_subdirectory(render)
 add_subdirectory(ui)
 
@@ -11,6 +12,7 @@ target_include_directories(${MAIN_TARGET} PRIVATE
 )
 
 target_link_libraries(${MAIN_TARGET} PRIVATE
+    editor_controller
     editor_render
     editor_ui
     deps::engine
