@@ -1,10 +1,11 @@
 #include "editor/ui/screens/RunSetupScreen.h"
 
 #include "editor/controller/PipelineController.h"
+#include "editor/domain/EditorState.h"
 
 #include <imgui.h>
 
-void RunSetupScreen::Render(PipelineController& controller) {
+void RunSetupScreen::Render(const EditorState& state, PipelineController& controller) {
     const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(mainViewport->WorkPos);
     ImGui::SetNextWindowSize(mainViewport->WorkSize);
@@ -22,5 +23,10 @@ void RunSetupScreen::Render(PipelineController& controller) {
         controller.CreateRun(runName_.data());
         runName_.fill('\0');
     }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    runSelector_.Render(state, controller);
     ImGui::End();
 }

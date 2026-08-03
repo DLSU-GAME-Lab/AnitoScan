@@ -69,7 +69,7 @@ void UIManager::Render(
 ) {
     const RunState* selectedRun = FindSelectedRun(state);
     if (selectedRun == nullptr) {
-        runSetupScreen_.Render(controller);
+        runSetupScreen_.Render(state, controller);
     } else if (
         selectedRun->status == RunStatus::Completed && selectedRun->outputModelPath.has_value()
     ) {

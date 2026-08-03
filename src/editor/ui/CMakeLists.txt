@@ -6,6 +6,7 @@ add_library(editor_ui STATIC
     components/Viewport.cpp
     components/LogView.cpp
     components/RunControls.cpp
+    components/RunSelector.cpp
     components/MaskingContent.cpp
 )
 
