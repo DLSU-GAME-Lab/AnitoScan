@@ -1,5 +1,7 @@
 add_library(editor_ui STATIC
     UIManager.cpp
+    screens/RunSetupScreen.cpp
+    screens/PhaseScreen.cpp
     screens/PostExportScreen.cpp
     components/Viewport.cpp
 )

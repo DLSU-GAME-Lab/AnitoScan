@@ -1,10 +1,29 @@
 #include "editor/ui/UIManager.h"
 
+#include "editor/controller/PipelineController.h"
+#include "editor/domain/EditorState.h"
+
 #include <iostream>
 
 #include <imgui.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <backends/imgui_impl_sdl2.h>
+
+namespace {
+const RunState* FindSelectedRun(const EditorState& state) {
+    if (!state.selectedRunId) {
+        return nullptr;
+    }
+
+    for (const RunState& run : state.runs) {
+        if (run.id == *state.selectedRunId) {
+            return &run;
+        }
+    }
+
+    return nullptr;
+}
+}
 
 UIManager::~UIManager() {
     Shutdown();
@@ -43,8 +62,21 @@ void UIManager::BeginFrame() {
     ImGui::NewFrame();
 }
 
-void UIManager::Render(const EditorState& state, unsigned int textureId) {
-    postExportScreen_.Render(state, textureId);
+void UIManager::Render(
+    const EditorState& state,
+    PipelineController& controller,
+    unsigned int textureId
+) {
+    const RunState* selectedRun = FindSelectedRun(state);
+    if (selectedRun == nullptr) {
+        runSetupScreen_.Render(controller);
+    } else if (
+        selectedRun->status == RunStatus::Completed && selectedRun->outputModelPath.has_value()
+    ) {
+        postExportScreen_.Render(textureId);
+    } else {
+        phaseScreen_.Render(*selectedRun);
+    }
 }
 
 void UIManager::EndFrame() {

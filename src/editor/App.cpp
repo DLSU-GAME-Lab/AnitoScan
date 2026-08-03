@@ -112,6 +112,7 @@ void App::Run() {
         uiManager_.BeginFrame();
         uiManager_.Render(
             controller_.GetState(),
+            controller_,
             scene_->GetModel() ? scene_->GetColorTexture() : 0
         );
 
