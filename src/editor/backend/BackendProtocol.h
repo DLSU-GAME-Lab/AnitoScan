@@ -1,0 +1,67 @@
+#pragma once
+
+#include "editor/domain/PipelineTypes.h"
+
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <variant>
+
+struct StartRunCommand {
+    RunId runId;
+    std::string name;
+};
+
+struct SubmitSelectionCommand {
+    RunId runId;
+    std::optional<int> choice;
+};
+
+struct CancelRunCommand {
+    RunId runId;
+};
+
+using BackendCommand = std::variant<StartRunCommand, SubmitSelectionCommand, CancelRunCommand>;
+
+struct BackendReadyEvent {};
+
+struct LogEvent {
+    std::optional<RunId> runId;
+    std::string text;
+};
+
+struct WorkspaceReadyEvent {
+    RunId runId;
+    std::filesystem::path workspacePath;
+};
+
+struct ProgressEvent {
+    RunId runId;
+    PipelinePhase phase;
+    float value;
+    std::string label;
+};
+
+struct SelectionRequiredEvent {
+    RunId runId;
+    std::string frame;
+    std::filesystem::path previewPath;
+    int candidateCount;
+};
+
+struct RunCompletedEvent {
+    RunId runId;
+    std::filesystem::path outputModelPath;
+};
+
+struct RunFailedEvent {
+    RunId runId;
+    std::string message;
+};
+
+using BackendEvent = std::variant<BackendReadyEvent, LogEvent, WorkspaceReadyEvent, ProgressEvent,
+                                  SelectionRequiredEvent, RunCompletedEvent, RunFailedEvent>;
+
+std::string SerializeCommand(const BackendCommand& command);
+std::optional<BackendEvent> ParseEvent(std::string_view message);

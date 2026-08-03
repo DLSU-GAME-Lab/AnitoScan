@@ -1,0 +1,125 @@
+#include "editor/backend/BackendProtocol.h"
+
+#include <nlohmann/json.hpp>
+
+#include <type_traits>
+#include <utility>
+
+namespace {
+
+std::optional<PipelinePhase> ParsePhase(int phase) {
+    switch (phase) {
+    case 1:
+        return PipelinePhase::Capture;
+    case 2:
+        return PipelinePhase::Masking;
+    case 3:
+        return PipelinePhase::Spatial;
+    case 4:
+        return PipelinePhase::Geometry;
+    case 5:
+        return PipelinePhase::Export;
+    default:
+        return std::nullopt;
+    }
+}
+
+} // namespace
+
+std::string SerializeCommand(const BackendCommand& command) {
+    return std::visit(
+        [](const auto& value) {
+            using T = std::decay_t<decltype(value)>;
+            nlohmann::json message;
+
+            if constexpr (std::is_same_v<T, StartRunCommand>) {
+                message = {{"action", "start_run"}, {"run_id", value.runId}, {"name", value.name}};
+            } else if constexpr (std::is_same_v<T, SubmitSelectionCommand>) {
+                message = {{"action", "submit_selection"}, {"run_id", value.runId}};
+                message["choice"] = value.choice ? nlohmann::json(*value.choice) : nlohmann::json(nullptr);
+            } else {
+                message = {{"action", "cancel_run"}, {"run_id", value.runId}};
+            }
+
+            return message.dump();
+        },
+        command);
+}
+
+std::optional<BackendEvent> ParseEvent(std::string_view message) {
+    try {
+        const nlohmann::json json = nlohmann::json::parse(message);
+        if (!json.is_object() || !json.contains("type") || !json["type"].is_string()) {
+            return std::nullopt;
+        }
+
+        const std::string type = json["type"].get<std::string>();
+        if (type == "backend_ready") {
+            return BackendReadyEvent{};
+        }
+        if (type == "log") {
+            if (!json.contains("text") || !json["text"].is_string()) {
+                return std::nullopt;
+            }
+
+            std::optional<RunId> runId;
+            if (json.contains("run_id")) {
+                if (!json["run_id"].is_string()) {
+                    return std::nullopt;
+                }
+                runId = json["run_id"].get<RunId>();
+            }
+            return LogEvent{std::move(runId), json["text"].get<std::string>()};
+        }
+
+        if (!json.contains("run_id") || !json["run_id"].is_string()) {
+            return std::nullopt;
+        }
+        const RunId runId = json["run_id"].get<RunId>();
+
+        if (type == "workspace_ready") {
+            if (!json.contains("workspace_path") || !json["workspace_path"].is_string()) {
+                return std::nullopt;
+            }
+            return WorkspaceReadyEvent{runId, json["workspace_path"].get<std::string>()};
+        }
+        if (type == "progress") {
+            if (!json.contains("phase") || !json["phase"].is_number_integer() ||
+                !json.contains("value") || !json["value"].is_number() ||
+                !json.contains("label") || !json["label"].is_string()) {
+                return std::nullopt;
+            }
+            const auto phase = ParsePhase(json["phase"].get<int>());
+            if (!phase) {
+                return std::nullopt;
+            }
+            return ProgressEvent{runId, *phase, json["value"].get<float>(),
+                                 json["label"].get<std::string>()};
+        }
+        if (type == "selection_required") {
+            if (!json.contains("frame") || !json["frame"].is_string() ||
+                !json.contains("preview_path") || !json["preview_path"].is_string() ||
+                !json.contains("candidate_count") || !json["candidate_count"].is_number_integer()) {
+                return std::nullopt;
+            }
+            return SelectionRequiredEvent{runId, json["frame"].get<std::string>(),
+                                          json["preview_path"].get<std::string>(),
+                                          json["candidate_count"].get<int>()};
+        }
+        if (type == "run_completed") {
+            if (!json.contains("output_model_path") || !json["output_model_path"].is_string()) {
+                return std::nullopt;
+            }
+            return RunCompletedEvent{runId, json["output_model_path"].get<std::string>()};
+        }
+        if (type == "run_failed") {
+            if (!json.contains("message") || !json["message"].is_string()) {
+                return std::nullopt;
+            }
+            return RunFailedEvent{runId, json["message"].get<std::string>()};
+        }
+        return std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
