@@ -6,9 +6,6 @@
 #include <memory>
 
 #include <glad/gl.h>
-#include <imgui.h>
-#include <backends/imgui_impl_opengl3.h>
-#include <backends/imgui_impl_sdl2.h>
 
 namespace {
     constexpr int kInitialWindowWidth = 1280;
@@ -22,7 +19,7 @@ App::~App() {
 }
 
 bool App::Initialize() {
-    if (!InitializeSDL() || !InitializeOpenGL() || !InitializeImGui()) {
+    if (!InitializeSDL() || !InitializeOpenGL() || !uiManager_.Initialize(window_, glContext_)) {
         Shutdown();
         return false;
     }
@@ -88,31 +85,13 @@ bool App::InitializeOpenGL() {
     return true;
 }
 
-bool App::InitializeImGui() {
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::StyleColorsDark();
 
-    if (!ImGui_ImplSDL2_InitForOpenGL(window_, glContext_)) {
-        std::cerr << "ImGui SDL2 backend initialization failed\n";
-        return false;
-    }
-    imguiSdlInitialized_ = true;
-
-    if (!ImGui_ImplOpenGL3_Init("#version 330")) {
-        std::cerr << "ImGui OpenGL backend initialization failed\n";
-        return false;
-    }
-    imguiOpenGLInitialized_ = true;
-
-    return true;
-}
 
 void App::Run() {
     while (running_) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            ImGui_ImplSDL2_ProcessEvent(&event);
+            uiManager_.ProcessEvent(event);
             if (event.type == SDL_QUIT ||
                 (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)) {
                 running_ = false;
@@ -125,13 +104,8 @@ void App::Run() {
             scene_->Render(viewportWidth, viewportHeight);
         }
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-
+        uiManager_.BeginFrame();
         uiManager_.Render(scene_ ? scene_->GetColorTexture() : 0);
-
-        ImGui::Render();
 
         int width = 0;
         int height = 0;
@@ -139,7 +113,7 @@ void App::Run() {
         glViewport(0, 0, width, height);
         glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        uiManager_.EndFrame();
 
         SDL_GL_SwapWindow(window_);
     }
@@ -149,17 +123,8 @@ void App::Shutdown() {
     running_ = false;
     scene_.reset();
 
-    if (imguiOpenGLInitialized_) {
-        ImGui_ImplOpenGL3_Shutdown();
-        imguiOpenGLInitialized_ = false;
-    }
-    if (imguiSdlInitialized_) {
-        ImGui_ImplSDL2_Shutdown();
-        imguiSdlInitialized_ = false;
-    }
-    if (ImGui::GetCurrentContext()) {
-        ImGui::DestroyContext();
-    }
+    uiManager_.Shutdown();
+
     if (glContext_) {
         SDL_GL_DeleteContext(glContext_);
         glContext_ = nullptr;

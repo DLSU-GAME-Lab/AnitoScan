@@ -21,13 +21,9 @@ private:
 
     bool InitializeSDL();
     bool InitializeOpenGL();
-    bool InitializeImGui();
-
 
     bool running_ = false;
     bool sdlInitialized_ = false;
-    bool imguiSdlInitialized_ = false;
-    bool imguiOpenGLInitialized_ = false;
     UIManager uiManager_;
     std::unique_ptr<Scene> scene_;
     SDL_Window* window_ = nullptr;
