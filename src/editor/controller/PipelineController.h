@@ -18,6 +18,7 @@ public:
     const RunState* GetSelectedRun() const;
     RunId CreateRun(std::string name);
     bool SelectRun(const RunId& runId);
+    void ClearSelection();
     bool CompleteRun(const RunId& runId, std::filesystem::path outputModelPath);
     bool StartRun(const RunId& runId);
     bool CancelRun(const RunId& runId);

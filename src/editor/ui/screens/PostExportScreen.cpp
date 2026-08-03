@@ -1,8 +1,10 @@
 #include "editor/ui/screens/PostExportScreen.h"
 
+#include "editor/controller/PipelineController.h"
+
 #include <imgui.h>
 
-void PostExportScreen::Render(unsigned int textureId) {
+void PostExportScreen::Render(unsigned int textureId, PipelineController& controller) {
     const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(mainViewport->WorkPos);
     ImGui::SetNextWindowSize(mainViewport->WorkSize);
@@ -15,6 +17,9 @@ void PostExportScreen::Render(unsigned int textureId) {
     ImGui::Begin("Post Export", nullptr, windowFlags);
     ImGui::TextUnformatted("Post Export");
     ImGui::Separator();
+    if (ImGui::Button("New Run")) {
+        controller.ClearSelection();
+    }
 
     viewport_.Render(textureId);
     ImGui::End();

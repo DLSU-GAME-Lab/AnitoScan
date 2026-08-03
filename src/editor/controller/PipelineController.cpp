@@ -47,6 +47,10 @@ bool PipelineController::SelectRun(const RunId& runId) {
     return true;
 }
 
+void PipelineController::ClearSelection() {
+    state_.selectedRunId.reset();
+}
+
 bool PipelineController::CompleteRun(const RunId& runId, std::filesystem::path outputModelPath) {
     RunState* run = FindRun(runId);
     if (run == nullptr ||

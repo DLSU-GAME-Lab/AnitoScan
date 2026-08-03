@@ -30,5 +30,10 @@ void RunControls::Render(
         }
     } else if (run.status == RunStatus::Cancelling) {
         ImGui::TextUnformatted("Cancelling...");
+    } else if (run.status == RunStatus::Completed || run.status == RunStatus::Failed ||
+        run.status == RunStatus::Cancelled) {
+        if (ImGui::Button("New Run")) {
+            controller.ClearSelection();
+        }
     }
 }

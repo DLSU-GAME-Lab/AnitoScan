@@ -73,7 +73,7 @@ void UIManager::Render(
     } else if (
         selectedRun->status == RunStatus::Completed && selectedRun->outputModelPath.has_value()
     ) {
-        postExportScreen_.Render(textureId);
+        postExportScreen_.Render(textureId, controller);
     } else {
         phaseScreen_.Render(*selectedRun, state.backendReady, state.logs, controller);
     }
