@@ -18,10 +18,22 @@ void RunSetupScreen::Render(const EditorState& state, PipelineController& contro
     ImGui::Begin("Run Setup", nullptr, windowFlags);
     ImGui::TextUnformatted("Run Setup");
     ImGui::Separator();
-    ImGui::InputText("Run name", runName_.data(), runName_.size());
+    if (ImGui::InputText("Run name", runName_.data(), runName_.size())) {
+        duplicateName_ = false;
+    }
     if (ImGui::Button("Create Run") && runName_[0] != '\0') {
-        controller.CreateRun(runName_.data());
-        runName_.fill('\0');
+        if (controller.CreateRun(runName_.data())) {
+            runName_.fill('\0');
+            duplicateName_ = false;
+        } else {
+            duplicateName_ = true;
+        }
+    }
+    if (duplicateName_) {
+        ImGui::TextColored(
+            ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
+            "A run with this name already exists"
+        );
     }
 
     ImGui::Spacing();

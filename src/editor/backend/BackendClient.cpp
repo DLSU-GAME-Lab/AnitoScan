@@ -25,10 +25,12 @@ bool BackendClient::Start(const BackendConfig& config) {
         diagnostics_.clear();
     }
 
+    stopping_ = false;
     try {
         stdoutReader_ = std::thread(&BackendClient::ReadStdout, this);
         stderrReader_ = std::thread(&BackendClient::ReadStderr, this);
     } catch (...) {
+        stopping_ = true;
         process_.Stop();
         if (stdoutReader_.joinable()) {
             stdoutReader_.join();
@@ -43,6 +45,7 @@ bool BackendClient::Start(const BackendConfig& config) {
 }
 
 void BackendClient::Stop() {
+    stopping_ = true;
     process_.Stop();
     if (stdoutReader_.joinable()) {
         stdoutReader_.join();
@@ -105,6 +108,11 @@ void BackendClient::ReadStdout() {
             std::scoped_lock lock(diagnosticMutex_);
             diagnostics_.push_back(std::move(line));
         }
+    }
+
+    if (!stopping_) {
+        std::scoped_lock lock(eventMutex_);
+        events_.push_back(BackendDisconnectedEvent{"Backend process disconnected"});
     }
 }
 

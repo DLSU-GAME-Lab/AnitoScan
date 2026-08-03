@@ -14,4 +14,5 @@ public:
 private:
     std::array<char, 128> runName_{};
     RunSelector runSelector_;
+    bool duplicateName_ = false;
 };

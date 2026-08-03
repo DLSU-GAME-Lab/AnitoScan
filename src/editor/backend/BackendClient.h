@@ -4,6 +4,7 @@
 #include "editor/backend/BackendProcess.h"
 #include "editor/backend/BackendProtocol.h"
 
+#include <atomic>
 #include <deque>
 #include <mutex>
 #include <string>
@@ -40,4 +41,5 @@ private:
     std::deque<BackendEvent> events_;
     std::mutex diagnosticMutex_;
     std::deque<std::string> diagnostics_;
+    std::atomic<bool> stopping_ = true;
 };

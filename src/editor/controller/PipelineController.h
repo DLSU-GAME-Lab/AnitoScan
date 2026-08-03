@@ -16,7 +16,7 @@ public:
 
     const EditorState& GetState() const;
     const RunState* GetSelectedRun() const;
-    RunId CreateRun(std::string name);
+    bool CreateRun(std::string name);
     bool SelectRun(const RunId& runId);
     void ClearSelection();
     bool CompleteRun(const RunId& runId, std::filesystem::path outputModelPath);

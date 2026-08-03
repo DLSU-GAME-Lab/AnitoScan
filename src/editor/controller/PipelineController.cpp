@@ -28,14 +28,20 @@ const RunState* PipelineController::GetSelectedRun() const {
     return FindRun(*state_.selectedRunId);
 }
 
-RunId PipelineController::CreateRun(std::string name) {
+bool PipelineController::CreateRun(std::string name) {
+    for (const RunState& existingRun : state_.runs) {
+        if (existingRun.name == name) {
+            return false;
+        }
+    }
+
     RunState run;
     run.id = "run-" + std::to_string(nextRunId_++);
     run.name = std::move(name);
 
     state_.runs.push_back(std::move(run));
     state_.selectedRunId = state_.runs.back().id;
-    return state_.runs.back().id;
+    return true;
 }
 
 bool PipelineController::SelectRun(const RunId& runId) {
@@ -146,6 +152,16 @@ void PipelineController::HandleEvent(const BackendEvent& event) {
         if constexpr (std::is_same_v<Event, BackendReadyEvent>) {
             state_.backendReady = true;
             state_.logs.push_back("Backend ready");
+        } else if constexpr (std::is_same_v<Event, BackendDisconnectedEvent>) {
+            state_.backendReady = false;
+            state_.logs.push_back(value.message);
+            for (RunState& run : state_.runs) {
+                if (run.status == RunStatus::Running || run.status == RunStatus::Cancelling) {
+                    run.status = RunStatus::Failed;
+                    run.errorMessage = value.message;
+                    run.selectionRequest.reset();
+                }
+            }
         } else if constexpr (std::is_same_v<Event, LogEvent>) {
             state_.logs.push_back(value.text);
         } else {
