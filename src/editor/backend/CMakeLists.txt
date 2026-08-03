@@ -1,4 +1,7 @@
+find_package(Threads REQUIRED)
+
 add_library(editor_backend STATIC
+    BackendClient.cpp
     BackendProtocol.cpp
 )
 
@@ -14,4 +17,5 @@ target_include_directories(editor_backend PUBLIC
 
 target_link_libraries(editor_backend PRIVATE
     nlohmann_json::nlohmann_json
+    Threads::Threads
 )
