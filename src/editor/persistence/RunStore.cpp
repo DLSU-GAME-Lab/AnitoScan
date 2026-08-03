@@ -363,3 +363,14 @@ bool RunStore::SaveRun(const RunState& run) const {
     std::filesystem::rename(temporaryPath, manifestPath, error);
     return !error;
 }
+
+bool RunStore::DeleteRun(const RunState& run) const {
+    const std::filesystem::path name(run.name);
+    if (run.name.empty() || name != name.filename() || run.name == "." || run.name == "..") {
+        return false;
+    }
+
+    std::error_code error;
+    std::filesystem::remove_all(runsDirectory_ / name, error);
+    return !error;
+}

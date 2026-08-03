@@ -80,6 +80,10 @@ std::string SerializeCommand(const CancelRunCommand& command) {
     return nlohmann::json{{"action", "cancel_run"}, {"run_id", command.runId}}.dump();
 }
 
+std::string SerializeCommand(const AdvanceRunCommand& command) {
+    return nlohmann::json{{"action", "continue_run"}, {"run_id", command.runId}}.dump();
+}
+
 std::optional<BackendEvent> ParseEvent(std::string_view message) {
     try {
         const nlohmann::json json = nlohmann::json::parse(message);
@@ -154,6 +158,16 @@ std::optional<BackendEvent> ParseEvent(std::string_view message) {
         }
         if (type == "run_cancelled") {
             return RunCancelledEvent{runId};
+        }
+        if (type == "phase_ready") {
+            if (!json.contains("phase") || !json["phase"].is_number_integer()) {
+                return std::nullopt;
+            }
+            const auto phase = ParsePhase(json["phase"].get<int>());
+            if (!phase) {
+                return std::nullopt;
+            }
+            return PhaseReadyEvent{runId, *phase};
         }
         return std::nullopt;
     } catch (...) {

@@ -26,7 +26,10 @@ public:
     void ClearSelection();
     bool CompleteRun(const RunId& runId, std::filesystem::path outputModelPath);
     bool StartRun(const RunId& runId);
+    bool AdvanceRun(const RunId& runId);
     bool CancelRun(const RunId& runId);
+    bool RetryRun(const RunId& runId);
+    bool DeleteRun(const RunId& runId);
     bool SubmitSelection(const RunId& runId, std::optional<int> choice);
     void AddLog(std::string message);
     void HandleEvent(const BackendEvent& event);

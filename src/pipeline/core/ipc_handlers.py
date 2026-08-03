@@ -20,6 +20,8 @@ class _Session:
     def __init__(self, run_id):
         self.run_id = run_id
         self.cancel_event = threading.Event()
+        self.phase_advance_event = threading.Event()
+        self.awaiting_phase_advance = False
         self.selection_event = threading.Event()
         self.selection: Optional[int] = None
         self.awaiting_selection = False
@@ -33,6 +35,31 @@ def _diagnostic(message):
 def _active_session():
     with _STATE_LOCK:
         return _ACTIVE_SESSION
+
+
+def await_phase_advance(next_phase: int) -> None:
+    """Notify the editor that a phase completed and wait for continue_run."""
+    session = _active_session()
+    if session is None or get_run_id() != session.run_id:
+        raise RuntimeError("phase advance requested without an active IPC run")
+
+    with _STATE_LOCK:
+        if session.awaiting_phase_advance:
+            raise RuntimeError("a phase advance is already pending")
+        session.phase_advance_event.clear()
+        session.awaiting_phase_advance = True
+
+    log_event("phase_ready", {"phase": next_phase})
+    try:
+        while not session.phase_advance_event.wait(0.1):
+            if session.cancel_event.is_set():
+                raise PipelineCancelled("pipeline run cancelled")
+        if session.cancel_event.is_set():
+            raise PipelineCancelled("pipeline run cancelled")
+    finally:
+        with _STATE_LOCK:
+            session.awaiting_phase_advance = False
+            session.phase_advance_event.clear()
 
 
 def await_ipc_selection(request: dict) -> Tuple[Optional[int], float]:
@@ -155,6 +182,21 @@ def _submit_selection(cmd):
         session.selection_event.set()
 
 
+def _continue_run(cmd):
+    session = _active_session()
+    if session is None:
+        _diagnostic("continue_run received without an active run")
+        return
+    if cmd.get("run_id") != session.run_id:
+        _diagnostic("continue_run run_id does not match the active run")
+        return
+    with _STATE_LOCK:
+        if not session.awaiting_phase_advance:
+            _diagnostic("continue_run received with no pending phase advance")
+            return
+        session.phase_advance_event.set()
+
+
 def _cancel_run(cmd):
     session = _active_session()
     if session is None:
@@ -165,6 +207,7 @@ def _cancel_run(cmd):
         return
     session.cancel_event.set()
     session.selection_event.set()
+    session.phase_advance_event.set()
 
 
 def listen_for_ipc_commands(run_pipeline_callback):
@@ -191,6 +234,8 @@ def listen_for_ipc_commands(run_pipeline_callback):
                 _start_run(cmd, run_pipeline_callback)
             elif action == "submit_selection":
                 _submit_selection(cmd)
+            elif action == "continue_run":
+                _continue_run(cmd)
             elif action == "cancel_run":
                 _cancel_run(cmd)
             else:
@@ -200,5 +245,6 @@ def listen_for_ipc_commands(run_pipeline_callback):
         if session is not None:
             session.cancel_event.set()
             session.selection_event.set()
+            session.phase_advance_event.set()
             if session.worker is not None:
                 session.worker.join()

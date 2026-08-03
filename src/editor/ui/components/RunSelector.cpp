@@ -29,18 +29,60 @@ const char* RunStatusText(RunStatus status) {
 }
 
 void RunSelector::Render(const EditorState& state, PipelineController& controller) {
+    bool openDeleteConfirmation = false;
+
     if (state.runs.empty()) {
         ImGui::TextUnformatted("No existing runs");
-        return;
+    } else {
+        ImGui::TextUnformatted("Existing Runs");
+        if (ImGui::BeginTable("ExistingRuns", 2, ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Run", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed);
+
+            for (const RunState& run : state.runs) {
+                const std::string label = run.name + " (" + RunStatusText(run.status) + ")";
+                const bool canDelete =
+                    run.status != RunStatus::Running && run.status != RunStatus::Cancelling;
+
+                ImGui::PushID(run.id.c_str());
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                if (ImGui::Selectable(label.c_str())) {
+                    controller.SelectRun(run.id);
+                }
+
+                ImGui::TableSetColumnIndex(1);
+                if (canDelete && ImGui::SmallButton("Delete")) {
+                    pendingDeleteRunId_ = run.id;
+                    pendingDeleteRunName_ = run.name;
+                    openDeleteConfirmation = true;
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
     }
 
-    ImGui::TextUnformatted("Existing Runs");
-    for (const RunState& run : state.runs) {
-        const std::string label = run.name + " (" + RunStatusText(run.status) + ")";
-        ImGui::PushID(run.id.c_str());
-        if (ImGui::Selectable(label.c_str())) {
-            controller.SelectRun(run.id);
+    if (openDeleteConfirmation) {
+        ImGui::OpenPopup("Delete Run");
+    }
+
+    if (ImGui::BeginPopupModal("Delete Run", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Delete run \"%s\"?", pendingDeleteRunName_.c_str());
+        ImGui::TextUnformatted("This action cannot be undone.");
+
+        if (ImGui::Button("Delete")) {
+            controller.DeleteRun(pendingDeleteRunId_);
+            pendingDeleteRunId_.clear();
+            pendingDeleteRunName_.clear();
+            ImGui::CloseCurrentPopup();
         }
-        ImGui::PopID();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            pendingDeleteRunId_.clear();
+            pendingDeleteRunName_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 }

@@ -113,6 +113,23 @@ def interruptible_delay(session, duration=0.08):
     return session["cancel"].wait(duration)
 
 
+def await_phase_advance(session, next_phase):
+    with session_lock:
+        session["continue"].clear()
+        session["awaiting_continue"] = True
+
+    send({"type": "phase_ready", "run_id": session["run_id"], "phase": next_phase})
+    try:
+        while not session["continue"].wait(0.05):
+            if session["cancel"].is_set():
+                return False
+        return not session["cancel"].is_set()
+    finally:
+        with session_lock:
+            session["awaiting_continue"] = False
+            session["continue"].clear()
+
+
 def is_valid_run_name(name):
     return (
         isinstance(name, str)
@@ -176,6 +193,10 @@ def run_worker(session):
             session["completed"].append(label.lower())
             write_manifest(session, "running", phase)
 
+            if phase < len(phase_labels) and not await_phase_advance(session, phase + 1):
+                emit_cancelled(session)
+                return
+
         output_model = (workspace / "model.obj").resolve()
         output_model.write_text(CUBE_OBJ, encoding="utf-8")
         if session["cancel"].is_set():
@@ -225,6 +246,8 @@ def handle_command(command):
                 "run_id": run_id,
                 "name": name,
                 "cancel": threading.Event(),
+                "continue": threading.Event(),
+                "awaiting_continue": False,
                 "selection": threading.Event(),
                 "choice": None,
                 "worker": None,
@@ -263,6 +286,18 @@ def handle_command(command):
             session["selection"].set()
         return
 
+    if action == "continue_run":
+        with session_lock:
+            session = active_session
+            if session is None or run_id != session["run_id"]:
+                diagnostic("Ignoring continue_run: run_id does not match the active run")
+                return
+            if not session["awaiting_continue"]:
+                diagnostic("Ignoring continue_run: no phase advance is pending")
+                return
+            session["continue"].set()
+        return
+
     if action == "cancel_run":
         with session_lock:
             session = active_session
@@ -270,6 +305,7 @@ def handle_command(command):
                 diagnostic("Ignoring cancel_run: run_id does not match the active run")
                 return
             session["cancel"].set()
+            session["continue"].set()
         return
 
     diagnostic("Ignoring command: unsupported action")
@@ -289,6 +325,7 @@ def main():
         session = active_session
         if session is not None:
             session["cancel"].set()
+            session["continue"].set()
             worker = session["worker"]
         else:
             worker = None

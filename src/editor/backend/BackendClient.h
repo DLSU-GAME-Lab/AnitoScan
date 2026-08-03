@@ -26,6 +26,7 @@ public:
     bool StartRun(const StartRunCommand& command);
     bool SubmitSelection(const SubmitSelectionCommand& command);
     bool CancelRun(const CancelRunCommand& command);
+    bool AdvanceRun(const AdvanceRunCommand& command);
 
     std::vector<BackendEvent> PollEvents();
     std::vector<std::string> PollDiagnostics();

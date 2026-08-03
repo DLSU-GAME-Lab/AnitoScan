@@ -25,13 +25,26 @@ void RunControls::Render(
             controller.CancelRun(run.id);
         }
     } else if (run.status == RunStatus::Running) {
+        if (run.awaitingAdvance) {
+            if (ImGui::Button("Continue")) {
+                controller.AdvanceRun(run.id);
+            }
+            ImGui::SameLine();
+        }
         if (ImGui::Button("Cancel")) {
             controller.CancelRun(run.id);
         }
     } else if (run.status == RunStatus::Cancelling) {
         ImGui::TextUnformatted("Cancelling...");
-    } else if (run.status == RunStatus::Completed || run.status == RunStatus::Failed ||
-        run.status == RunStatus::Cancelled) {
+    } else if (run.status == RunStatus::Failed || run.status == RunStatus::Cancelled) {
+        if (ImGui::Button("Retry")) {
+            controller.RetryRun(run.id);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("New Run")) {
+            controller.ClearSelection();
+        }
+    } else if (run.status == RunStatus::Completed) {
         if (ImGui::Button("New Run")) {
             controller.ClearSelection();
         }

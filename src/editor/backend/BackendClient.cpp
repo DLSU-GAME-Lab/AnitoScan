@@ -71,6 +71,10 @@ bool BackendClient::CancelRun(const CancelRunCommand& command) {
     return process_.WriteLine(SerializeCommand(command));
 }
 
+bool BackendClient::AdvanceRun(const AdvanceRunCommand& command) {
+    return process_.WriteLine(SerializeCommand(command));
+}
+
 std::vector<BackendEvent> BackendClient::PollEvents() {
     std::scoped_lock lock(eventMutex_);
     std::vector<BackendEvent> events;

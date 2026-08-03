@@ -23,6 +23,10 @@ struct CancelRunCommand {
     RunId runId;
 };
 
+struct AdvanceRunCommand {
+    RunId runId;
+};
+
 
 
 struct BackendReadyEvent {};
@@ -69,11 +73,18 @@ struct RunCancelledEvent {
     RunId runId;
 };
 
+struct PhaseReadyEvent {
+    RunId runId;
+    PipelinePhase phase;
+};
+
 using BackendEvent = std::variant<BackendReadyEvent, BackendDisconnectedEvent, LogEvent,
                                   WorkspaceReadyEvent, ProgressEvent, SelectionRequiredEvent,
-                                  RunCompletedEvent, RunFailedEvent, RunCancelledEvent>;
+                                  RunCompletedEvent, RunFailedEvent, RunCancelledEvent,
+                                  PhaseReadyEvent>;
 
 std::string SerializeCommand(const StartRunCommand& command);
 std::string SerializeCommand(const SubmitSelectionCommand& command);
 std::string SerializeCommand(const CancelRunCommand& command);
+std::string SerializeCommand(const AdvanceRunCommand& command);
 std::optional<BackendEvent> ParseEvent(std::string_view message);

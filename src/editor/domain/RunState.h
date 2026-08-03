@@ -15,6 +15,7 @@ struct RunState {
     std::optional<std::filesystem::path> workspacePath;
     float progress = 0.0f;
     std::string progressLabel;
+    bool awaitingAdvance = false;
     std::optional<SelectionRequest> selectionRequest;
     std::optional<std::string> errorMessage;
     std::optional<std::filesystem::path> outputModelPath;

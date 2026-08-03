@@ -11,6 +11,7 @@ public:
 
     std::vector<RunState> LoadRuns() const;
     bool SaveRun(const RunState& run) const;
+    bool DeleteRun(const RunState& run) const;
 
 private:
     std::filesystem::path runsDirectory_;

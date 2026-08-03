@@ -3,6 +3,7 @@
 #include "editor/backend/BackendClient.h"
 #include "editor/persistence/RunStore.h"
 
+#include <algorithm>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -119,6 +120,7 @@ bool PipelineController::CompleteRun(const RunId& runId, std::filesystem::path o
     run->status = RunStatus::Completed;
     run->phase = PipelinePhase::Export;
     run->outputModelPath = std::move(outputModelPath);
+    run->awaitingAdvance = false;
     run->selectionRequest.reset();
     run->errorMessage.reset();
     return true;
@@ -153,6 +155,22 @@ bool PipelineController::StartRun(const RunId& runId) {
     return true;
 }
 
+bool PipelineController::AdvanceRun(const RunId& runId) {
+    RunState* run = FindRun(runId);
+    if (run == nullptr || run->status != RunStatus::Running || !run->awaitingAdvance) {
+        return false;
+    }
+
+    if (!backendClient_.AdvanceRun(AdvanceRunCommand{runId})) {
+        run->errorMessage = "Failed to send continue command";
+        return false;
+    }
+
+    run->awaitingAdvance = false;
+    run->errorMessage.reset();
+    return true;
+}
+
 bool PipelineController::CancelRun(const RunId& runId) {
     RunState* run = FindRun(runId);
     if (run == nullptr || run->status == RunStatus::Cancelling ||
@@ -178,8 +196,51 @@ bool PipelineController::CancelRun(const RunId& runId) {
     }
 
     run->status = RunStatus::Cancelling;
+    run->awaitingAdvance = false;
     run->selectionRequest.reset();
     run->errorMessage.reset();
+    return true;
+}
+
+bool PipelineController::RetryRun(const RunId& runId) {
+    RunState* run = FindRun(runId);
+    if (run == nullptr || (run->status != RunStatus::Failed && run->status != RunStatus::Cancelled)) {
+        return false;
+    }
+
+    const RunStatus previousStatus = run->status;
+    run->status = RunStatus::Pending;
+    run->phase = PipelinePhase::Capture;
+    run->progress = 0.0f;
+    run->progressLabel.clear();
+    run->awaitingAdvance = false;
+    run->selectionRequest.reset();
+    run->errorMessage.reset();
+    run->outputModelPath.reset();
+    if (!runStore_.SaveRun(*run)) {
+        run->status = previousStatus;
+        run->errorMessage = "Failed to save retried run";
+        return false;
+    }
+    return true;
+}
+
+bool PipelineController::DeleteRun(const RunId& runId) {
+    RunState* run = FindRun(runId);
+    if (run == nullptr || run->status == RunStatus::Running || run->status == RunStatus::Cancelling) {
+        return false;
+    }
+    if (!runStore_.DeleteRun(*run)) {
+        run->errorMessage = "Failed to delete run";
+        return false;
+    }
+
+    if (state_.selectedRunId == runId) {
+        state_.selectedRunId.reset();
+    }
+    std::erase_if(state_.runs, [&runId](const RunState& existingRun) {
+        return existingRun.id == runId;
+    });
     return true;
 }
 
@@ -215,6 +276,7 @@ void PipelineController::HandleEvent(const BackendEvent& event) {
             for (RunState& run : state_.runs) {
                 if (run.status == RunStatus::Running || run.status == RunStatus::Cancelling) {
                     run.status = RunStatus::Failed;
+                    run.awaitingAdvance = false;
                     run.errorMessage = value.message;
                     run.selectionRequest.reset();
                 }
@@ -250,6 +312,7 @@ void PipelineController::HandleEvent(const BackendEvent& event) {
                 if (run->status == RunStatus::Running ||
                     run->status == RunStatus::Cancelling) {
                     run->status = RunStatus::Failed;
+                    run->awaitingAdvance = false;
                     run->errorMessage = value.message;
                     run->selectionRequest.reset();
                 }
@@ -257,8 +320,16 @@ void PipelineController::HandleEvent(const BackendEvent& event) {
                 if (run->status == RunStatus::Running ||
                     run->status == RunStatus::Cancelling) {
                     run->status = RunStatus::Cancelled;
+                    run->awaitingAdvance = false;
                     run->selectionRequest.reset();
                     run->errorMessage.reset();
+                }
+            } else if constexpr (std::is_same_v<Event, PhaseReadyEvent>) {
+                if (run->status == RunStatus::Running) {
+                    run->phase = value.phase;
+                    run->progress = 0.0f;
+                    run->progressLabel = "Ready to continue";
+                    run->awaitingAdvance = true;
                 }
             }
         }
