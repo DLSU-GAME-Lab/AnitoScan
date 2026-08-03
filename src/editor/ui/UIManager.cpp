@@ -43,8 +43,8 @@ void UIManager::BeginFrame() {
     ImGui::NewFrame();
 }
 
-void UIManager::Render(unsigned int textureId) {
-    postExportScreen_.Render(textureId);
+void UIManager::Render(const EditorState& state, unsigned int textureId) {
+    postExportScreen_.Render(state, textureId);
 }
 
 void UIManager::EndFrame() {

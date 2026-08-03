@@ -4,6 +4,8 @@
 
 #include "editor/ui/screens/PostExportScreen.h"
 
+struct EditorState;
+
 class UIManager {
 public:
     ~UIManager();
@@ -11,7 +13,7 @@ public:
     bool Initialize(SDL_Window* window, SDL_GLContext glContext);
     void ProcessEvent(const SDL_Event& event);
     void BeginFrame();
-    void Render(unsigned int textureId);
+    void Render(const EditorState& state, unsigned int textureId);
     void EndFrame();
     void Shutdown();
 

@@ -2,9 +2,11 @@
 
 #include "editor/ui/components/Viewport.h"
 
+struct EditorState;
+
 class PostExportScreen {
 public:
-    void Render(unsigned int textureId);
+    void Render(const EditorState& state, unsigned int textureId);
 
     int GetViewportWidth() const;
     int GetViewportHeight() const;

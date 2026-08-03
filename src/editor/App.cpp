@@ -99,6 +99,8 @@ void App::Run() {
             }
         }
 
+        SynchronizeScene();
+
         // Render the scene offscreen at the current UI viewport size.
         const int viewportWidth = uiManager_.GetViewportWidth();
         const int viewportHeight = uiManager_.GetViewportHeight();
@@ -108,7 +110,10 @@ void App::Run() {
 
         // Build the UI frame with the offscreen scene texture.
         uiManager_.BeginFrame();
-        uiManager_.Render(scene_->GetModel() ? scene_->GetColorTexture() : 0);
+        uiManager_.Render(
+            controller_.GetState(),
+            scene_->GetModel() ? scene_->GetColorTexture() : 0
+        );
 
         // Clear the application framebuffer and draw the completed UI frame.
         int width = 0;
@@ -124,8 +129,28 @@ void App::Run() {
     }
 }
 
+void App::SynchronizeScene() {
+    const RunState* selectedRun = controller_.GetSelectedRun();
+    const bool isDisplayable = selectedRun != nullptr &&
+        selectedRun->status == RunStatus::Completed && selectedRun->outputModelPath.has_value();
+
+    if (!isDisplayable) {
+        if (displayedRunId_) {
+            scene_->ClearModel();
+            displayedRunId_.reset();
+        }
+        return;
+    }
+
+    if (displayedRunId_ != selectedRun->id) {
+        scene_->LoadModel(selectedRun->outputModelPath->string());
+        displayedRunId_ = selectedRun->id;
+    }
+}
+
 void App::Shutdown() {
     running_ = false;
+    displayedRunId_.reset();
     scene_.reset();
 
     uiManager_.Shutdown();

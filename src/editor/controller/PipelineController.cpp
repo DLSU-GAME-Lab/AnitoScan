@@ -6,6 +6,14 @@ const EditorState& PipelineController::GetState() const {
     return state_;
 }
 
+const RunState* PipelineController::GetSelectedRun() const {
+    if (!state_.selectedRunId) {
+        return nullptr;
+    }
+
+    return FindRun(*state_.selectedRunId);
+}
+
 RunId PipelineController::CreateRun(std::string name) {
     RunState run;
     run.id = "run-" + std::to_string(nextRunId_++);
@@ -40,6 +48,16 @@ bool PipelineController::CompleteRun(const RunId& runId, std::filesystem::path o
 
 RunState* PipelineController::FindRun(const RunId& runId) {
     for (RunState& run : state_.runs) {
+        if (run.id == runId) {
+            return &run;
+        }
+    }
+
+    return nullptr;
+}
+
+const RunState* PipelineController::FindRun(const RunId& runId) const {
+    for (const RunState& run : state_.runs) {
         if (run.id == runId) {
             return &run;
         }

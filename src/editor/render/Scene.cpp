@@ -23,6 +23,10 @@ void Scene::LoadModel(const std::string& objPath) {
 	Recenter();
 }
 
+void Scene::ClearModel() {
+	model_.reset();
+}
+
 // Recalculates camera distance and target orientation based on the active model's bounds.
 void Scene::Recenter() {
 	if (!model_) return;

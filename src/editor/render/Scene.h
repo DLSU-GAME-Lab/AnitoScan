@@ -16,6 +16,7 @@ public:
 	~Scene();
 
 	void LoadModel(const std::string& objPath);
+	void ClearModel();
 	void Recenter();
 	
 	void Update(float deltaTime);
