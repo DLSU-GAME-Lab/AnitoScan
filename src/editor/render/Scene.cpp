@@ -27,6 +27,18 @@ void Scene::ClearModel() {
 	model_.reset();
 }
 
+void Scene::Orbit(float deltaX, float deltaY) {
+	camera_.ProcessMouseDrag(deltaX, deltaY);
+}
+
+void Scene::Pan(float deltaX, float deltaY) {
+	camera_.ProcessPan(deltaX, deltaY);
+}
+
+void Scene::Zoom(float delta) {
+	camera_.ProcessScroll(delta);
+}
+
 // Recalculates camera distance and target orientation based on the active model's bounds.
 void Scene::Recenter() {
 	if (!model_) return;

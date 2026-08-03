@@ -30,6 +30,7 @@ void Viewport::Render(unsigned int textureId) {
         ImGui::TextUnformatted(message);
     }
 
+    hovered_ = ImGui::IsWindowHovered();
     ImGui::EndChild();
 }
 
@@ -39,4 +40,8 @@ int Viewport::GetWidth() const {
 
 int Viewport::GetHeight() const {
     return height_;
+}
+
+bool Viewport::IsHovered() const {
+    return hovered_;
 }

@@ -101,6 +101,7 @@ void App::Run() {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             uiManager_.ProcessEvent(event);
+            HandleViewportInput(event);
             if (event.type == SDL_QUIT ||
                 (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)) {
                 running_ = false;
@@ -116,6 +117,9 @@ void App::Run() {
         }
 
         SynchronizeScene();
+        if (uiManager_.ConsumeRecenterRequest() && scene_->GetModel()) {
+            scene_->Recenter();
+        }
 
         // Render the scene offscreen at the current UI viewport size.
         const int viewportWidth = uiManager_.GetViewportWidth();
@@ -143,6 +147,31 @@ void App::Run() {
 
         // Present the completed frame to the window.
         SDL_GL_SwapWindow(window_);
+    }
+}
+
+void App::HandleViewportInput(const SDL_Event& event) {
+    if (!uiManager_.IsViewportHovered() || !scene_->GetModel()) {
+        return;
+    }
+
+    if (event.type == SDL_MOUSEMOTION) {
+        if ((event.motion.state & SDL_BUTTON_LMASK) != 0) {
+            scene_->Orbit(
+                static_cast<float>(event.motion.xrel),
+                static_cast<float>(event.motion.yrel)
+            );
+        } else if (
+            (event.motion.state & SDL_BUTTON_MMASK) != 0 ||
+            (event.motion.state & SDL_BUTTON_RMASK) != 0
+        ) {
+            scene_->Pan(
+                static_cast<float>(event.motion.xrel),
+                static_cast<float>(event.motion.yrel)
+            );
+        }
+    } else if (event.type == SDL_MOUSEWHEEL) {
+        scene_->Zoom(static_cast<float>(event.wheel.y));
     }
 }
 

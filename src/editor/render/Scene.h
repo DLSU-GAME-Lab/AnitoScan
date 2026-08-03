@@ -18,7 +18,10 @@ public:
 	void LoadModel(const std::string& objPath);
 	void ClearModel();
 	void Recenter();
-	
+	void Orbit(float deltaX, float deltaY);
+	void Pan(float deltaX, float deltaY);
+	void Zoom(float delta);
+		
 	void Update(float deltaTime);
 	void Render(int viewportWidth, int viewportHeight);
 

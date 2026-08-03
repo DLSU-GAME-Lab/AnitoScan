@@ -22,6 +22,8 @@ public:
 
     int GetViewportWidth() const;
     int GetViewportHeight() const;
+    bool IsViewportHovered() const;
+    bool ConsumeRecenterRequest();
 
 private:
     RunSetupScreen runSetupScreen_;

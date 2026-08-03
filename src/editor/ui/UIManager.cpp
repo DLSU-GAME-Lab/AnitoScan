@@ -108,3 +108,11 @@ int UIManager::GetViewportWidth() const {
 int UIManager::GetViewportHeight() const {
     return postExportScreen_.GetViewportHeight();
 }
+
+bool UIManager::IsViewportHovered() const {
+    return postExportScreen_.IsViewportHovered();
+}
+
+bool UIManager::ConsumeRecenterRequest() {
+    return postExportScreen_.ConsumeRecenterRequest();
+}

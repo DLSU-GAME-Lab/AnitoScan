@@ -20,6 +20,10 @@ void PostExportScreen::Render(unsigned int textureId, PipelineController& contro
     if (ImGui::Button("New Run")) {
         controller.ClearSelection();
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Recenter")) {
+        recenterRequested_ = true;
+    }
 
     viewport_.Render(textureId);
     ImGui::End();
@@ -31,4 +35,14 @@ int PostExportScreen::GetViewportWidth() const {
 
 int PostExportScreen::GetViewportHeight() const {
     return viewport_.GetHeight();
+}
+
+bool PostExportScreen::IsViewportHovered() const {
+    return viewport_.IsHovered();
+}
+
+bool PostExportScreen::ConsumeRecenterRequest() {
+    const bool requested = recenterRequested_;
+    recenterRequested_ = false;
+    return requested;
 }

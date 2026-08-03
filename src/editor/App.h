@@ -23,6 +23,7 @@ public:
 private:
     void Shutdown();
     void SynchronizeScene();
+    void HandleViewportInput(const SDL_Event& event);
 
     bool InitializeSDL();
     bool InitializeOpenGL();
