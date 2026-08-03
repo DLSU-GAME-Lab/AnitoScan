@@ -112,6 +112,9 @@ std::optional<BackendEvent> ParseEvent(std::string_view message) {
             }
             return RunFailedEvent{runId, json["message"].get<std::string>()};
         }
+        if (type == "run_cancelled") {
+            return RunCancelledEvent{runId};
+        }
         return std::nullopt;
     } catch (...) {
         return std::nullopt;

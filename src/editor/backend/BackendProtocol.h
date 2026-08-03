@@ -60,8 +60,13 @@ struct RunFailedEvent {
     std::string message;
 };
 
+struct RunCancelledEvent {
+    RunId runId;
+};
+
 using BackendEvent = std::variant<BackendReadyEvent, LogEvent, WorkspaceReadyEvent, ProgressEvent,
-                                  SelectionRequiredEvent, RunCompletedEvent, RunFailedEvent>;
+                                  SelectionRequiredEvent, RunCompletedEvent, RunFailedEvent,
+                                  RunCancelledEvent>;
 
 std::string SerializeCommand(const StartRunCommand& command);
 std::string SerializeCommand(const SubmitSelectionCommand& command);
