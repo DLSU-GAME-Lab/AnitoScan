@@ -75,7 +75,7 @@ void UIManager::Render(
     ) {
         postExportScreen_.Render(textureId);
     } else {
-        phaseScreen_.Render(*selectedRun);
+        phaseScreen_.Render(*selectedRun, state.backendReady, state.logs, controller);
     }
 }
 

@@ -4,6 +4,9 @@ add_library(editor_ui STATIC
     screens/PhaseScreen.cpp
     screens/PostExportScreen.cpp
     components/Viewport.cpp
+    components/LogView.cpp
+    components/RunControls.cpp
+    components/MaskingContent.cpp
 )
 
 target_include_directories(editor_ui PUBLIC

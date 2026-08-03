@@ -1,5 +1,6 @@
 #include "editor/ui/screens/PhaseScreen.h"
 
+#include "editor/controller/PipelineController.h"
 #include "editor/domain/RunState.h"
 
 #include <imgui.h>
@@ -11,6 +12,8 @@ const char* RunStatusText(RunStatus status) {
         return "Pending";
     case RunStatus::Running:
         return "Running";
+    case RunStatus::Cancelling:
+        return "Cancelling";
     case RunStatus::Completed:
         return "Completed";
     case RunStatus::Failed:
@@ -40,7 +43,12 @@ const char* PipelinePhaseText(PipelinePhase phase) {
 }
 }
 
-void PhaseScreen::Render(const RunState& run) {
+void PhaseScreen::Render(
+    const RunState& run,
+    bool backendReady,
+    const std::vector<std::string>& logs,
+    PipelineController& controller
+) {
     const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(mainViewport->WorkPos);
     ImGui::SetNextWindowSize(mainViewport->WorkSize);
@@ -56,5 +64,21 @@ void PhaseScreen::Render(const RunState& run) {
     ImGui::Text("Run: %s", run.name.c_str());
     ImGui::Text("Status: %s", RunStatusText(run.status));
     ImGui::Text("Phase: %s", PipelinePhaseText(run.phase));
+    if (run.status == RunStatus::Running) {
+        ImGui::TextUnformatted(run.progressLabel.c_str());
+        ImGui::ProgressBar(run.progress);
+    }
+    maskingContent_.Render(run, controller);
+    if (run.errorMessage) {
+        ImGui::TextColored(
+            ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
+            "%s",
+            run.errorMessage->c_str()
+        );
+    }
+    ImGui::Separator();
+    logView_.Render(logs);
+    ImGui::Separator();
+    runControls_.Render(run, backendReady, controller);
     ImGui::End();
 }

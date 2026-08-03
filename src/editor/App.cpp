@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <memory>
+#include <utility>
 
 #include <glad/gl.h>
 
@@ -12,7 +13,8 @@ namespace {
     constexpr int kInitialWindowHeight = 720;
 }
 
-App::App() = default;
+App::App(BackendConfig backendConfig)
+    : backendConfig_(std::move(backendConfig)), controller_(backendClient_) {}
 
 App::~App() {
     Shutdown();
@@ -25,6 +27,12 @@ bool App::Initialize() {
     }
 
     scene_ = std::make_unique<Scene>();
+    if (!backendClient_.Start(backendConfig_)) {
+        std::cerr << "Failed to start backend\n";
+        Shutdown();
+        return false;
+    }
+
     running_ = true;
     return true;
 }
@@ -99,6 +107,14 @@ void App::Run() {
             }
         }
 
+        for (const BackendEvent& backendEvent : backendClient_.PollEvents()) {
+            controller_.HandleEvent(backendEvent);
+        }
+        for (const std::string& diagnostic : backendClient_.PollDiagnostics()) {
+            std::cerr << "[backend] " << diagnostic << '\n';
+            controller_.AddLog("[diagnostic] " + diagnostic);
+        }
+
         SynchronizeScene();
 
         // Render the scene offscreen at the current UI viewport size.
@@ -152,6 +168,7 @@ void App::SynchronizeScene() {
 void App::Shutdown() {
     running_ = false;
     displayedRunId_.reset();
+    backendClient_.Stop();
     scene_.reset();
 
     uiManager_.Shutdown();
