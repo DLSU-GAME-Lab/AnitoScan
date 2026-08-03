@@ -89,6 +89,7 @@ bool App::InitializeOpenGL() {
 
 void App::Run() {
     while (running_) {
+        // Forward input events to the UI and handle application exit requests.
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             uiManager_.ProcessEvent(event);
@@ -98,15 +99,18 @@ void App::Run() {
             }
         }
 
+        // Render the scene offscreen at the current UI viewport size.
         const int viewportWidth = uiManager_.GetViewportWidth();
         const int viewportHeight = uiManager_.GetViewportHeight();
         if (scene_ && viewportWidth > 0 && viewportHeight > 0) {
             scene_->Render(viewportWidth, viewportHeight);
         }
 
+        // Build the UI frame with the offscreen scene texture.
         uiManager_.BeginFrame();
         uiManager_.Render(scene_ ? scene_->GetColorTexture() : 0);
 
+        // Clear the application framebuffer and draw the completed UI frame.
         int width = 0;
         int height = 0;
         SDL_GL_GetDrawableSize(window_, &width, &height);
@@ -115,6 +119,7 @@ void App::Run() {
         glClear(GL_COLOR_BUFFER_BIT);
         uiManager_.EndFrame();
 
+        // Present the completed frame to the window.
         SDL_GL_SwapWindow(window_);
     }
 }
