@@ -7,7 +7,6 @@ import threading
 import zlib
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 INVALID_RUN_NAME_PATTERN = re.compile(r'[<>:"/\\|?*]|[\x00-\x1f]')

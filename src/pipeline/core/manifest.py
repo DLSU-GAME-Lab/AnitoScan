@@ -10,7 +10,13 @@ PHASE_NAMES = {
     5: "export",
 }
 
-__all__ = ["build_manifest", "initialize_manifest", "load_manifest", "update_manifest"]
+__all__ = [
+    "build_manifest",
+    "initialize_manifest",
+    "load_manifest",
+    "update_manifest",
+    "update_manifest_lifecycle",
+]
 
 
 def build_manifest(
@@ -22,7 +28,7 @@ def build_manifest(
     """Builds the manifest schema for a pipeline invocation without saving it."""
     capture_mode = "image" if args.get("image") else "video" if args.get("video") else "auto"
 
-    return {
+    manifest = {
         "run_name": name,
         "input_source": str(input_path),
         "mode": args.get("mode", "disk"),
@@ -35,11 +41,17 @@ def build_manifest(
             "drift_limit": args.get("drift_limit", 200),
         },
         "status": {
+            "state": "running",
             "phase": 0,
             "completed": [],
         },
         "paths": paths_dict,
     }
+
+    if args.get("run_id") is not None:
+        manifest["run_id"] = args["run_id"]
+
+    return manifest
 
 
 def initialize_manifest(
@@ -80,6 +92,30 @@ def update_manifest(
         manifest["settings"]["source_type"] = source_type
 
     _save_manifest(manifest_path, manifest)
+
+
+def update_manifest_lifecycle(
+    manifest_path: str | Path,
+    state: str,
+    output_path: str | Path | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    """Updates run lifecycle fields without disturbing phase completion tracking."""
+    path, manifest = load_manifest(manifest_path)
+    status = manifest.setdefault("status", {})
+    status.setdefault("phase", 0)
+    status.setdefault("completed", [])
+    status["state"] = state
+
+    if output_path is not None:
+        manifest.setdefault("paths", {})["output_model"] = str(output_path)
+    if error is not None:
+        manifest["error"] = error
+    elif state == "completed":
+        manifest.pop("error", None)
+
+    _save_manifest(path, manifest)
+    return manifest
 
 
 def _save_manifest(manifest_path: Path, manifest_data: dict) -> None:
