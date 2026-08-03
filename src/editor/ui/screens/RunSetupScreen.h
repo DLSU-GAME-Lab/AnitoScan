@@ -3,6 +3,7 @@
 #include "editor/ui/components/RunSelector.h"
 
 #include <array>
+#include <string>
 
 struct EditorState;
 class PipelineController;
@@ -14,5 +15,5 @@ public:
 private:
     std::array<char, 128> runName_{};
     RunSelector runSelector_;
-    bool duplicateName_ = false;
+    std::string creationError_;
 };

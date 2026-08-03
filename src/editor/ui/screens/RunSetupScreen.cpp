@@ -19,20 +19,30 @@ void RunSetupScreen::Render(const EditorState& state, PipelineController& contro
     ImGui::TextUnformatted("Run Setup");
     ImGui::Separator();
     if (ImGui::InputText("Run name", runName_.data(), runName_.size())) {
-        duplicateName_ = false;
+        creationError_.clear();
     }
     if (ImGui::Button("Create Run") && runName_[0] != '\0') {
-        if (controller.CreateRun(runName_.data())) {
+        switch (controller.CreateRun(runName_.data())) {
+        case CreateRunResult::Created:
             runName_.fill('\0');
-            duplicateName_ = false;
-        } else {
-            duplicateName_ = true;
+            creationError_.clear();
+            break;
+        case CreateRunResult::DuplicateName:
+            creationError_ = "A run with this name already exists";
+            break;
+        case CreateRunResult::InvalidName:
+            creationError_ = "Run name contains invalid path characters";
+            break;
+        case CreateRunResult::StorageError:
+            creationError_ = "Failed to save the run";
+            break;
         }
     }
-    if (duplicateName_) {
+    if (!creationError_.empty()) {
         ImGui::TextColored(
             ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-            "A run with this name already exists"
+            "%s",
+            creationError_.c_str()
         );
     }
 

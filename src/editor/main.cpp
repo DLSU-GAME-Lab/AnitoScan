@@ -33,6 +33,7 @@ int main(int argc, char** argv) {
         .executable = "uv",
         .arguments = {"run", "--no-project", "python", "src/pipeline/core/dummy.py"},
         .workingDirectory = std::filesystem::path(PROJECT_ROOT_DIR),
+        .runsDirectory = std::filesystem::path(PROJECT_ROOT_DIR) / "data" / "runs" / "dummy",
     };
 
     App app(std::move(backendConfig));

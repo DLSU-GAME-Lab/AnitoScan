@@ -7,16 +7,21 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 class BackendClient;
+class RunStore;
+
+enum class CreateRunResult { Created, DuplicateName, InvalidName, StorageError };
 
 class PipelineController {
 public:
-    explicit PipelineController(BackendClient& backendClient);
+    PipelineController(BackendClient& backendClient, RunStore& runStore);
 
     const EditorState& GetState() const;
     const RunState* GetSelectedRun() const;
-    bool CreateRun(std::string name);
+    CreateRunResult CreateRun(std::string name);
+    void RestoreRuns(std::vector<RunState> runs);
     bool SelectRun(const RunId& runId);
     void ClearSelection();
     bool CompleteRun(const RunId& runId, std::filesystem::path outputModelPath);
@@ -31,6 +36,7 @@ private:
     const RunState* FindRun(const RunId& runId) const;
 
     BackendClient& backendClient_;
+    RunStore& runStore_;
     EditorState state_;
     std::uint64_t nextRunId_ = 1;
 };

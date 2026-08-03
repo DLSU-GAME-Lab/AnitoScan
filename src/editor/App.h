@@ -8,6 +8,7 @@
 #include "editor/backend/BackendClient.h"
 #include "editor/backend/BackendConfig.h"
 #include "editor/controller/PipelineController.h"
+#include "editor/persistence/RunStore.h"
 #include "editor/ui/UIManager.h"
 
 class Scene;
@@ -30,6 +31,7 @@ private:
 
     BackendConfig backendConfig_;
     BackendClient backendClient_;
+    RunStore runStore_;
     PipelineController controller_;
     bool running_ = false;
     bool sdlInitialized_ = false;

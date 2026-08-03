@@ -8,4 +8,5 @@ struct BackendConfig {
     std::filesystem::path executable;
     std::vector<std::string> arguments;
     std::filesystem::path workingDirectory;
+    std::filesystem::path runsDirectory;
 };

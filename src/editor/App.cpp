@@ -14,7 +14,9 @@ namespace {
 }
 
 App::App(BackendConfig backendConfig)
-    : backendConfig_(std::move(backendConfig)), controller_(backendClient_) {}
+    : backendConfig_(std::move(backendConfig)),
+      runStore_(backendConfig_.runsDirectory),
+      controller_(backendClient_, runStore_) {}
 
 App::~App() {
     Shutdown();
@@ -27,6 +29,7 @@ bool App::Initialize() {
     }
 
     scene_ = std::make_unique<Scene>();
+    controller_.RestoreRuns(runStore_.LoadRuns());
     if (!backendClient_.Start(backendConfig_)) {
         std::cerr << "Failed to start backend\n";
         Shutdown();

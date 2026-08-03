@@ -1,7 +1,9 @@
 #include "editor/controller/PipelineController.h"
 
 #include "editor/backend/BackendClient.h"
+#include "editor/persistence/RunStore.h"
 
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -11,10 +13,24 @@ bool IsTerminalStatus(RunStatus status) {
     return status == RunStatus::Completed || status == RunStatus::Failed ||
         status == RunStatus::Cancelled;
 }
-}
 
-PipelineController::PipelineController(BackendClient& backendClient)
-    : backendClient_(backendClient) {}
+bool IsValidRunName(std::string_view name) {
+    if (name.empty() || name == "." || name == ".." || name.back() == ' ' || name.back() == '.') {
+        return false;
+    }
+
+    constexpr std::string_view forbidden = "<>:\"/\\|?*";
+    for (const unsigned char character : name) {
+        if (character < 32 || forbidden.find(character) != std::string_view::npos) {
+            return false;
+        }
+    }
+    return true;
+}
+} 
+
+PipelineController::PipelineController(BackendClient& backendClient, RunStore& runStore)
+    : backendClient_(backendClient), runStore_(runStore) {}
 
 const EditorState& PipelineController::GetState() const {
     return state_;
@@ -28,20 +44,44 @@ const RunState* PipelineController::GetSelectedRun() const {
     return FindRun(*state_.selectedRunId);
 }
 
-bool PipelineController::CreateRun(std::string name) {
+CreateRunResult PipelineController::CreateRun(std::string name) {
+    if (!IsValidRunName(name)) {
+        return CreateRunResult::InvalidName;
+    }
+
     for (const RunState& existingRun : state_.runs) {
         if (existingRun.name == name) {
-            return false;
+            return CreateRunResult::DuplicateName;
         }
     }
 
     RunState run;
-    run.id = "run-" + std::to_string(nextRunId_++);
+    do {
+        run.id = "run-" + std::to_string(nextRunId_++);
+    } while (FindRun(run.id) != nullptr);
     run.name = std::move(name);
+    if (!runStore_.SaveRun(run)) {
+        return CreateRunResult::StorageError;
+    }
 
     state_.runs.push_back(std::move(run));
     state_.selectedRunId = state_.runs.back().id;
-    return true;
+    return CreateRunResult::Created;
+}
+
+void PipelineController::RestoreRuns(std::vector<RunState> runs) {
+    for (RunState& run : runs) {
+        bool duplicate = false;
+        for (const RunState& existingRun : state_.runs) {
+            if (existingRun.id == run.id || existingRun.name == run.name) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) {
+            state_.runs.push_back(std::move(run));
+        }
+    }
 }
 
 bool PipelineController::SelectRun(const RunId& runId) {
@@ -112,6 +152,11 @@ bool PipelineController::CancelRun(const RunId& runId) {
         run->status = RunStatus::Cancelled;
         run->selectionRequest.reset();
         run->errorMessage.reset();
+        if (!runStore_.SaveRun(*run)) {
+            run->status = RunStatus::Pending;
+            run->errorMessage = "Failed to save cancelled run";
+            return false;
+        }
         return true;
     }
 

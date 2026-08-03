@@ -10,6 +10,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+INVALID_RUN_NAME_PATTERN = re.compile(r'[<>:"/\\|?*]|[\x00-\x1f]')
 
 CUBE_OBJ = """# Dummy backend cube
 v -0.5 -0.5 -0.5
@@ -65,7 +66,36 @@ def write_preview(path):
     path.write_bytes(png)
 
 
+def write_manifest(session, state, phase, output_model=None, error=None):
+    workspace = session.get("workspace")
+    if workspace is None:
+        return
+
+    manifest = {
+        "run_id": session["run_id"],
+        "run_name": session["name"],
+        "status": {
+            "state": state,
+            "phase": phase,
+            "completed": session["completed"],
+        },
+        "paths": {
+            "run_root": str(workspace),
+        },
+    }
+    if output_model is not None:
+        manifest["paths"]["output_model"] = str(output_model)
+    if error is not None:
+        manifest["error"] = error
+
+    manifest_path = workspace / "manifest.json"
+    temporary_path = workspace / "manifest.json.tmp"
+    temporary_path.write_text(json.dumps(manifest, indent=4), encoding="utf-8")
+    temporary_path.replace(manifest_path)
+
+
 def emit_cancelled(session):
+    write_manifest(session, "cancelled", session.get("phase", 0))
     send({"type": "run_cancelled", "run_id": session["run_id"]})
 
 
@@ -73,18 +103,32 @@ def interruptible_delay(session, duration=0.08):
     return session["cancel"].wait(duration)
 
 
+def is_valid_run_name(name):
+    return (
+        isinstance(name, str)
+        and bool(name)
+        and name not in (".", "..")
+        and not name.endswith((" ", "."))
+        and INVALID_RUN_NAME_PATTERN.search(name) is None
+    )
+
+
 def run_worker(session):
     global active_session
 
     run_id = session["run_id"]
     try:
-        workspace = (PROJECT_ROOT / "data" / "runs" / "dummy" / run_id).resolve()
+        workspace = (PROJECT_ROOT / "data" / "runs" / "dummy" / session["name"]).resolve()
         workspace.mkdir(parents=True, exist_ok=True)
+        session["workspace"] = workspace
+        write_manifest(session, "running", 0)
         send({"type": "workspace_ready", "run_id": run_id, "workspace_path": str(workspace)})
         send({"type": "log", "run_id": run_id, "text": "Dummy run started: " + session["name"]})
 
         phase_labels = ("Capture", "Masking", "Spatial", "Geometry", "Export")
         for phase, label in enumerate(phase_labels, start=1):
+            session["phase"] = phase
+            write_manifest(session, "running", phase)
             for value in (0.0, 0.5, 1.0):
                 if session["cancel"].is_set():
                     emit_cancelled(session)
@@ -119,13 +163,18 @@ def run_worker(session):
                     return
                 send({"type": "log", "run_id": run_id, "text": "Selection received"})
 
+            session["completed"].append(label.lower())
+            write_manifest(session, "running", phase)
+
         output_model = (workspace / "model.obj").resolve()
         output_model.write_text(CUBE_OBJ, encoding="utf-8")
         if session["cancel"].is_set():
             emit_cancelled(session)
             return
+        write_manifest(session, "completed", 5, output_model)
         send({"type": "run_completed", "run_id": run_id, "output_model_path": str(output_model)})
     except Exception as error:
+        write_manifest(session, "failed", session.get("phase", 0), error=str(error))
         send({"type": "run_failed", "run_id": run_id, "message": str(error)})
     finally:
         with session_lock:
@@ -154,7 +203,7 @@ def handle_command(command):
         if not isinstance(run_id, str) or not run_id or not RUN_ID_PATTERN.fullmatch(run_id):
             reject_start(run_id, "Invalid run_id")
             return
-        if not isinstance(name, str):
+        if not is_valid_run_name(name):
             reject_start(run_id, "Invalid start_run name")
             return
 
@@ -169,6 +218,9 @@ def handle_command(command):
                 "selection": threading.Event(),
                 "choice": None,
                 "worker": None,
+                "workspace": None,
+                "phase": 0,
+                "completed": [],
             }
             worker = threading.Thread(target=run_worker, args=(session,), name="dummy-backend-worker")
             session["worker"] = worker
