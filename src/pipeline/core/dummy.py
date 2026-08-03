@@ -74,6 +74,17 @@ def write_manifest(session, state, phase, output_model=None, error=None):
     manifest = {
         "run_id": session["run_id"],
         "run_name": session["name"],
+        "input_source": session["config"]["input"],
+        "mode": session["config"]["mode"],
+        "settings": {
+            "minimum_frames": session["config"]["minimum_frames"],
+            "capture_mode": session["config"]["capture_mode"],
+            "quality": session["config"]["quality"],
+            "force": session["config"]["force"],
+            "iou_threshold": session["config"]["iou_threshold"],
+            "drift_limit": session["config"]["drift_limit"],
+            "yoloe_model_size": session["config"]["yoloe_model_size"],
+        },
         "status": {
             "state": state,
             "phase": phase,
@@ -221,6 +232,17 @@ def handle_command(command):
                 "workspace": None,
                 "phase": 0,
                 "completed": [],
+                "config": {
+                    "input": command.get("input", ""),
+                    "minimum_frames": command.get("minimum_frames", 45),
+                    "mode": command.get("mode", "disk"),
+                    "capture_mode": command.get("capture_mode", "auto"),
+                    "quality": command.get("quality", "fast"),
+                    "force": command.get("force", False),
+                    "iou_threshold": command.get("iou_threshold", 0.5),
+                    "drift_limit": command.get("drift_limit", 200),
+                    "yoloe_model_size": command.get("yoloe_model_size", "s"),
+                },
             }
             worker = threading.Thread(target=run_worker, args=(session,), name="dummy-backend-worker")
             session["worker"] = worker

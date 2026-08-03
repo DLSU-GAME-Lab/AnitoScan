@@ -26,6 +26,30 @@ int PhaseNumber(PipelinePhase phase) {
     return 0;
 }
 
+const char* CaptureModeText(CaptureMode mode) {
+    switch (mode) {
+    case CaptureMode::Auto:
+        return "auto";
+    case CaptureMode::Image:
+        return "image";
+    case CaptureMode::Video:
+        return "video";
+    }
+    return "auto";
+}
+
+const char* QualityText(Quality quality) {
+    switch (quality) {
+    case Quality::Fast:
+        return "fast";
+    case Quality::Medium:
+        return "medium";
+    case Quality::Detailed:
+        return "detailed";
+    }
+    return "fast";
+}
+
 const char* StatusText(RunStatus status) {
     switch (status) {
     case RunStatus::Pending:
@@ -176,6 +200,26 @@ RunState ParseManifest(const std::filesystem::path& manifestPath) {
     RunState run;
     run.id = id;
     run.name = name;
+    run.config.inputSource = manifest.value("input_source", "");
+    run.config.mode = manifest.value("mode", "disk") == "pipe"
+        ? PipelineMode::Pipe
+        : PipelineMode::Disk;
+    if (manifest.contains("settings") && manifest["settings"].is_object()) {
+        const Json& settings = manifest["settings"];
+        run.config.minimumFrames = settings.value("minimum_frames", 45);
+        const std::string captureMode = settings.value("capture_mode", "auto");
+        run.config.captureMode = captureMode == "image"
+            ? CaptureMode::Image
+            : captureMode == "video" ? CaptureMode::Video : CaptureMode::Auto;
+        const std::string quality = settings.value("quality", "fast");
+        run.config.quality = quality == "medium"
+            ? Quality::Medium
+            : quality == "detailed" ? Quality::Detailed : Quality::Fast;
+        run.config.iouThreshold = settings.value("iou_threshold", 0.5f);
+        run.config.driftLimit = settings.value("drift_limit", 200);
+        run.config.yoloModelSize = settings.value("yoloe_model_size", "s");
+        run.config.force = settings.value("force", false);
+    }
     run.phase = ParsePhase(phaseValue);
     run.workspacePath = std::filesystem::path(paths["run_root"].get<std::string>());
 
@@ -272,6 +316,17 @@ bool RunStore::SaveRun(const RunState& run) const {
     Json manifest = {
         {"run_id", run.id},
         {"run_name", run.name},
+        {"input_source", run.config.inputSource.string()},
+        {"mode", run.config.mode == PipelineMode::Pipe ? "pipe" : "disk"},
+        {"settings", {
+            {"minimum_frames", run.config.minimumFrames},
+            {"capture_mode", CaptureModeText(run.config.captureMode)},
+            {"quality", QualityText(run.config.quality)},
+            {"force", run.config.force},
+            {"iou_threshold", run.config.iouThreshold},
+            {"drift_limit", run.config.driftLimit},
+            {"yoloe_model_size", run.config.yoloModelSize},
+        }},
         {"status", {
             {"state", StatusText(run.status)},
             {"phase", PhaseNumber(run.phase)},

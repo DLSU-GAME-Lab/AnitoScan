@@ -11,6 +11,7 @@
 struct StartRunCommand {
     RunId runId;
     std::string name;
+    RunConfig config;
 };
 
 struct SubmitSelectionCommand {

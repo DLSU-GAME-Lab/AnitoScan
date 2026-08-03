@@ -14,6 +14,14 @@ bool IsTerminalStatus(RunStatus status) {
         status == RunStatus::Cancelled;
 }
 
+bool IsValidRunConfig(const RunConfig& config) {
+    const bool validModelSize = config.yoloModelSize == "n" || config.yoloModelSize == "s" ||
+        config.yoloModelSize == "m" || config.yoloModelSize == "l" || config.yoloModelSize == "x";
+    return !config.inputSource.empty() && config.minimumFrames > 0 &&
+        config.iouThreshold >= 0.0f && config.iouThreshold <= 1.0f &&
+        config.driftLimit >= 0 && validModelSize;
+}
+
 bool IsValidRunName(std::string_view name) {
     if (name.empty() || name == "." || name == ".." || name.back() == ' ' || name.back() == '.') {
         return false;
@@ -44,9 +52,12 @@ const RunState* PipelineController::GetSelectedRun() const {
     return FindRun(*state_.selectedRunId);
 }
 
-CreateRunResult PipelineController::CreateRun(std::string name) {
+CreateRunResult PipelineController::CreateRun(std::string name, RunConfig config) {
     if (!IsValidRunName(name)) {
         return CreateRunResult::InvalidName;
+    }
+    if (!IsValidRunConfig(config)) {
+        return CreateRunResult::InvalidConfig;
     }
 
     for (const RunState& existingRun : state_.runs) {
@@ -60,6 +71,7 @@ CreateRunResult PipelineController::CreateRun(std::string name) {
         run.id = "run-" + std::to_string(nextRunId_++);
     } while (FindRun(run.id) != nullptr);
     run.name = std::move(name);
+    run.config = std::move(config);
     if (!runStore_.SaveRun(run)) {
         return CreateRunResult::StorageError;
     }
@@ -131,7 +143,7 @@ bool PipelineController::StartRun(const RunId& runId) {
         }
     }
 
-    if (!backendClient_.StartRun(StartRunCommand{run->id, run->name})) {
+    if (!backendClient_.StartRun(StartRunCommand{run->id, run->name, run->config})) {
         run->errorMessage = "Failed to send start command";
         return false;
     }

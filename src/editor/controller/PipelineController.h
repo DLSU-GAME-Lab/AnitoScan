@@ -12,7 +12,7 @@
 class BackendClient;
 class RunStore;
 
-enum class CreateRunResult { Created, DuplicateName, InvalidName, StorageError };
+enum class CreateRunResult { Created, DuplicateName, InvalidName, InvalidConfig, StorageError };
 
 class PipelineController {
 public:
@@ -20,7 +20,7 @@ public:
 
     const EditorState& GetState() const;
     const RunState* GetSelectedRun() const;
-    CreateRunResult CreateRun(std::string name);
+    CreateRunResult CreateRun(std::string name, RunConfig config);
     void RestoreRuns(std::vector<RunState> runs);
     bool SelectRun(const RunId& runId);
     void ClearSelection();

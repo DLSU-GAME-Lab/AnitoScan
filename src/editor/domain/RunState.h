@@ -9,6 +9,7 @@
 struct RunState {
     RunId id;
     std::string name;
+    RunConfig config;
     RunStatus status = RunStatus::Pending;
     PipelinePhase phase = PipelinePhase::Capture;
     std::optional<std::filesystem::path> workspacePath;

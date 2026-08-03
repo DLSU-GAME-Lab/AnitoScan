@@ -6,6 +6,34 @@
 
 namespace {
 
+const char* CaptureModeText(CaptureMode mode) {
+    switch (mode) {
+    case CaptureMode::Auto:
+        return "auto";
+    case CaptureMode::Image:
+        return "image";
+    case CaptureMode::Video:
+        return "video";
+    }
+    return "auto";
+}
+
+const char* PipelineModeText(PipelineMode mode) {
+    return mode == PipelineMode::Pipe ? "pipe" : "disk";
+}
+
+const char* QualityText(Quality quality) {
+    switch (quality) {
+    case Quality::Fast:
+        return "fast";
+    case Quality::Medium:
+        return "medium";
+    case Quality::Detailed:
+        return "detailed";
+    }
+    return "fast";
+}
+
 std::optional<PipelinePhase> ParsePhase(int phase) {
     switch (phase) {
     case 1:
@@ -26,8 +54,20 @@ std::optional<PipelinePhase> ParsePhase(int phase) {
 } // namespace
 
 std::string SerializeCommand(const StartRunCommand& command) {
-    return nlohmann::json{{"action", "start_run"}, {"run_id", command.runId}, {"name", command.name}}
-        .dump();
+    return nlohmann::json{
+        {"action", "start_run"},
+        {"run_id", command.runId},
+        {"name", command.name},
+        {"input", command.config.inputSource.string()},
+        {"minimum_frames", command.config.minimumFrames},
+        {"mode", PipelineModeText(command.config.mode)},
+        {"capture_mode", CaptureModeText(command.config.captureMode)},
+        {"quality", QualityText(command.config.quality)},
+        {"force", command.config.force},
+        {"iou_threshold", command.config.iouThreshold},
+        {"drift_limit", command.config.driftLimit},
+        {"yoloe_model_size", command.config.yoloModelSize},
+    }.dump();
 }
 
 std::string SerializeCommand(const SubmitSelectionCommand& command) {
