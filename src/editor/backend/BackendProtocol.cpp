@@ -2,7 +2,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <type_traits>
 #include <utility>
 
 namespace {
@@ -26,24 +25,19 @@ std::optional<PipelinePhase> ParsePhase(int phase) {
 
 } // namespace
 
-std::string SerializeCommand(const BackendCommand& command) {
-    return std::visit(
-        [](const auto& value) {
-            using T = std::decay_t<decltype(value)>;
-            nlohmann::json message;
+std::string SerializeCommand(const StartRunCommand& command) {
+    return nlohmann::json{{"action", "start_run"}, {"run_id", command.runId}, {"name", command.name}}
+        .dump();
+}
 
-            if constexpr (std::is_same_v<T, StartRunCommand>) {
-                message = {{"action", "start_run"}, {"run_id", value.runId}, {"name", value.name}};
-            } else if constexpr (std::is_same_v<T, SubmitSelectionCommand>) {
-                message = {{"action", "submit_selection"}, {"run_id", value.runId}};
-                message["choice"] = value.choice ? nlohmann::json(*value.choice) : nlohmann::json(nullptr);
-            } else {
-                message = {{"action", "cancel_run"}, {"run_id", value.runId}};
-            }
+std::string SerializeCommand(const SubmitSelectionCommand& command) {
+    nlohmann::json message = {{"action", "submit_selection"}, {"run_id", command.runId}};
+    message["choice"] = command.choice ? nlohmann::json(*command.choice) : nlohmann::json(nullptr);
+    return message.dump();
+}
 
-            return message.dump();
-        },
-        command);
+std::string SerializeCommand(const CancelRunCommand& command) {
+    return nlohmann::json{{"action", "cancel_run"}, {"run_id", command.runId}}.dump();
 }
 
 std::optional<BackendEvent> ParseEvent(std::string_view message) {
