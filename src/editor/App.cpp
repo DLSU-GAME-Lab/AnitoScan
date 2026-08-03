@@ -102,13 +102,13 @@ void App::Run() {
         // Render the scene offscreen at the current UI viewport size.
         const int viewportWidth = uiManager_.GetViewportWidth();
         const int viewportHeight = uiManager_.GetViewportHeight();
-        if (scene_ && viewportWidth > 0 && viewportHeight > 0) {
+        if (scene_->GetModel() && viewportWidth > 0 && viewportHeight > 0) {
             scene_->Render(viewportWidth, viewportHeight);
         }
 
         // Build the UI frame with the offscreen scene texture.
         uiManager_.BeginFrame();
-        uiManager_.Render(scene_ ? scene_->GetColorTexture() : 0);
+        uiManager_.Render(scene_->GetModel() ? scene_->GetColorTexture() : 0);
 
         // Clear the application framebuffer and draw the completed UI frame.
         int width = 0;
