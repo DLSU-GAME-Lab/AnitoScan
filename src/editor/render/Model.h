@@ -1,17 +1,18 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
+#include <glad/gl.h>
 #include <glm/glm.hpp>
 
-#include "Shader.h"
-#include "Mesh.h"
-#include "../Types.h"
+class Mesh;
+class Shader;
 
 class Model {
 public:
-	Model(const String& objPath);
+	Model(const std::string& objPath);
 	~Model();
 
 	void Draw(const Shader& shader) const;
@@ -29,19 +30,19 @@ public:
 	glm::vec3 GetCentroid();
 
 private:
-	void LoadOBJ(const String& path);
-	GLuint LoadTexture(const String& filename);
+	void LoadOBJ(const std::string& path);
+	GLuint LoadTexture(const std::string& filename);
 
 private:
-	std::vector<Mesh> meshes;
-	glm::vec3 position{ 0.0f };
-	glm::vec3 rotation{ 0.0f };
-	glm::vec3 scale{ 1.0f };
+	std::vector<Mesh> meshes_;
+	glm::vec3 position_{ 0.0f };
+	glm::vec3 rotation_{ 0.0f };
+	glm::vec3 scale_{ 1.0f };
 
-	glm::vec3 boundsMin{ 0.0f };
-	glm::vec3 boundsMax{ 0.0f };
-	glm::vec3 centroid{ 0.0f };
+	glm::vec3 boundsMin_{ 0.0f };
+	glm::vec3 boundsMax_{ 0.0f };
+	glm::vec3 centroid_{ 0.0f };
 
-	String directory;
-	std::unordered_map<String, GLuint> textureCache;
+	std::string directory_;
+	std::unordered_map<std::string, GLuint> textureCache_;
 };

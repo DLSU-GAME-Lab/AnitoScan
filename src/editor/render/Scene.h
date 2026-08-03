@@ -2,16 +2,20 @@
 
 #include <memory>
 #include <string>
+#include <glad/gl.h>
+#include <glm/glm.hpp>
+
 #include "Camera.h"
-#include "Model.h"
-#include "Shader.h"
+
+class Model;
+class Shader;
 
 class Scene {
 public:
 	Scene();
 	~Scene();
 
-	void LoadModel(const String& objPath);
+	void LoadModel(const std::string& objPath);
 	void Recenter();
 	
 	void Update(float deltaTime);
@@ -27,19 +31,19 @@ private:
 	void DestroyFramebuffer();
 
 private:
-	Camera camera;
-	std::unique_ptr<Model> model;
-	std::unique_ptr<Shader> shader;
+	Camera camera_;
+	std::unique_ptr<Model> model_;
+	std::unique_ptr<Shader> shader_;
 
-	glm::vec3 lightDir{ -0.5f, -1.0f, -0.3f };
-	glm::vec3 objectColor{ 0.8f, 0.8f, 0.8f };
-	GLuint colorTexture = 0;
-	float ambientStrength = 0.8f;
-	int colorMode = 0;
+	glm::vec3 lightDir_{ -0.5f, -1.0f, -0.3f };
+	glm::vec3 objectColor_{ 0.8f, 0.8f, 0.8f };
+	GLuint colorTexture_ = 0;
+	float ambientStrength_ = 0.8f;
+	int colorMode_ = 0;
 
-	GLuint depthRenderbuffer = 0;
-	GLuint fbo = 0;
-	int fboWidth = 0, fboHeight = 0;
+	GLuint depthRenderbuffer_ = 0;
+	GLuint fbo_ = 0;
+	int fboWidth_ = 0, fboHeight_ = 0;
 
 
 };

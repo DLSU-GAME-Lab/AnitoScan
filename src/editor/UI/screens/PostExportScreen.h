@@ -1,8 +1,8 @@
 #pragma once
 
-#include "editor/ui/screens/PostExportScreen.h"
+#include "editor/ui/components/Viewport.h"
 
-class UIManager {
+class PostExportScreen {
 public:
     void Render(unsigned int textureId);
 
@@ -10,5 +10,5 @@ public:
     int GetViewportHeight() const;
 
 private:
-    PostExportScreen postExportScreen_;
+    Viewport viewport_;
 };

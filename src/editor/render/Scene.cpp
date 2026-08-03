@@ -1,34 +1,40 @@
 #include "Scene.h"
 
-#include <glad/gl.h>
+#include "Model.h"
+#include "Shader.h"
+
+#include <cmath>
 #include <iostream>
+#include <memory>
 
 // Initializes the scene with a default camera position  and creates the default shader used for rendering.
-Scene::Scene() : camera(glm::vec3(0.0f, 0.0f, 3.0f), 5.0f) {
-	shader = std::make_unique<Shader>("shaders/default.vert", "shaders/default.frag");
+Scene::Scene() : camera_(glm::vec3(0.0f, 0.0f, 3.0f), 5.0f) {
+	shader_ = std::make_unique<Shader>("shaders/default.vert", "shaders/default.frag");
 	//shader = std::make_unique<Shader>("default.vert", "default.frag");
 }
 
-Scene::~Scene() {}
+Scene::~Scene() {
+	DestroyFramebuffer();
+}
 
 // Loads a 3D model from file and adjustments on camera
-void Scene::LoadModel(const String& objPath) {
-	model = std::make_unique<Model>(objPath);
+void Scene::LoadModel(const std::string& objPath) {
+	model_ = std::make_unique<Model>(objPath);
 	Recenter();
 }
 
 // Recalculates camera distance and target orientation based on the active model's bounds.
 void Scene::Recenter() {
-	if (!model) return;
+	if (!model_) return;
 
-	glm::vec3 center = model->GetCentroid();
-	float radius = model->GetBoundsRadius();
+	glm::vec3 center = model_->GetCentroid();
+	float radius = model_->GetBoundsRadius();
 
 	float fovRadians = glm::radians(45.0f);
 	float distance = (radius / std::sin(fovRadians * 0.5f)) * 1.5f;
 	
-	camera.SetTarget(center);
-	camera.SetDistance(distance);
+	camera_.SetTarget(center);
+	camera_.SetDistance(distance);
 
 	std::cout << "[Scene] Recentered camera: target(" << center.x << ", " << center.y << ", " << center.z
 		<< ") distance(" << distance << ")\n";
@@ -40,40 +46,40 @@ void Scene::Update(float deltaTime) {}
 
 // Deletes OpenGL color textures, depth renderbuffers, and framebuffers to clear memory
 void Scene::DestroyFramebuffer() {
-	if (colorTexture) glDeleteTextures(1, &colorTexture);
-	if (depthRenderbuffer) glDeleteRenderbuffers(1, &depthRenderbuffer);
-	if (fbo) glDeleteFramebuffers(1, &fbo);
-	colorTexture = depthRenderbuffer = fbo = 0;
-	fboWidth = fboHeight = 0;
+	if (colorTexture_) glDeleteTextures(1, &colorTexture_);
+	if (depthRenderbuffer_) glDeleteRenderbuffers(1, &depthRenderbuffer_);
+	if (fbo_) glDeleteFramebuffers(1, &fbo_);
+	colorTexture_ = depthRenderbuffer_ = fbo_ = 0;
+	fboWidth_ = fboHeight_ = 0;
 }
 
 // Verifies and instantiates an OpenGL Framebuffer Object matched to the target dimensions
 void Scene::EnsureFramebuffer(int width, int height) {
-	if (fbo != 0 && width == fboWidth && height == fboHeight) {
+	if (fbo_ != 0 && width == fboWidth_ && height == fboHeight_) {
 		return;
 	}
 
 	DestroyFramebuffer();
 
-	fboWidth = width;
-	fboHeight = height;
+	fboWidth_ = width;
+	fboHeight_ = height;
 
-	glGenFramebuffers(1, &fbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glGenFramebuffers(1, &fbo_);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
 
 	//color attachment
-	glGenTextures(1, &colorTexture);
-	glBindTexture(GL_TEXTURE_2D, colorTexture);
+	glGenTextures(1, &colorTexture_);
+	glBindTexture(GL_TEXTURE_2D, colorTexture_);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture_, 0);
 
 	//depth attachment
-	glGenRenderbuffers(1, &depthRenderbuffer);
-	glBindRenderbuffer(GL_RENDERBUFFER, depthRenderbuffer);
+	glGenRenderbuffers(1, &depthRenderbuffer_);
+	glBindRenderbuffer(GL_RENDERBUFFER, depthRenderbuffer_);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRenderbuffer);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRenderbuffer_);
 
 	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if (status != GL_FRAMEBUFFER_COMPLETE) {
@@ -90,48 +96,43 @@ void Scene::Render(int width, int height) {
 
 	EnsureFramebuffer(width, height);
 
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
 	glViewport(0, 0, width, height);
 	glEnable(GL_DEPTH_TEST);
 	glClearColor(0.1f, 0.1f, 0.12f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	if (model && shader) {
-		shader->Use();
+	if (model_ && shader_) {
+		shader_->Use();
 
-		glm::mat4 view = camera.GetViewMatrix();
-		glm::mat4 proj = camera.GetProjectionMatrix(static_cast<float>(width) / height);
-		glm::mat4 modelMat = model->GetModelMatrix();
+		glm::mat4 view = camera_.GetViewMatrix();
+		glm::mat4 proj = camera_.GetProjectionMatrix(static_cast<float>(width) / height);
+		glm::mat4 modelMat = model_->GetModelMatrix();
 
-		shader->SetMat4("view", view);
-		shader->SetMat4("projection", proj);
-		shader->SetMat4("model", modelMat);
-		shader->SetVec3("lightDir", lightDir);
-		shader->SetFloat("ambientStrength", ambientStrength);
-		shader->SetVec3("objectColor", objectColor);
-		shader->SetInt("colorMode", colorMode);
-		model->Draw(*shader);
+		shader_->SetMat4("view", view);
+		shader_->SetMat4("projection", proj);
+		shader_->SetMat4("model", modelMat);
+		shader_->SetVec3("lightDir", lightDir_);
+		shader_->SetFloat("ambientStrength", ambientStrength_);
+		shader_->SetVec3("objectColor", objectColor_);
+		shader_->SetInt("colorMode", colorMode_);
+		model_->Draw(*shader_);
 	}
-
-	//temporary
-	glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-	glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 // Returns the internal OpenGL color texture attachment handle
 GLuint Scene::GetColorTexture() {
-	return this->colorTexture;
+	return colorTexture_;
 }
 
 // Returns a reference to the scene viewport camera
 Camera& Scene::GetCamera() {
-	return this->camera;
+	return camera_;
 }
 
 // Returns a raw pointer to the currently loaded 3D asset model
 Model* Scene::GetModel() {
-	return this->model.get();
+	return model_.get();
 }

@@ -1,47 +1,35 @@
 #pragma once
 
-#include <iostream>
-
-#include <glad/gl.h>
 #include <SDL.h>
-#include <SDL_opengl.h>
-#include <backends/imgui_impl_sdl2.h>
-#include <backends/imgui_impl_opengl3.h>
 
-#include "Types.h"
-#include "render/Scene.h"
-#include "IPCClient.h"
+#include <memory>
 
-class IPCClient;
+#include "editor/ui/UIManager.h"
+
+class Scene;
 
 class App {
 public:
-	App(int width, int height);
-	~App();
+    App();
+    ~App();
 
-	void Initialize();
-	void Run();
-
-private:
-	bool InitializeSDL();
-	bool InitializeOpenGL();
-	void PollBackend();
-	void ProcessMouseEvents(SDL_Event event);
-	void ProcessKeyboardEvents(SDL_Event event);
-	void Cleanup();
+    bool Initialize();
+    void Run();
 
 private:
-	bool isRunning;
-	SDL_Window* window;
-	SDL_GLContext glContext;
+    void Shutdown();
 
-	int screenWidth;
-	int screenHeight;
+    bool InitializeSDL();
+    bool InitializeOpenGL();
+    bool InitializeImGui();
 
-	IPCClient ipc;
-	std::unique_ptr<Scene> scene;
-	bool mouseDragging = false;
-	bool middleMousehold = false;
-	Uint64 lastTime = 0;
-	float deltaTime;
+
+    bool running_ = false;
+    bool sdlInitialized_ = false;
+    bool imguiSdlInitialized_ = false;
+    bool imguiOpenGLInitialized_ = false;
+    UIManager uiManager_;
+    std::unique_ptr<Scene> scene_;
+    SDL_Window* window_ = nullptr;
+    SDL_GLContext glContext_ = nullptr;
 };

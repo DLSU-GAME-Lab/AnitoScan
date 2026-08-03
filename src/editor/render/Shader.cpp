@@ -1,26 +1,31 @@
 #include "Shader.h"
 
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <unordered_map>
+
 // Loads shader source files, compiles fragment and vertex shader and links them to a shader program
-Shader::Shader(const String& vertPath, const String& fragPath) {
-	String rootPath = String(PROJECT_ROOT_DIR) + "/src/editor/render/";
+Shader::Shader(const std::string& vertPath, const std::string& fragPath) {
+	std::string rootPath = std::string(PROJECT_ROOT_DIR) + "/src/editor/render/";
 
 	std::cout << rootPath << std::endl;
-	String vertSrc = LoadFile(rootPath + vertPath);
-	String fragSrc = LoadFile(rootPath + fragPath);
+	std::string vertSrc = LoadFile(rootPath + vertPath);
+	std::string fragSrc = LoadFile(rootPath + fragPath);
 
 	GLuint vertShader = CompileShader(vertSrc, GL_VERTEX_SHADER, vertPath);
 	GLuint fragShader = CompileShader(fragSrc, GL_FRAGMENT_SHADER, fragPath);
 
-	this->programID = glCreateProgram();
-	glAttachShader(this->programID, vertShader);
-	glAttachShader(this->programID, fragShader);
-	glLinkProgram(this->programID);
+	programID_ = glCreateProgram();
+	glAttachShader(programID_, vertShader);
+	glAttachShader(programID_, fragShader);
+	glLinkProgram(programID_);
 
 	GLint success;
-	glGetProgramiv(this->programID, GL_LINK_STATUS, &success);
+	glGetProgramiv(programID_, GL_LINK_STATUS, &success);
 	if (!success) {
 		char infoLog[1024];
-		glGetProgramInfoLog(this->programID, 1024, nullptr, infoLog);
+		glGetProgramInfoLog(programID_, 1024, nullptr, infoLog);
 		std::cerr << "[ERROR]: Shader Link error (" << vertPath << " / " << fragPath << ") : \n"
 				  << infoLog << std::endl;
 	}
@@ -31,13 +36,13 @@ Shader::Shader(const String& vertPath, const String& fragPath) {
 
 // Clean up
 Shader::~Shader() {
-	if (this->programID != 0) {
-		glDeleteProgram(this->programID);
+	if (programID_ != 0) {
+		glDeleteProgram(programID_);
 	}
 }
 
 // Loads the contents of a shader file into a string
-String Shader::LoadFile(const String& path){
+std::string Shader::LoadFile(const std::string& path){
 	std::ifstream file(path);
 	if (!file.is_open()) {
 		std::cerr << "[ERROR]: Failed to open shader file: " << path << std::endl;
@@ -50,7 +55,7 @@ String Shader::LoadFile(const String& path){
 }
 
 // Helper function for compiling a shader from source code
-GLuint Shader::CompileShader(const String& src, GLenum type, const String& debugName) {
+GLuint Shader::CompileShader(const std::string& src, GLenum type, const std::string& debugName) {
 	GLuint shader = glCreateShader(type);
 	const char* csrc = src.c_str();
 	glShaderSource(shader, 1, &csrc, nullptr);
@@ -67,14 +72,14 @@ GLuint Shader::CompileShader(const String& src, GLenum type, const String& debug
 }
 
 // Retrieves the location of a uniform variable from the shader program
-GLint Shader::GetUniformLocation(const String& name) const {
-	static thread_local std::unordered_map<GLuint, std::unordered_map<String, GLint>> cache;
-	auto& progCache = cache[this->programID];
+GLint Shader::GetUniformLocation(const std::string& name) const {
+	static thread_local std::unordered_map<GLuint, std::unordered_map<std::string, GLint>> cache;
+	auto& progCache = cache[programID_];
 	auto it = progCache.find(name);
 	if (it != progCache.end())
 		return it->second;
 
-	GLint loc = glGetUniformLocation(this->programID, name.c_str());
+	GLint loc = glGetUniformLocation(programID_, name.c_str());
 	if (loc == -1) {
 		std::cerr << "[WARNING]: uniform (" << name << ") not found" << std::endl;
 	}
@@ -84,11 +89,11 @@ GLint Shader::GetUniformLocation(const String& name) const {
 
 // Activates shader program for rendering
 void Shader::Use() {
-	glUseProgram(this->programID);
+	glUseProgram(programID_);
 }
 
 // Sets a 4x4 matrix uniform in the shader program
-void Shader::SetMat4(const String& name, const glm::mat4& mat) const {
+void Shader::SetMat4(const std::string& name, const glm::mat4& mat) const {
 	glUniformMatrix4fv(
 		GetUniformLocation(name),
 		1,
@@ -98,7 +103,7 @@ void Shader::SetMat4(const String& name, const glm::mat4& mat) const {
 }
 
 // Sets a 3-component vector uniform in the shader program
-void Shader::SetVec3(const String& name, const glm::vec3& vec) const {
+void Shader::SetVec3(const std::string& name, const glm::vec3& vec) const {
 	glUniform3fv(
 		GetUniformLocation(name),
 		1,
@@ -107,16 +112,16 @@ void Shader::SetVec3(const String& name, const glm::vec3& vec) const {
 }
 
 // Sets a float point in the shader program
-void Shader::SetFloat(const String& name, float value) const{
+void Shader::SetFloat(const std::string& name, float value) const{
 	glUniform1f(GetUniformLocation(name), value);
 }
 
 // Sets a singular integer in the shader program
-void Shader::SetInt(const String& name, int value) const{
+void Shader::SetInt(const std::string& name, int value) const{
 	glUniform1i(GetUniformLocation(name), value);
 }
 
 // Returns the OpenGL program ID associated with this shader
 GLuint Shader::GetID() const {
-	return this->programID;
+	return programID_;
 }
