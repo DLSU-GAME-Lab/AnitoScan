@@ -7,7 +7,7 @@ target_compile_definitions(engine_config INTERFACE
 )
 
 if(MSVC)
-    target_compile_options(engine_config INTERFACE /W4 /WX)
+    #target_compile_options(engine_config INTERFACE /W4 /WX)
 else()
     target_compile_options(engine_config INTERFACE -Wall -Wextra)
 endif()
