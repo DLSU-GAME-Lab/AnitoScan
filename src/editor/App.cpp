@@ -15,8 +15,7 @@ namespace {
 
 App::App(std::unique_ptr<BackendClient> backendClient, std::filesystem::path runsDirectory)
     : backendClient_(std::move(backendClient)),
-      runStore_(runsDirectory),
-      controller_(*backendClient_, runStore_) {}
+      runStore_(std::move(runsDirectory)) {}
 
 App::~App() {
     Shutdown();
@@ -28,8 +27,11 @@ bool App::Initialize() {
         return false;
     }
 
+    controller_.emplace(*backendClient_, runStore_);
+
     scene_ = std::make_unique<Scene>();
-    controller_.RestoreRuns(runStore_.LoadRuns());
+    controller_->RestoreRuns(runStore_.LoadRuns());
+
     if (!backendClient_->Start()) {
         std::cerr << "Failed to start backend\n";
         Shutdown();
@@ -110,11 +112,11 @@ void App::Run() {
         }
 
         for (const BackendEvent& backendEvent : backendClient_->PollEvents()) {
-            controller_.HandleEvent(backendEvent);
+            controller_->HandleEvent(backendEvent);
         }
         for (const std::string& diagnostic : backendClient_->PollDiagnostics()) {
             std::cerr << "[backend] " << diagnostic << '\n';
-            controller_.AddLog("[diagnostic] " + diagnostic);
+            controller_->AddLog("[diagnostic] " + diagnostic);
         }
 
         SynchronizeScene();
@@ -132,8 +134,8 @@ void App::Run() {
         // Build the UI frame with the offscreen scene texture.
         uiManager_.BeginFrame();
         uiManager_.Render(
-            controller_.GetState(),
-            controller_,
+            controller_->GetState(),
+            *controller_,
             scene_->GetModel() ? scene_->GetColorTexture() : 0
         );
 
@@ -177,7 +179,7 @@ void App::HandleViewportInput(const SDL_Event& event) {
 }
 
 void App::SynchronizeScene() {
-    const RunState* selectedRun = controller_.GetSelectedRun();
+    const RunState* selectedRun = controller_->GetSelectedRun();
     const bool isDisplayable = selectedRun != nullptr &&
         selectedRun->status == RunStatus::Completed && selectedRun->outputModelPath.has_value();
 
@@ -198,6 +200,7 @@ void App::SynchronizeScene() {
 void App::Shutdown() {
     running_ = false;
     displayedRunId_.reset();
+    controller_.reset();
     if (backendClient_) {
         backendClient_->Stop();
     }

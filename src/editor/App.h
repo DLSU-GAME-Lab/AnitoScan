@@ -31,7 +31,8 @@ private:
 
     std::unique_ptr<BackendClient> backendClient_;
     RunStore runStore_;
-    PipelineController controller_;
+    std::optional<PipelineController> controller_;
+
     bool running_ = false;
     bool sdlInitialized_ = false;
     UIManager uiManager_;
