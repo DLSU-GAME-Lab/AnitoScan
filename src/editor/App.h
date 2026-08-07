@@ -2,11 +2,11 @@
 
 #include <SDL.h>
 
+#include <filesystem>
 #include <memory>
 #include <optional>
 
 #include "editor/backend/BackendClient.h"
-#include "editor/backend/BackendConfig.h"
 #include "editor/controller/PipelineController.h"
 #include "editor/persistence/RunStore.h"
 #include "editor/ui/UIManager.h"
@@ -15,7 +15,7 @@ class Scene;
 
 class App {
 public:
-    explicit App(BackendConfig backendConfig);
+    explicit App(std::unique_ptr<BackendClient> backendClient, std::filesystem::path runsDirectory);
     ~App();
 
     bool Initialize();
@@ -29,8 +29,7 @@ private:
     bool InitializeSDL();
     bool InitializeOpenGL();
 
-    BackendConfig backendConfig_;
-    BackendClient backendClient_;
+    std::unique_ptr<BackendClient> backendClient_;
     RunStore runStore_;
     PipelineController controller_;
     bool running_ = false;

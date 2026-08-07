@@ -13,10 +13,10 @@ namespace {
     constexpr int kInitialWindowHeight = 720;
 }
 
-App::App(BackendConfig backendConfig)
-    : backendConfig_(std::move(backendConfig)),
-      runStore_(backendConfig_.runsDirectory),
-      controller_(backendClient_, runStore_) {}
+App::App(std::unique_ptr<BackendClient> backendClient, std::filesystem::path runsDirectory)
+    : backendClient_(std::move(backendClient)),
+      runStore_(runsDirectory),
+      controller_(*backendClient_, runStore_) {}
 
 App::~App() {
     Shutdown();
@@ -30,7 +30,7 @@ bool App::Initialize() {
 
     scene_ = std::make_unique<Scene>();
     controller_.RestoreRuns(runStore_.LoadRuns());
-    if (!backendClient_.Start(backendConfig_)) {
+    if (!backendClient_->Start()) {
         std::cerr << "Failed to start backend\n";
         Shutdown();
         return false;
@@ -96,8 +96,6 @@ bool App::InitializeOpenGL() {
     return true;
 }
 
-
-
 void App::Run() {
     while (running_) {
         // Forward input events to the UI and handle application exit requests.
@@ -111,10 +109,10 @@ void App::Run() {
             }
         }
 
-        for (const BackendEvent& backendEvent : backendClient_.PollEvents()) {
+        for (const BackendEvent& backendEvent : backendClient_->PollEvents()) {
             controller_.HandleEvent(backendEvent);
         }
-        for (const std::string& diagnostic : backendClient_.PollDiagnostics()) {
+        for (const std::string& diagnostic : backendClient_->PollDiagnostics()) {
             std::cerr << "[backend] " << diagnostic << '\n';
             controller_.AddLog("[diagnostic] " + diagnostic);
         }
@@ -200,7 +198,9 @@ void App::SynchronizeScene() {
 void App::Shutdown() {
     running_ = false;
     displayedRunId_.reset();
-    backendClient_.Stop();
+    if (backendClient_) {
+        backendClient_->Stop();
+    }
     scene_.reset();
 
     uiManager_.Shutdown();

@@ -2,17 +2,26 @@
 
 #include <utility>
 
+BackendClient::BackendClient(BackendConfig config)
+    : config_(std::move(config)) {}
+
 BackendClient::~BackendClient() {
     Stop();
 }
 
-bool BackendClient::Start(const BackendConfig& config) {
-    if (process_.IsRunning()) {
-        return false;
-    }
+// Launches the process using the internally stored BackendConfig.
+bool BackendClient::Start() {
+    return Start(config_.executable, config_.arguments, config_.workingDirectory);
+}
 
+// Ensures any existing process and background reader threads are terminated,
+// clears event queues, and launches the backend process with fresh threads.
+bool BackendClient::Start(const std::filesystem::path& executable,
+                           const std::vector<std::string>& arguments,
+                           const std::filesystem::path& workingDirectory) {
     Stop();
-    if (!process_.Start(config.executable, config.arguments, config.workingDirectory)) {
+
+    if (!process_.Start(executable, arguments, workingDirectory)) {
         return false;
     }
 
@@ -25,6 +34,7 @@ bool BackendClient::Start(const BackendConfig& config) {
         diagnostics_.clear();
     }
 
+    // Mark active state and spawn asynchronous stdout/stderr reader threads
     stopping_ = false;
     try {
         stdoutReader_ = std::thread(&BackendClient::ReadStdout, this);
@@ -44,6 +54,7 @@ bool BackendClient::Start(const BackendConfig& config) {
     return true;
 }
 
+// Signals reader threads to exit, terminates the child process, and waits for threads to join.
 void BackendClient::Stop() {
     stopping_ = true;
     process_.Stop();
@@ -75,28 +86,27 @@ bool BackendClient::AdvanceRun(const AdvanceRunCommand& command) {
     return process_.WriteLine(SerializeCommand(command));
 }
 
+// Drains pending backend events in constant O(1) time via vector swapping under lock.
 std::vector<BackendEvent> BackendClient::PollEvents() {
-    std::scoped_lock lock(eventMutex_);
     std::vector<BackendEvent> events;
-    events.reserve(events_.size());
-    while (!events_.empty()) {
-        events.push_back(std::move(events_.front()));
-        events_.pop_front();
+    {
+        std::scoped_lock lock(eventMutex_);
+        events.swap(events_);
     }
     return events;
 }
 
+// Drains pending diagnostic logs in constant O(1) time via vector swapping under lock.
 std::vector<std::string> BackendClient::PollDiagnostics() {
-    std::scoped_lock lock(diagnosticMutex_);
     std::vector<std::string> diagnostics;
-    diagnostics.reserve(diagnostics_.size());
-    while (!diagnostics_.empty()) {
-        diagnostics.push_back(std::move(diagnostics_.front()));
-        diagnostics_.pop_front();
+    {
+        std::scoped_lock lock(diagnosticMutex_);
+        diagnostics.swap(diagnostics_);
     }
     return diagnostics;
 }
 
+// Background thread loop: continuously reads stdout, parses events, and queues them.
 void BackendClient::ReadStdout() {
     std::string line;
     while (process_.ReadStdoutLine(line)) {
@@ -114,12 +124,14 @@ void BackendClient::ReadStdout() {
         }
     }
 
+    // Push a disconnect event if the process died unexpectedly without Stop() being called
     if (!stopping_) {
         std::scoped_lock lock(eventMutex_);
         events_.push_back(BackendDisconnectedEvent{"Backend process disconnected"});
     }
 }
 
+// Background thread loop: continuously reads stderr and queues raw diagnostic messages.
 void BackendClient::ReadStderr() {
     std::string line;
     while (process_.ReadStderrLine(line)) {
