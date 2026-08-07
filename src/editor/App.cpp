@@ -201,9 +201,7 @@ void App::Shutdown() {
     running_ = false;
     displayedRunId_.reset();
     controller_.reset();
-    if (backendClient_) {
-        backendClient_->Stop();
-    }
+    backendClient_->Stop();
     scene_.reset();
 
     uiManager_.Shutdown();

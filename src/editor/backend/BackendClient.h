@@ -23,11 +23,6 @@ public:
     BackendClient& operator=(const BackendClient&) = delete;
 
     bool Start();
-
-    bool Start(const std::filesystem::path& executable,
-               const std::vector<std::string>& arguments,
-               const std::filesystem::path& workingDirectory);
-
     void Stop();
     bool IsRunning();
 

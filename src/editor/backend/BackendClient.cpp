@@ -9,19 +9,12 @@ BackendClient::~BackendClient() {
     Stop();
 }
 
-// Launches the process using the internally stored BackendConfig.
-bool BackendClient::Start() {
-    return Start(config_.executable, config_.arguments, config_.workingDirectory);
-}
-
 // Ensures any existing process and background reader threads are terminated,
 // clears event queues, and launches the backend process with fresh threads.
-bool BackendClient::Start(const std::filesystem::path& executable,
-                           const std::vector<std::string>& arguments,
-                           const std::filesystem::path& workingDirectory) {
+bool BackendClient::Start() {
     Stop();
 
-    if (!process_.Start(executable, arguments, workingDirectory)) {
+    if (!process_.Start(config_.executable, config_.arguments, config_.workingDirectory)) {
         return false;
     }
 
