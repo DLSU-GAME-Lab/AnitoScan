@@ -10,7 +10,7 @@ BackendClient::~BackendClient() {
 }
 
 // Ensures any existing process and background reader threads are terminated,
-// clears event queues, and launches the backend process with fresh threads.
+// clears message and diagnostic queues, and launches the backend process with fresh threads.
 bool BackendClient::Start() {
     Stop();
 
@@ -27,13 +27,11 @@ bool BackendClient::Start() {
         diagnostics_.clear();
     }
 
-    // Mark active state and spawn asynchronous stdout/stderr reader threads
-    stopping_ = false;
+    // Spawn asynchronous stdout/stderr reader threads
     try {
         stdoutReader_ = std::thread(&BackendClient::ReadStdout, this);
         stderrReader_ = std::thread(&BackendClient::ReadStderr, this);
     } catch (...) {
-        stopping_ = true;
         process_.Stop();
         if (stdoutReader_.joinable()) {
             stdoutReader_.join();
@@ -49,7 +47,6 @@ bool BackendClient::Start() {
 
 // Signals reader threads to exit, terminates the child process, and waits for threads to join.
 void BackendClient::Stop() {
-    stopping_ = true;
     process_.Stop();
     if (stdoutReader_.joinable()) {
         stdoutReader_.join();
@@ -63,7 +60,7 @@ bool BackendClient::Send(std::string_view message) {
     return process_.WriteLine(message);
 }
 
-// Drains pending backend events in constant O(1) time via vector swapping under lock.
+// Drains pending raw backend messages by swapping the queue under lock.
 std::vector<std::string> BackendClient::PollMessages() {
     std::vector<std::string> messages;
     {
@@ -83,7 +80,7 @@ std::vector<std::string> BackendClient::PollDiagnostics() {
     return diagnostics;
 }
 
-// Background thread loop: continuously reads stdout, parses events, and queues them.
+// Background thread loop: continuously reads and queues raw stdout messages.
 void BackendClient::ReadStdout() {
     std::string line;
     while (process_.ReadStdoutLine(line)) {

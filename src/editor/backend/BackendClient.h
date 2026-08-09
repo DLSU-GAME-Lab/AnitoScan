@@ -3,7 +3,6 @@
 #include "editor/backend/BackendConfig.h"
 #include "editor/backend/BackendProcess.h"
 
-#include <atomic>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -45,6 +44,4 @@ private:
 
     std::mutex diagnosticMutex_;
     std::vector<std::string> diagnostics_;
-
-    std::atomic<bool> stopping_{true};
 };

@@ -14,9 +14,6 @@ target_include_directories(editor_backend PUBLIC
     ${CMAKE_SOURCE_DIR}/src
 )
 
-target_link_libraries(editor_backend
-    PUBLIC
-        editor_protocol
-    PRIVATE
-        Threads::Threads
+target_link_libraries(editor_backend PRIVATE
+    Threads::Threads
 )
