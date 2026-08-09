@@ -145,7 +145,7 @@ bool PipelineController::StartRun(const RunId& runId) {
         }
     }
 
-    if (!backendClient_.StartRun(StartRunCommand{run->id, run->name, run->config})) {
+    if (!backendClient_.Send(SerializeCommand(StartRunCommand{run->id, run->name, run->config}))) {
         run->errorMessage = "Failed to send start command";
         return false;
     }
@@ -161,7 +161,7 @@ bool PipelineController::AdvanceRun(const RunId& runId) {
         return false;
     }
 
-    if (!backendClient_.AdvanceRun(AdvanceRunCommand{runId})) {
+    if (!backendClient_.Send(SerializeCommand(AdvanceRunCommand{runId}))) {
         run->errorMessage = "Failed to send continue command";
         return false;
     }
@@ -190,7 +190,7 @@ bool PipelineController::CancelRun(const RunId& runId) {
         return true;
     }
 
-    if (!backendClient_.CancelRun(CancelRunCommand{runId})) {
+    if (!backendClient_.Send(SerializeCommand(CancelRunCommand{runId}))) {
         run->errorMessage = "Failed to send cancel command";
         return false;
     }
@@ -250,7 +250,7 @@ bool PipelineController::SubmitSelection(const RunId& runId, std::optional<int> 
         return false;
     }
 
-    if (!backendClient_.SubmitSelection(SubmitSelectionCommand{runId, choice})) {
+    if (!backendClient_.Send(SerializeCommand(SubmitSelectionCommand{runId, choice}))) {
         run->errorMessage = "Failed to send selection command";
         return false;
     }

@@ -2,11 +2,11 @@
 
 #include "editor/backend/BackendConfig.h"
 #include "editor/backend/BackendProcess.h"
-#include "editor/backend/BackendProtocol.h"
 
 #include <atomic>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -24,14 +24,10 @@ public:
 
     bool Start();
     void Stop();
-    bool IsRunning();
 
-    bool StartRun(const StartRunCommand& command);
-    bool SubmitSelection(const SubmitSelectionCommand& command);
-    bool CancelRun(const CancelRunCommand& command);
-    bool AdvanceRun(const AdvanceRunCommand& command);
+    bool Send(std::string_view message);
 
-    std::vector<BackendEvent> PollEvents();
+    std::vector<std::string> PollMessages();
     std::vector<std::string> PollDiagnostics();
 
 private:
@@ -44,8 +40,8 @@ private:
     std::thread stdoutReader_;
     std::thread stderrReader_;
 
-    std::mutex eventMutex_;
-    std::vector<BackendEvent> events_;
+    std::mutex messageMutex_;
+    std::vector<std::string> messages_;
 
     std::mutex diagnosticMutex_;
     std::vector<std::string> diagnostics_;

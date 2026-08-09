@@ -2,7 +2,6 @@ find_package(Threads REQUIRED)
 
 add_library(editor_backend STATIC
     BackendClient.cpp
-    BackendProtocol.cpp
 )
 
 if(WIN32)
@@ -15,7 +14,9 @@ target_include_directories(editor_backend PUBLIC
     ${CMAKE_SOURCE_DIR}/src
 )
 
-target_link_libraries(editor_backend PRIVATE
-    nlohmann_json::nlohmann_json
-    Threads::Threads
+target_link_libraries(editor_backend
+    PUBLIC
+        editor_protocol
+    PRIVATE
+        Threads::Threads
 )

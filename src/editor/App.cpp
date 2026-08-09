@@ -1,6 +1,7 @@
 #include "App.h"
 
 #include "render/Scene.h"
+#include "editor/protocol/BackendProtocol.h"
 
 #include <iostream>
 #include <memory>
@@ -111,8 +112,13 @@ void App::Run() {
             }
         }
 
-        for (const BackendEvent& backendEvent : backendClient_->PollEvents()) {
-            controller_->HandleEvent(backendEvent);
+        for (const std::string& message : backendClient_->PollMessages()) {
+            const auto event = ParseEvent(message);
+            if (event) {
+                controller_->HandleEvent(*event);
+            } else {
+                controller_->AddLog("[diagnostic] Invalid backend message");
+            }
         }
         for (const std::string& diagnostic : backendClient_->PollDiagnostics()) {
             std::cerr << "[backend] " << diagnostic << '\n';

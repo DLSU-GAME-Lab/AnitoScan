@@ -1,6 +1,6 @@
 #pragma once
 
-#include "editor/backend/BackendProtocol.h"
+#include "editor/protocol/BackendProtocol.h"
 #include "editor/domain/EditorState.h"
 
 #include <cstdint>

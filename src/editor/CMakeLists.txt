@@ -1,3 +1,4 @@
+add_subdirectory(protocol)
 add_subdirectory(backend)
 add_subdirectory(persistence)
 add_subdirectory(controller)

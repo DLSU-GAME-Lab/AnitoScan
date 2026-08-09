@@ -1,4 +1,4 @@
-#include "editor/backend/BackendProtocol.h"
+#include "editor/protocol/BackendProtocol.h"
 
 #include <nlohmann/json.hpp>
 

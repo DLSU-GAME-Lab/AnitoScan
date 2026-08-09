@@ -19,8 +19,8 @@ bool BackendClient::Start() {
     }
 
     {
-        std::scoped_lock lock(eventMutex_);
-        events_.clear();
+        std::scoped_lock lock(messageMutex_);
+        messages_.clear();
     }
     {
         std::scoped_lock lock(diagnosticMutex_);
@@ -59,34 +59,18 @@ void BackendClient::Stop() {
     }
 }
 
-bool BackendClient::IsRunning() {
-    return process_.IsRunning();
-}
-
-bool BackendClient::StartRun(const StartRunCommand& command) {
-    return process_.WriteLine(SerializeCommand(command));
-}
-
-bool BackendClient::SubmitSelection(const SubmitSelectionCommand& command) {
-    return process_.WriteLine(SerializeCommand(command));
-}
-
-bool BackendClient::CancelRun(const CancelRunCommand& command) {
-    return process_.WriteLine(SerializeCommand(command));
-}
-
-bool BackendClient::AdvanceRun(const AdvanceRunCommand& command) {
-    return process_.WriteLine(SerializeCommand(command));
+bool BackendClient::Send(std::string_view message) {
+    return process_.WriteLine(message);
 }
 
 // Drains pending backend events in constant O(1) time via vector swapping under lock.
-std::vector<BackendEvent> BackendClient::PollEvents() {
-    std::vector<BackendEvent> events;
+std::vector<std::string> BackendClient::PollMessages() {
+    std::vector<std::string> messages;
     {
-        std::scoped_lock lock(eventMutex_);
-        events.swap(events_);
+        std::scoped_lock lock(messageMutex_);
+        messages.swap(messages_);
     }
-    return events;
+    return messages;
 }
 
 // Drains pending diagnostic logs in constant O(1) time via vector swapping under lock.
@@ -107,20 +91,8 @@ void BackendClient::ReadStdout() {
             continue;
         }
 
-        auto event = ParseEvent(line);
-        if (event) {
-            std::scoped_lock lock(eventMutex_);
-            events_.push_back(std::move(*event));
-        } else {
-            std::scoped_lock lock(diagnosticMutex_);
-            diagnostics_.push_back(std::move(line));
-        }
-    }
-
-    // Push a disconnect event if the process died unexpectedly without Stop() being called
-    if (!stopping_) {
-        std::scoped_lock lock(eventMutex_);
-        events_.push_back(BackendDisconnectedEvent{"Backend process disconnected"});
+        std::scoped_lock lock(messageMutex_);
+        messages_.push_back(std::move(line));
     }
 }
 

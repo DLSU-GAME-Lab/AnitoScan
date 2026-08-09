@@ -11,4 +11,5 @@ target_link_libraries(editor_controller
         editor_backend
     PRIVATE
         editor_persistence
+        editor_protocol
 )
