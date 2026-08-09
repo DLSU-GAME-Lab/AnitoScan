@@ -236,14 +236,6 @@ void BackendProcess::Stop() {
     CloseHandleIfSet(impl_->job_);
 }
 
-bool BackendProcess::IsRunning() {
-    if (!impl_->process_) {
-        return false;
-    }
-    DWORD exitCode = 0;
-    return GetExitCodeProcess(impl_->process_, &exitCode) && exitCode == STILL_ACTIVE;
-}
-
 bool BackendProcess::WriteLine(std::string_view line) {
     if (!impl_->stdinWrite_) {
         return false;

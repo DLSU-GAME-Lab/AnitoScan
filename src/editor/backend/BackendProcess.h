@@ -18,7 +18,6 @@ public:
                const std::vector<std::string>& arguments,
                const std::filesystem::path& workingDirectory);
     void Stop();
-    bool IsRunning();
     bool WriteLine(std::string_view line);
     bool ReadStdoutLine(std::string& line);
     bool ReadStderrLine(std::string& line);

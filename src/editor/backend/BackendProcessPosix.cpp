@@ -221,23 +221,6 @@ void BackendProcess::Stop() {
     }
 }
 
-bool BackendProcess::IsRunning() {
-    if (impl_->pid_ <= 0) {
-        return false;
-    }
-    pid_t result;
-    do {
-        result = waitpid(impl_->pid_, nullptr, WNOHANG);
-    } while (result < 0 && errno == EINTR);
-    if (result == 0) {
-        return true;
-    }
-    if (result == impl_->pid_ || (result < 0 && errno == ECHILD)) {
-        impl_->pid_ = -1;
-    }
-    return false;
-}
-
 bool BackendProcess::WriteLine(std::string_view line) {
     if (impl_->stdinFd_ < 0) {
         return false;
