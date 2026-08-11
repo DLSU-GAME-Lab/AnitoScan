@@ -1,13 +1,17 @@
 #pragma once
 
-#include <string>
+#include "editor/ui/UIInput.h"
 
-struct RunState;
-class PipelineController;
+#include <string>
+#include <vector>
 
 class MaskingContent {
 public:
-    void Render(const RunState& run, PipelineController& controller);
+    void Render(
+        const std::string& previewPath,
+        int candidateCount,
+        std::vector<UIInput>& inputs
+    );
     void Shutdown();
 
 private:

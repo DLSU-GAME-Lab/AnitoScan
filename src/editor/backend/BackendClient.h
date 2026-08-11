@@ -3,6 +3,7 @@
 #include "editor/backend/BackendConfig.h"
 #include "editor/backend/BackendProcess.h"
 
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -28,14 +29,15 @@ public:
 
     std::vector<std::string> PollMessages();
     std::vector<std::string> PollDiagnostics();
+    bool ConsumeDisconnect();
 
 private:
     void ReadStdout();
     void ReadStderr();
 
     BackendConfig config_;
-
     BackendProcess process_;
+
     std::thread stdoutReader_;
     std::thread stderrReader_;
 
@@ -44,4 +46,7 @@ private:
 
     std::mutex diagnosticMutex_;
     std::vector<std::string> diagnostics_;
+
+    std::atomic<bool> stopping_{true};
+    std::atomic<bool> disconnected_{false};
 };

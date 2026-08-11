@@ -66,7 +66,6 @@ set(IMGUI_COMPILE_SOURCES
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/imgui_demo.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
 )
@@ -90,31 +89,4 @@ add_library(vendor_stb INTERFACE)
 add_library(vendor::stb ALIAS vendor_stb)
 target_include_directories(vendor_stb INTERFACE "${CMAKE_SOURCE_DIR}/vendor/stb")
 
-# imfilebrowser
-add_library(vendor_imfilebrowser INTERFACE)
-add_library(vendor::imfilebrowser ALIAS vendor_imfilebrowser)
-target_include_directories(vendor_imfilebrowser INTERFACE "${CMAKE_SOURCE_DIR}/vendor/imfilebrowser")
 
-# Umbrella Target
-add_library(engine_deps INTERFACE)
-add_library(deps::engine ALIAS engine_deps)
-
-target_link_libraries(engine_deps INTERFACE
-    SDL2::SDL2
-    SDL2::SDL2main
-    OpenGL::GL
-    glad
-    glm::glm
-    nlohmann_json::nlohmann_json
-    vendor::imgui
-    vendor::stb
-    vendor::imfilebrowser
-)
-
-target_include_directories(engine_deps INTERFACE
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
-    ${SDL2_SOURCE_DIR}/include
-    ${nlohmann_json_SOURCE_DIR}/include
-    ${tinyobjloader_SOURCE_DIR}
-)

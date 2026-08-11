@@ -1,29 +1,11 @@
 #include "editor/ui/UIManager.h"
 
-#include "editor/controller/PipelineController.h"
-#include "editor/domain/EditorState.h"
-
 #include <iostream>
+#include <utility>
 
-#include <imgui.h>
 #include <backends/imgui_impl_opengl3.h>
 #include <backends/imgui_impl_sdl2.h>
-
-namespace {
-const RunState* FindSelectedRun(const EditorState& state) {
-    if (!state.selectedRunId) {
-        return nullptr;
-    }
-
-    for (const RunState& run : state.runs) {
-        if (run.id == *state.selectedRunId) {
-            return &run;
-        }
-    }
-
-    return nullptr;
-}
-}
+#include <imgui.h>
 
 UIManager::~UIManager() {
     Shutdown();
@@ -48,40 +30,7 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext) {
         return false;
     }
     openGLBackendInitialized_ = true;
-
     return true;
-}
-
-void UIManager::ProcessEvent(const SDL_Event& event) {
-    ImGui_ImplSDL2_ProcessEvent(&event);
-}
-
-void UIManager::BeginFrame() {
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL2_NewFrame();
-    ImGui::NewFrame();
-}
-
-void UIManager::Render(
-    const EditorState& state,
-    PipelineController& controller,
-    unsigned int textureId
-) {
-    const RunState* selectedRun = FindSelectedRun(state);
-    if (selectedRun == nullptr) {
-        runSetupScreen_.Render(state, controller);
-    } else if (
-        selectedRun->status == RunStatus::Completed && selectedRun->outputModelPath.has_value()
-    ) {
-        postExportScreen_.Render(textureId, controller);
-    } else {
-        phaseScreen_.Render(*selectedRun, state.backendReady, state.logs, controller);
-    }
-}
-
-void UIManager::EndFrame() {
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 void UIManager::Shutdown() {
@@ -99,6 +48,57 @@ void UIManager::Shutdown() {
         ImGui::DestroyContext();
         contextCreated_ = false;
     }
+}
+
+void UIManager::ProcessEvent(const SDL_Event& event) {
+    ImGui_ImplSDL2_ProcessEvent(&event);
+}
+
+void UIManager::BeginFrame() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+}
+
+void UIManager::EndFrame() {
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+void UIManager::SwitchScreen(UIScreen screen) {
+    screen_ = screen;
+}
+
+void UIManager::SetRunSetupData(RunSetupData data) {
+    runSetupData_ = std::move(data);
+}
+
+void UIManager::SetPhaseData(PhaseDisplayData data) {
+    phaseData_ = std::move(data);
+}
+
+void UIManager::SetPostExportData(PostExportData data) {
+    postExportData_ = std::move(data);
+}
+
+void UIManager::Render() {
+    switch (screen_) {
+    case UIScreen::RunSetup:
+        runSetupScreen_.Render(runSetupData_, inputs_);
+        break;
+    case UIScreen::Phase:
+        phaseScreen_.Render(phaseData_, inputs_);
+        break;
+    case UIScreen::PostExport:
+        postExportScreen_.Render(postExportData_, inputs_);
+        break;
+    }
+}
+
+std::vector<UIInput> UIManager::PollInputs() {
+    std::vector<UIInput> inputs = std::move(inputs_);
+    inputs_.clear();
+    return inputs;
 }
 
 int UIManager::GetViewportWidth() const {

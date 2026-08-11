@@ -18,9 +18,12 @@ target_link_libraries(${MAIN_TARGET} PRIVATE
     editor_backend
     editor_controller
     editor_persistence
+    editor_protocol
     editor_render
     editor_ui
-    deps::engine
+    SDL2::SDL2
+    OpenGL::GL
+    glad
     engine::config
 )
 

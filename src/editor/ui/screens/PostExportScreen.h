@@ -2,11 +2,14 @@
 
 #include "editor/ui/components/Viewport.h"
 
-class PipelineController;
+#include <vector>
+
+struct PostExportData;
+struct UIInput;
 
 class PostExportScreen {
 public:
-    void Render(unsigned int textureId, PipelineController& controller);
+    void Render(const PostExportData& data, std::vector<UIInput>& inputs);
 
     int GetViewportWidth() const;
     int GetViewportHeight() const;

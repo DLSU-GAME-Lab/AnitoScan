@@ -1,37 +1,18 @@
 #include "editor/ui/components/RunSelector.h"
 
-#include "editor/controller/PipelineController.h"
-#include "editor/domain/EditorState.h"
+#include "editor/ui/UIManager.h"
 
-#include <string>
+#include <algorithm>
 
 #include <imgui.h>
 
-namespace {
-const char* RunStatusText(RunStatus status) {
-    switch (status) {
-        case RunStatus::Pending:
-            return "Pending";
-        case RunStatus::Running:
-            return "Running";
-        case RunStatus::Cancelling:
-            return "Cancelling";
-        case RunStatus::Completed:
-            return "Completed";
-        case RunStatus::Failed:
-            return "Failed";
-        case RunStatus::Cancelled:
-            return "Cancelled";
-    }
-
-    return "Unknown";
-}
-}
-
-void RunSelector::Render(const EditorState& state, PipelineController& controller) {
+void RunSelector::Render(const RunSetupData& data, std::vector<UIInput>& inputs) {
     bool openDeleteConfirmation = false;
+    const std::size_t runCount = std::min({
+        data.runNames.size(), data.runStatuses.size(), data.runIds.size()
+    });
 
-    if (state.runs.empty()) {
+    if (runCount == 0) {
         ImGui::TextUnformatted("No existing runs");
     } else {
         ImGui::TextUnformatted("Existing Runs");
@@ -39,22 +20,23 @@ void RunSelector::Render(const EditorState& state, PipelineController& controlle
             ImGui::TableSetupColumn("Run", ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed);
 
-            for (const RunState& run : state.runs) {
-                const std::string label = run.name + " (" + RunStatusText(run.status) + ")";
-                const bool canDelete =
-                    run.status != RunStatus::Running && run.status != RunStatus::Cancelling;
+            for (std::size_t index = 0; index < runCount; ++index) {
+                const std::string label = data.runNames[index] + " (" + data.runStatuses[index] + ")";
+                const bool canSelect = data.runStatuses[index] == "completed";
 
-                ImGui::PushID(run.id.c_str());
+                ImGui::PushID(data.runIds[index].c_str());
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
+                ImGui::BeginDisabled(!canSelect);
                 if (ImGui::Selectable(label.c_str())) {
-                    controller.SelectRun(run.id);
+                    inputs.push_back({UIClick::SelectRun, data.runIds[index]});
                 }
+                ImGui::EndDisabled();
 
                 ImGui::TableSetColumnIndex(1);
-                if (canDelete && ImGui::SmallButton("Delete")) {
-                    pendingDeleteRunId_ = run.id;
-                    pendingDeleteRunName_ = run.name;
+                if (ImGui::SmallButton("Delete")) {
+                    pendingDeleteRunId_ = data.runIds[index];
+                    pendingDeleteRunName_ = data.runNames[index];
                     openDeleteConfirmation = true;
                 }
                 ImGui::PopID();
@@ -70,9 +52,8 @@ void RunSelector::Render(const EditorState& state, PipelineController& controlle
     if (ImGui::BeginPopupModal("Delete Run", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Delete run \"%s\"?", pendingDeleteRunName_.c_str());
         ImGui::TextUnformatted("This action cannot be undone.");
-
         if (ImGui::Button("Delete")) {
-            controller.DeleteRun(pendingDeleteRunId_);
+            inputs.push_back({UIClick::DeleteRun, pendingDeleteRunId_});
             pendingDeleteRunId_.clear();
             pendingDeleteRunName_.clear();
             ImGui::CloseCurrentPopup();

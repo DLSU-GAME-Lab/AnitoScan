@@ -10,7 +10,15 @@ add_library(editor_render STATIC ${RENDER_SOURCES})
 
 target_include_directories(editor_render PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/include
 )
 
-target_link_libraries(editor_render PRIVATE deps::engine engine::config)
+target_link_libraries(editor_render
+    PUBLIC
+        glad
+        glm::glm
+        tinyobjloader
+        vendor::stb
+    PRIVATE
+        OpenGL::GL
+        engine::config
+)

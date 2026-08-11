@@ -27,11 +27,15 @@ bool BackendClient::Start() {
         diagnostics_.clear();
     }
 
+    disconnected_ = false;
+    stopping_ = false;
+
     // Spawn asynchronous stdout/stderr reader threads
     try {
         stdoutReader_ = std::thread(&BackendClient::ReadStdout, this);
         stderrReader_ = std::thread(&BackendClient::ReadStderr, this);
     } catch (...) {
+        stopping_ = true;
         process_.Stop();
         if (stdoutReader_.joinable()) {
             stdoutReader_.join();
@@ -47,6 +51,7 @@ bool BackendClient::Start() {
 
 // Signals reader threads to exit, terminates the child process, and waits for threads to join.
 void BackendClient::Stop() {
+    stopping_ = true;
     process_.Stop();
     if (stdoutReader_.joinable()) {
         stdoutReader_.join();
@@ -71,6 +76,10 @@ std::vector<std::string> BackendClient::PollMessages() {
 }
 
 // Drains pending diagnostic logs in constant O(1) time via vector swapping under lock.
+bool BackendClient::ConsumeDisconnect() {
+    return disconnected_.exchange(false);
+}
+
 std::vector<std::string> BackendClient::PollDiagnostics() {
     std::vector<std::string> diagnostics;
     {
@@ -90,6 +99,10 @@ void BackendClient::ReadStdout() {
 
         std::scoped_lock lock(messageMutex_);
         messages_.push_back(std::move(line));
+    }
+
+    if (!stopping_) {
+        disconnected_ = true;
     }
 }
 

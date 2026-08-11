@@ -1,9 +1,11 @@
 #pragma once
 
-struct RunState;
-class PipelineController;
+#include "editor/ui/UIInput.h"
+
+#include <string>
+#include <vector>
 
 class RunControls {
 public:
-    void Render(const RunState& run, bool backendReady, PipelineController& controller);
+    void Render(const std::string& runId, const std::string& statusText, std::vector<UIInput>& inputs);
 };

@@ -1,11 +1,6 @@
 #include "editor/ui/components/MaskingContent.h"
 
-#include "editor/controller/PipelineController.h"
-#include "editor/domain/RunState.h"
-
 #include <algorithm>
-
-#include <optional>
 #include <string>
 
 #include <glad/gl.h>
@@ -15,46 +10,42 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-void MaskingContent::Render(const RunState& run, PipelineController& controller) {
-    if (!run.selectionRequest) {
+void MaskingContent::Render(
+    const std::string& previewPath,
+    int candidateCount,
+    std::vector<UIInput>& inputs
+) {
+    if (previewPath.empty()) {
         Shutdown();
         return;
     }
 
-    const SelectionRequest& request = *run.selectionRequest;
-    const std::string previewPath = request.previewPath.string();
     if (previewPath != loadedPath_) {
         LoadPreview(previewPath.c_str());
     }
 
     ImGui::Separator();
-    ImGui::Text("Frame: %s", request.frame.c_str());
-
+    ImGui::TextUnformatted("Mask selection");
     if (textureId_ != 0) {
         const ImVec2 available = ImGui::GetContentRegionAvail();
         const float scale = std::min(available.x / textureWidth_, 360.0f / textureHeight_);
-        const ImVec2 size(textureWidth_ * scale, textureHeight_ * scale);
-        ImGui::Image(
-            static_cast<ImTextureID>(textureId_),
-            size
-        );
+        ImGui::Image(static_cast<ImTextureID>(textureId_), ImVec2(textureWidth_ * scale, textureHeight_ * scale));
     } else {
         ImGui::TextDisabled("Preview image unavailable");
     }
 
-    const int candidateCount = std::max(0, request.candidateCount);
-    for (int candidate = 0; candidate < candidateCount; ++candidate) {
+    const int safeCandidateCount = std::max(0, candidateCount);
+    for (int candidate = 0; candidate < safeCandidateCount; ++candidate) {
         const std::string label = "Candidate " + std::to_string(candidate);
         if (ImGui::Button(label.c_str())) {
-            controller.SubmitSelection(run.id, candidate);
+            inputs.push_back({UIClick::SubmitSelection, std::to_string(candidate)});
         }
-        if (candidate + 1 < candidateCount) {
+        if (candidate + 1 < safeCandidateCount) {
             ImGui::SameLine();
         }
     }
-
     if (ImGui::Button("Skip")) {
-        controller.SubmitSelection(run.id, std::nullopt);
+        inputs.push_back({UIClick::SubmitSelection, "-1"});
     }
 }
 
@@ -80,17 +71,7 @@ bool MaskingContent::LoadPreview(const char* path) {
 
     glGenTextures(1, &textureId_);
     glBindTexture(GL_TEXTURE_2D, textureId_);
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGBA,
-        textureWidth_,
-        textureHeight_,
-        0,
-        GL_RGBA,
-        GL_UNSIGNED_BYTE,
-        pixels
-    );
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureWidth_, textureHeight_, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindTexture(GL_TEXTURE_2D, 0);

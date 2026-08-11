@@ -10,12 +10,7 @@ from benchmark import (
     create_invocation_id,
 )
 from config import build_phase_cmd, parse_cli_args
-from ipc_handlers import (
-    PipelineCancelled,
-    await_ipc_selection,
-    await_phase_advance,
-    listen_for_ipc_commands,
-)
+from ipc_handlers import PipelineCancelled, await_ipc_selection, listen_for_ipc_commands
 from log import log_done, log_error, log_event, log_info, set_ipc_mode
 from manifest import load_manifest, update_manifest_lifecycle
 from workspace import init_workspace
@@ -177,26 +172,18 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool = False, cancel_event=None
         _check_cancelled(cancel_event)
         log_info("Starting Phase 1: Capture")
         _run_phase(1, "Capture", build_phase_cmd(1, parent_module_path, manifest_path, args, ipc_mode), ipc_mode, cancel_event)
-        if ipc_mode:
-            await_phase_advance(2)
 
         _check_cancelled(cancel_event)
         log_info("Starting Phase 2: Masking")
         run_phase2(parent_module_path, manifest_path, args, ipc_mode, cancel_event)
-        if ipc_mode:
-            await_phase_advance(3)
         _check_cancelled(cancel_event)
 
         log_info("Starting Phase 3: Spatial")
         _run_phase(3, "Spatial Initialization", build_phase_cmd(3, parent_module_path, manifest_path, args, ipc_mode), ipc_mode, cancel_event)
-        if ipc_mode:
-            await_phase_advance(4)
 
         _check_cancelled(cancel_event)
         log_info("Starting Phase 4: Geometry")
         _run_phase(4, "Geometry Generation", build_phase_cmd(4, parent_module_path, manifest_path, args, ipc_mode), ipc_mode, cancel_event)
-        if ipc_mode:
-            await_phase_advance(5)
 
         _check_cancelled(cancel_event)
         log_info("Starting Phase 5: Export")

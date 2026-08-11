@@ -1,17 +1,17 @@
 #pragma once
 
-#include "editor/domain/PipelineTypes.h"
+#include "editor/ui/UIInput.h"
 
 #include <string>
+#include <vector>
 
-struct EditorState;
-class PipelineController;
+struct RunSetupData;
 
 class RunSelector {
 public:
-    void Render(const EditorState& state, PipelineController& controller);
+    void Render(const RunSetupData& data, std::vector<UIInput>& inputs);
 
 private:
-    RunId pendingDeleteRunId_;
+    std::string pendingDeleteRunId_;
     std::string pendingDeleteRunName_;
 };

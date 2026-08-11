@@ -1,52 +1,29 @@
 #include "editor/ui/components/RunControls.h"
 
-#include "editor/controller/PipelineController.h"
-#include "editor/domain/RunState.h"
-
 #include <imgui.h>
 
 void RunControls::Render(
-    const RunState& run,
-    bool backendReady,
-    PipelineController& controller
+    const std::string& runId,
+    const std::string& statusText,
+    std::vector<UIInput>& inputs
 ) {
-    if (run.status == RunStatus::Pending) {
-        ImGui::BeginDisabled(!backendReady);
+    if (statusText == "pending") {
         if (ImGui::Button("Start")) {
-            controller.StartRun(run.id);
-        }
-        ImGui::EndDisabled();
-        if (!backendReady) {
-            ImGui::SameLine();
-            ImGui::TextUnformatted("Starting backend...");
+            inputs.push_back({UIClick::StartRun, runId});
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel")) {
-            controller.CancelRun(run.id);
+            inputs.push_back({UIClick::CancelRun, runId});
         }
-    } else if (run.status == RunStatus::Running) {
-        if (run.awaitingAdvance) {
-            if (ImGui::Button("Continue")) {
-                controller.AdvanceRun(run.id);
-            }
-            ImGui::SameLine();
-        }
+    } else if (statusText == "running") {
         if (ImGui::Button("Cancel")) {
-            controller.CancelRun(run.id);
+            inputs.push_back({UIClick::CancelRun, runId});
         }
-    } else if (run.status == RunStatus::Cancelling) {
+    } else if (statusText == "cancelling") {
         ImGui::TextUnformatted("Cancelling...");
-    } else if (run.status == RunStatus::Failed || run.status == RunStatus::Cancelled) {
-        if (ImGui::Button("Retry")) {
-            controller.RetryRun(run.id);
-        }
-        ImGui::SameLine();
+    } else if (statusText == "failed" || statusText == "cancelled") {
         if (ImGui::Button("New Run")) {
-            controller.ClearSelection();
-        }
-    } else if (run.status == RunStatus::Completed) {
-        if (ImGui::Button("New Run")) {
-            controller.ClearSelection();
+            inputs.push_back({UIClick::NewRun, {}});
         }
     }
 }
