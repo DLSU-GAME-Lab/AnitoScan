@@ -22,14 +22,17 @@ void RunSetupScreen::Render(const RunSetupData& data, std::vector<UIInput>& inpu
     ImGui::InputText("Input source", inputSource_.data(), inputSource_.size());
     ImGui::InputInt("Minimum frames", &minimumFrames_);
     minimumFrames_ = std::max(1, minimumFrames_);
-    ImGui::Combo("Mode", &pipelineMode_, "Disk\0Pipe\0");
-    ImGui::Combo("Capture mode", &captureMode_, "Auto\0Image\0Video\0");
     ImGui::Combo("Quality", &quality_, "Fast\0Medium\0Detailed\0");
-    ImGui::SliderFloat("IOU threshold", &iouThreshold_, 0.0f, 1.0f);
-    ImGui::InputInt("Drift limit", &driftLimit_);
-    driftLimit_ = std::max(0, driftLimit_);
-    ImGui::Combo("YOLO model", &modelSize_, "n\0s\0m\0l\0x\0");
-    ImGui::Checkbox("Force rebuild", &forceRebuild_);
+
+    if (ImGui::CollapsingHeader("Advanced settings")) {
+        ImGui::Combo("Mode", &pipelineMode_, "Disk\0Pipe\0");
+        ImGui::Combo("Capture mode", &captureMode_, "Auto\0Image\0Video\0");
+        ImGui::SliderFloat("IOU threshold", &iouThreshold_, 0.0f, 1.0f);
+        ImGui::InputInt("Drift limit", &driftLimit_);
+        driftLimit_ = std::max(0, driftLimit_);
+        ImGui::Combo("YOLO model", &modelSize_, "n\0s\0m\0l\0x\0");
+        ImGui::Checkbox("Force rebuild", &forceRebuild_);
+    }
 
     ImGui::BeginDisabled(!data.canCreateRun);
     if (ImGui::Button("Create Run") && runName_[0] != '\0' && inputSource_[0] != '\0') {
