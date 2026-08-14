@@ -169,6 +169,16 @@ void App::Run() {
         }
 
         ProcessPersistenceRequests();
+        SynchronizeScene();
+        if (scene_->GetModel()) {
+            scene_->Render(
+                uiManager_.GetViewportWidth(),
+                uiManager_.GetViewportHeight()
+            );
+        }
+        if (uiManager_.ConsumeRecenterRequest() && scene_->GetModel()) {
+            scene_->Recenter();
+        }
 
         const RunState* run = controller_->GetActiveRun();
         if (!run) {
@@ -203,17 +213,6 @@ void App::Run() {
             }
             uiManager_.SwitchScreen(UIScreen::Phase);
             uiManager_.SetPhaseData(std::move(data));
-        }
-
-        SynchronizeScene();
-        if (scene_->GetModel()) {
-            scene_->Render(
-                uiManager_.GetViewportWidth(),
-                uiManager_.GetViewportHeight()
-            );
-        }
-        if (uiManager_.ConsumeRecenterRequest() && scene_->GetModel()) {
-            scene_->Recenter();
         }
 
         uiManager_.BeginFrame();

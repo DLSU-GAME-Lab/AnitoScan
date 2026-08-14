@@ -169,6 +169,10 @@ void PipelineController::CancelRun(const std::string& runId) {
 
 void PipelineController::SubmitSelection(const std::string& runId, const std::string& selection) {
     if (activeRun_ && activeRun_->id == runId && activeRun_->status == "running") {
+        if (currentPhaseData_) {
+            currentPhaseData_->previewPath.clear();
+            currentPhaseData_->candidateCount = 0;
+        }
         QueueMessage("submit_selection", runId + "\n" + selection);
     }
 }
