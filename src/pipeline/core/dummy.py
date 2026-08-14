@@ -272,7 +272,6 @@ def handle_command(command):
                 diagnostic("Ignoring cancel_run: run_id does not match the active run")
                 return
             session["cancel"].set()
-            session["continue"].set()
         return
 
     diagnostic("Ignoring command: unsupported action")
@@ -292,7 +291,6 @@ def main():
         session = active_session
         if session is not None:
             session["cancel"].set()
-            session["continue"].set()
             worker = session["worker"]
         else:
             worker = None
