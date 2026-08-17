@@ -1,47 +1,48 @@
 #pragma once
 
-#include <iostream>
-
-#include <glad/gl.h>
 #include <SDL.h>
-#include <SDL_opengl.h>
-#include <backends/imgui_impl_sdl2.h>
-#include <backends/imgui_impl_opengl3.h>
 
-#include "Types.h"
-#include "render/Scene.h"
-#include "IPCClient.h"
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <string>
 
-class IPCClient;
+#include "editor/controller/PipelineController.h"
+#include "editor/persistence/RunStore.h"
+#include "editor/ui/UIManager.h"
+
+class BackendClient;
+class Scene;
 
 class App {
 public:
-	App(int width, int height);
-	~App();
+    explicit App(std::unique_ptr<BackendClient> backendClient, std::filesystem::path runsDirectory);
+    ~App();
 
-	void Initialize();
-	void Run();
-
-private:
-	bool InitializeSDL();
-	bool InitializeOpenGL();
-	void PollBackend();
-	void ProcessMouseEvents(SDL_Event event);
-	void ProcessKeyboardEvents(SDL_Event event);
-	void Cleanup();
+    bool Initialize();
+    void Run();
 
 private:
-	bool isRunning;
-	SDL_Window* window;
-	SDL_GLContext glContext;
+    void Shutdown();
+    void SynchronizeScene();
+    void ProcessPersistenceRequests();
+    void HandleViewportInput(const SDL_Event& event);
 
-	int screenWidth;
-	int screenHeight;
+    bool InitializeSDL();
+    bool InitializeOpenGL();
 
-	IPCClient ipc;
-	std::unique_ptr<Scene> scene;
-	bool mouseDragging = false;
-	bool middleMousehold = false;
-	Uint64 lastTime = 0;
-	float deltaTime;
+    std::unique_ptr<BackendClient> backendClient_;
+    RunStore runStore_;
+    std::optional<PipelineController> controller_;
+
+    bool running_ = false;
+    bool sdlInitialized_ = false;
+
+    UIManager uiManager_;
+    std::unique_ptr<Scene> scene_;
+
+    std::optional<std::string> displayedRunId_;
+
+    SDL_Window* window_ = nullptr;
+    SDL_GLContext glContext_ = nullptr;
 };

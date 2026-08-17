@@ -1,23 +1,29 @@
+add_subdirectory(protocol)
+add_subdirectory(backend)
+add_subdirectory(persistence)
+add_subdirectory(controller)
 add_subdirectory(render)
-add_subdirectory(UI)
+add_subdirectory(ui)
 
-set(EDITOR_CORE_SOURCES
+add_executable(${MAIN_TARGET}
     main.cpp
     App.cpp
-    IPCClient.cpp
 )
-
-add_executable(${MAIN_TARGET} ${EDITOR_CORE_SOURCES})
 
 target_include_directories(${MAIN_TARGET} PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries(${MAIN_TARGET} PRIVATE
+    editor_backend
+    editor_controller
+    editor_persistence
+    editor_protocol
     editor_render
     editor_ui
-    deps::engine
+    SDL2::SDL2
+    OpenGL::GL
+    glad
     engine::config
 )
 
@@ -29,9 +35,4 @@ add_custom_command(TARGET ${MAIN_TARGET} POST_BUILD
 
 set_target_properties(${MAIN_TARGET} PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-)
-
-target_compile_definitions(${MAIN_TARGET} PRIVATE
-    IMGUI_IMPL_OPENGL_LOADER_GLAD2
-    PROJECT_ROOT_DIR="${MY_PROJECT_ROOT}"
 )

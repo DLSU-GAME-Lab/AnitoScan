@@ -29,6 +29,12 @@ def _format_field(keys: tuple[str, ...]) -> str:
     return ".".join(keys)
 
 
+def _is_editor_pending_manifest(manifest: dict[str, Any]) -> bool:
+    """Returns whether an editor stub is waiting to be expanded by the real pipeline."""
+    status = manifest.get("status")
+    return isinstance(status, dict) and status.get("state") == "pending"
+
+
 def _find_manifest_conflicts(existing: dict[str, Any], desired: dict[str, Any]) -> list[str]:
     conflicts: list[str] = []
 
@@ -76,6 +82,7 @@ def init_workspace(project_root: Path, workspace_dir: Path, args: dict) -> tuple
     force = bool(args.get("force", False))
 
     if manifest_path.exists():
+        pending_upgrade = False
         try:
             _, existing_manifest = load_manifest(manifest_path)
         except (OSError, ValueError) as error:
@@ -85,8 +92,9 @@ def init_workspace(project_root: Path, workspace_dir: Path, args: dict) -> tuple
                     "Use --force to recreate this run folder's manifest, or choose a new --name."
                 ) from error
         else:
+            pending_upgrade = _is_editor_pending_manifest(existing_manifest)
             conflicts = _find_manifest_conflicts(existing_manifest, desired_manifest)
-            if conflicts and not force:
+            if conflicts and not force and not pending_upgrade:
                 conflict_lines = "\n".join(f"  - {conflict}" for conflict in conflicts)
                 raise RuntimeError(
                     "This run folder already exists with different cache-relevant settings.\n"
@@ -95,7 +103,7 @@ def init_workspace(project_root: Path, workspace_dir: Path, args: dict) -> tuple
                     "Use --force to rebuild the run with the requested settings, or choose a new --name."
                 )
 
-        if not force:
+        if not force and not pending_upgrade:
             return base_dir, manifest_path
 
     initialize_manifest(manifest_path, name, input_path, args, paths_dict)

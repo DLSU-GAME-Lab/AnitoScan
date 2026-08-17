@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <vector>
 #include <glad/gl.h>
 #include <glm/glm.hpp>
-#include "Shader.h"
+
+class Shader;
 
 struct Vertex {
 	glm::vec3 Position;
@@ -27,10 +29,10 @@ private:
 
 		
 private:
-	GLuint VAO = 0;
-	GLuint VBO = 0;
-	GLuint EBO = 0;
-	std::vector<Vertex> vertices;
-	std::vector<unsigned int> indices;
-	GLuint textureID = 0;
+	GLuint VAO_ = 0;
+	GLuint VBO_ = 0;
+	GLuint EBO_ = 0;
+	std::vector<Vertex> vertices_;
+	std::vector<unsigned int> indices_;
+	GLuint textureID_ = 0;
 };

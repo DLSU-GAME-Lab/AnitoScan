@@ -22,6 +22,7 @@ FetchContent_Declare(
     BINARY_DIR     "${CMAKE_SOURCE_DIR}/vendor/SDL2/build"
 )
 FetchContent_MakeAvailable(SDL2)
+find_package(OpenGL REQUIRED)
 
 # nlohmann/json
 FetchContent_Declare(
@@ -65,7 +66,6 @@ set(IMGUI_COMPILE_SOURCES
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/imgui_demo.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
 )
@@ -81,7 +81,7 @@ target_include_directories(vendor_imgui PUBLIC
 
 target_link_libraries(vendor_imgui PUBLIC
     SDL2::SDL2
-    opengl32
+    OpenGL::GL
 )
 
 # stb
@@ -89,31 +89,4 @@ add_library(vendor_stb INTERFACE)
 add_library(vendor::stb ALIAS vendor_stb)
 target_include_directories(vendor_stb INTERFACE "${CMAKE_SOURCE_DIR}/vendor/stb")
 
-# imfilebrowser
-add_library(vendor_imfilebrowser INTERFACE)
-add_library(vendor::imfilebrowser ALIAS vendor_imfilebrowser)
-target_include_directories(vendor_imfilebrowser INTERFACE "${CMAKE_SOURCE_DIR}/vendor/imfilebrowser")
 
-# Umbrella Target
-add_library(engine_deps INTERFACE)
-add_library(deps::engine ALIAS engine_deps)
-
-target_link_libraries(engine_deps INTERFACE
-    SDL2::SDL2
-    SDL2::SDL2main
-    opengl32
-    glad
-    glm::glm
-    nlohmann_json::nlohmann_json
-    vendor::imgui
-    vendor::stb
-    vendor::imfilebrowser
-)
-
-target_include_directories(engine_deps INTERFACE
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
-    ${SDL2_SOURCE_DIR}/include
-    ${nlohmann_json_SOURCE_DIR}/include
-    ${tinyobjloader_SOURCE_DIR}
-)
