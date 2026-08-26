@@ -3,6 +3,7 @@ set(RENDER_SOURCES
     Mesh.cpp
     Model.cpp
     Camera.cpp
+    StbImage.cpp
     Scene.cpp
 )
 
