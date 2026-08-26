@@ -194,25 +194,18 @@ void App::Run() {
             }
             uiManager_.SwitchScreen(UIScreen::RunSetup);
             uiManager_.SetRunSetupData(std::move(data));
-        } else if (run->status == "completed") {
+        } else if (const PhaseNavigationData navigation = controller_->GetPhaseNavigationData();
+            run->status == "completed" && navigation.viewingLatest) {
             uiManager_.SwitchScreen(UIScreen::PostExport);
-            uiManager_.SetPostExportData({run->name, scene_->GetModel() ? scene_->GetColorTexture() : 0});
+            uiManager_.SetPostExportData({
+                run->name,
+                run->status,
+                navigation,
+                scene_->GetModel() ? scene_->GetColorTexture() : 0
+            });
         } else {
-            PhaseDisplayData data;
-            data.runId = run->id;
-            data.runName = run->name;
-            data.statusText = run->status;
-            if (const PhaseData* phase = controller_->GetCurrentPhaseData()) {
-                data.phaseText = phase->phaseName;
-                data.progressText = phase->progressText;
-                data.progress = phase->progress;
-                data.previewPath = phase->previewPath;
-                data.candidateCount = phase->candidateCount;
-                data.logs = phase->logs;
-                data.errorText = phase->error;
-            }
             uiManager_.SwitchScreen(UIScreen::Phase);
-            uiManager_.SetPhaseData(std::move(data));
+            uiManager_.SetPhaseData(controller_->GetPhaseDisplayData());
         }
 
         uiManager_.BeginFrame();
@@ -224,6 +217,9 @@ void App::Run() {
             else if (input.click == UIClick::SelectRun) controller_->SelectRun(input.value);
             else if (input.click == UIClick::SubmitSelection && run) controller_->SubmitSelection(run->id, input.value);
             else if (input.click == UIClick::NewRun) controller_->ClearActiveRun();
+            else if (input.click == UIClick::PreviousPhase) controller_->ViewPreviousPhase();
+            else if (input.click == UIClick::NextPhase) controller_->ViewNextPhase();
+            else if (input.click == UIClick::FollowLive) controller_->FollowLivePhase();
             else if (input.click == UIClick::CreateRun) {
                 const auto values = Split(input.value);
                 if (values.size() >= 10) {

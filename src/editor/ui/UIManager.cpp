@@ -102,15 +102,15 @@ std::vector<UIInput> UIManager::PollInputs() {
 }
 
 int UIManager::GetViewportWidth() const {
-    return postExportScreen_.GetViewportWidth();
+    return screen_ == UIScreen::PostExport ? postExportScreen_.GetViewportWidth() : 0;
 }
 
 int UIManager::GetViewportHeight() const {
-    return postExportScreen_.GetViewportHeight();
+    return screen_ == UIScreen::PostExport ? postExportScreen_.GetViewportHeight() : 0;
 }
 
 bool UIManager::IsViewportHovered() const {
-    return postExportScreen_.IsViewportHovered();
+    return screen_ == UIScreen::PostExport && postExportScreen_.IsViewportHovered();
 }
 
 bool UIManager::ConsumeRecenterRequest() {

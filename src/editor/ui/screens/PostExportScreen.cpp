@@ -12,16 +12,34 @@ void PostExportScreen::Render(const PostExportData& data, std::vector<UIInput>& 
     constexpr ImGuiWindowFlags windowFlags =
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings;
     ImGui::Begin("Post Export", nullptr, windowFlags);
-    ImGui::TextUnformatted("Post Export");
+    if (ImGui::BeginTable("Header", 2, ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Run", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Actions", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(data.runName.c_str());
+        ImGui::TextDisabled("%s", data.statusText.c_str());
+        ImGui::TableNextColumn();
+        if (ImGui::Button("New Run")) {
+            inputs.push_back({UIClick::NewRun, {}});
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Recenter")) {
+            recenterRequested_ = true;
+        }
+        ImGui::EndTable();
+    }
+
     ImGui::Separator();
-    ImGui::Text("Run: %s", data.runName.c_str());
-    if (ImGui::Button("New Run")) {
-        inputs.push_back({UIClick::NewRun, {}});
+    ImGui::BeginDisabled(!data.navigation.canGoBack);
+    if (ImGui::Button("Back")) {
+        inputs.push_back({UIClick::PreviousPhase, {}});
     }
+    ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Recenter")) {
-        recenterRequested_ = true;
-    }
+    ImGui::BeginDisabled();
+    ImGui::Button("Live");
+    ImGui::EndDisabled();
+    ImGui::Separator();
     viewport_.Render(data.textureId);
     ImGui::End();
 }

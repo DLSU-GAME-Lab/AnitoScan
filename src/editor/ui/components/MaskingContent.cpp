@@ -11,6 +11,7 @@
 void MaskingContent::Render(
     const std::string& previewPath,
     int candidateCount,
+    bool selectionEnabled,
     std::vector<UIInput>& inputs
 ) {
     if (previewPath.empty()) {
@@ -22,19 +23,23 @@ void MaskingContent::Render(
         LoadPreview(previewPath.c_str());
     }
 
-    ImGui::Separator();
     ImGui::TextUnformatted("Mask selection");
+    ImGui::Spacing();
     if (textureId_ != 0) {
         const ImVec2 available = ImGui::GetContentRegionAvail();
-        const float scale = std::min(available.x / textureWidth_, 360.0f / textureHeight_);
-        ImGui::Image(static_cast<ImTextureID>(textureId_), ImVec2(textureWidth_ * scale, textureHeight_ * scale));
+        const float scale = std::min(available.x / textureWidth_, 420.0f / textureHeight_);
+        const ImVec2 imageSize(textureWidth_ * scale, textureHeight_ * scale);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (available.x - imageSize.x) * 0.5f));
+        ImGui::Image(static_cast<ImTextureID>(textureId_), imageSize);
     } else {
         ImGui::TextDisabled("Preview image unavailable");
     }
 
+    ImGui::Spacing();
+    ImGui::BeginDisabled(!selectionEnabled);
     const int safeCandidateCount = std::max(0, candidateCount);
     for (int candidate = 0; candidate < safeCandidateCount; ++candidate) {
-        const std::string label = "Candidate " + std::to_string(candidate);
+        const std::string label = "Candidate " + std::to_string(candidate + 1);
         if (ImGui::Button(label.c_str())) {
             inputs.push_back({UIClick::SubmitSelection, std::to_string(candidate)});
         }
@@ -42,9 +47,13 @@ void MaskingContent::Render(
             ImGui::SameLine();
         }
     }
+    if (safeCandidateCount > 0) {
+        ImGui::SameLine();
+    }
     if (ImGui::Button("Skip")) {
         inputs.push_back({UIClick::SubmitSelection, "-1"});
     }
+    ImGui::EndDisabled();
 }
 
 void MaskingContent::Shutdown() {

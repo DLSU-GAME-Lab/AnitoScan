@@ -40,6 +40,37 @@ struct PhaseData {
     std::string error;
 };
 
+enum class PhaseDisplayKind {
+    Loading,
+    Processing,
+    Progress,
+    MaskSelection,
+    Error
+};
+
+struct PhaseNavigationData {
+    bool viewingLatest = true;
+    bool canGoBack = false;
+    bool canGoNext = false;
+    bool canFollowLive = false;
+};
+
+struct PhaseDisplayData {
+    std::string runId;
+    std::string runName;
+    std::string statusText;
+    PhaseDisplayKind kind = PhaseDisplayKind::Loading;
+    std::string phaseText;
+    std::string progressText;
+    std::string previewPath;
+    std::string errorText;
+    float progress = 0.0f;
+    int candidateCount = 0;
+    std::vector<std::string> logs;
+    PhaseNavigationData navigation;
+    bool maskSelectionEnabled = false;
+};
+
 struct BackendInput {
     std::string type;
     std::string value;

@@ -2,6 +2,7 @@
 
 #include "editor/controller/ControllerTypes.h"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -32,17 +33,27 @@ public:
     void SelectRun(const std::string& runId);
     void DeleteRun(const std::string& runId);
     void ClearActiveRun();
+    void ViewPreviousPhase();
+    void ViewNextPhase();
+    void FollowLivePhase();
     void PrepareForShutdown();
 
     const std::vector<RunSummary>& GetRunSummaries() const;
     const RunState* GetActiveRun() const;
-    const PhaseData* GetCurrentPhaseData() const;
+    PhaseDisplayData GetPhaseDisplayData() const;
+    PhaseNavigationData GetPhaseNavigationData() const;
     bool CanCreateRun() const;
 
     std::vector<PipelineMessage> PollMessages();
     std::vector<PersistenceRequest> PollPersistenceRequests();
 
 private:
+    void BeginPhaseIfNeeded(const std::string& phaseName);
+    void CommitLivePhase();
+    void ResetPhaseView();
+    const PhaseData* GetViewedPhase() const;
+    bool CanViewPreviousPhase() const;
+    bool CanViewNextPhase() const;
     void QueueMessage(std::string type, std::string value);
     void QueuePersistenceRequest(std::string type, std::string runId);
     void UpdateNextRunId(const std::string& runId);
@@ -52,6 +63,8 @@ private:
     std::vector<RunSummary> runSummaries_;
     std::vector<PhaseData> phaseHistory_;
     std::optional<PhaseData> currentPhaseData_;
+    std::size_t viewedPhaseIndex_ = 0;
+    bool viewingLatest_ = true;
     std::vector<PipelineMessage> outgoingMessages_;
     std::vector<PersistenceRequest> persistenceRequests_;
     unsigned long long nextRunNumber_ = 1;
