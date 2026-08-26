@@ -23,7 +23,7 @@ void RunControls::Render(
         }
     } else if (statusText == "cancelling") {
         ImGui::TextUnformatted("Cancelling...");
-    } else if (statusText == "failed" || statusText == "cancelled") {
+    } else if (statusText == "completed" || statusText == "failed" || statusText == "cancelled") {
         if (UIStyle::Button("New Run", UIStyle::ButtonKind::Primary)) {
             inputs.push_back({UIClick::NewRun, {}});
         }
