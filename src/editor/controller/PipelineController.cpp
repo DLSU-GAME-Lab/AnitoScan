@@ -232,13 +232,28 @@ void PipelineController::ViewPreviousPhase() {
 }
 
 void PipelineController::ViewNextPhase() {
-    if (CanViewNextPhase()) {
-        ++viewedPhaseIndex_;
+    if (!CanViewNextPhase()) {
+        return;
     }
+    const bool opensPostExport = activeRun_ && activeRun_->status == "completed" &&
+        viewedPhaseIndex_ + 1 == phaseHistory_.size();
+    if (opensPostExport) {
+        viewingLatest_ = true;
+        return;
+    }
+    ++viewedPhaseIndex_;
 }
 
 void PipelineController::FollowLivePhase() {
     viewingLatest_ = true;
+}
+
+void PipelineController::StopFollowingLivePhase() {
+    if (!viewingLatest_ || !currentPhaseData_) {
+        return;
+    }
+    viewingLatest_ = false;
+    viewedPhaseIndex_ = phaseHistory_.size();
 }
 
 const std::vector<RunSummary>& PipelineController::GetRunSummaries() const { return runSummaries_; }
@@ -288,7 +303,9 @@ PhaseNavigationData PipelineController::GetPhaseNavigationData() const {
     navigation.viewingLatest = viewingLatest_;
     navigation.canGoBack = CanViewPreviousPhase();
     navigation.canGoNext = CanViewNextPhase();
-    navigation.canFollowLive = !viewingLatest_;
+    const bool completed = activeRun_ && activeRun_->status == "completed";
+    navigation.canFollowLive = !viewingLatest_ && !completed;
+    navigation.canStopFollowingLive = viewingLatest_ && currentPhaseData_.has_value();
     return navigation;
 }
 
@@ -356,6 +373,10 @@ bool PipelineController::CanViewNextPhase() const {
         return false;
     }
     if (viewedPhaseIndex_ + 1 < phaseHistory_.size()) {
+        return true;
+    }
+    const bool completed = activeRun_ && activeRun_->status == "completed";
+    if (completed && viewedPhaseIndex_ + 1 == phaseHistory_.size()) {
         return true;
     }
     return currentPhaseData_ && viewedPhaseIndex_ + 1 == phaseHistory_.size();

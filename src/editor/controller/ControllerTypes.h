@@ -53,6 +53,7 @@ struct PhaseNavigationData {
     bool canGoBack = false;
     bool canGoNext = false;
     bool canFollowLive = false;
+    bool canStopFollowingLive = false;
 };
 
 struct PhaseDisplayData {

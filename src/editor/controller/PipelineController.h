@@ -36,6 +36,7 @@ public:
     void ViewPreviousPhase();
     void ViewNextPhase();
     void FollowLivePhase();
+    void StopFollowingLivePhase();
     void PrepareForShutdown();
 
     const std::vector<RunSummary>& GetRunSummaries() const;

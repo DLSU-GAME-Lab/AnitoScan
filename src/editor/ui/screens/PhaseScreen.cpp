@@ -35,9 +35,15 @@ void PhaseScreen::Render(const PhaseDisplayData& data, std::vector<UIInput>& inp
 
     if (data.navigation.viewingLatest) {
         ImGui::SameLine();
-        ImGui::BeginDisabled();
-        ImGui::Button("Live");
-        ImGui::EndDisabled();
+        if (data.navigation.canStopFollowingLive) {
+            if (ImGui::Button("Stop Following Live")) {
+                inputs.push_back({UIClick::StopFollowingLive, {}});
+            }
+        } else {
+            ImGui::BeginDisabled();
+            ImGui::Button("Live");
+            ImGui::EndDisabled();
+        }
     } else {
         if (data.navigation.canGoNext) {
             ImGui::SameLine();

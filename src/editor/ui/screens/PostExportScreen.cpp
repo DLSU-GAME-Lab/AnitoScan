@@ -35,10 +35,6 @@ void PostExportScreen::Render(const PostExportData& data, std::vector<UIInput>& 
         inputs.push_back({UIClick::PreviousPhase, {}});
     }
     ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::BeginDisabled();
-    ImGui::Button("Live");
-    ImGui::EndDisabled();
     ImGui::Separator();
     viewport_.Render(data.textureId);
     ImGui::End();

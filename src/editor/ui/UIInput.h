@@ -13,7 +13,8 @@ enum class UIClick {
     NewRun,
     PreviousPhase,
     NextPhase,
-    FollowLive
+    FollowLive,
+    StopFollowingLive
 };
 
 struct UIInput {

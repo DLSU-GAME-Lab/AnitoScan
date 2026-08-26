@@ -220,6 +220,7 @@ void App::Run() {
             else if (input.click == UIClick::PreviousPhase) controller_->ViewPreviousPhase();
             else if (input.click == UIClick::NextPhase) controller_->ViewNextPhase();
             else if (input.click == UIClick::FollowLive) controller_->FollowLivePhase();
+            else if (input.click == UIClick::StopFollowingLive) controller_->StopFollowingLivePhase();
             else if (input.click == UIClick::CreateRun) {
                 const auto values = Split(input.value);
                 if (values.size() >= 10) {
