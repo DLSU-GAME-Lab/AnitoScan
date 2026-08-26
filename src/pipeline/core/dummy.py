@@ -10,6 +10,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 INVALID_RUN_NAME_PATTERN = re.compile(r'[<>:"/\\|?*]|[\x00-\x1f]')
+DUMMY_PHASE_DURATION_SECONDS = 10.0
 
 CUBE_OBJ = """# Dummy backend cube
 v -0.5 -0.5 -0.5
@@ -45,14 +46,131 @@ def diagnostic(message):
 def write_preview(path):
     width = 480
     height = 270
-    colors = ((220, 90, 90), (90, 190, 120), (90, 130, 220))
+    pixels = bytearray(width * height * 3)
+
+    def set_pixel(x, y, color):
+        if 0 <= x < width and 0 <= y < height:
+            offset = (y * width + x) * 3
+            pixels[offset:offset + 3] = bytes(color)
+
+    def draw_line(start, end, color, thickness=1):
+        x1, y1 = start
+        x2, y2 = end
+        dx = abs(x2 - x1)
+        dy = -abs(y2 - y1)
+        step_x = 1 if x1 < x2 else -1
+        step_y = 1 if y1 < y2 else -1
+        error = dx + dy
+        while True:
+            radius = thickness // 2
+            for offset_y in range(-radius, radius + 1):
+                for offset_x in range(-radius, radius + 1):
+                    set_pixel(x1 + offset_x, y1 + offset_y, color)
+            if x1 == x2 and y1 == y2:
+                break
+            doubled_error = 2 * error
+            if doubled_error >= dy:
+                error += dy
+                x1 += step_x
+            if doubled_error <= dx:
+                error += dx
+                y1 += step_y
+
+    def fill_polygon(points, color):
+        minimum_y = max(0, min(point[1] for point in points))
+        maximum_y = min(height - 1, max(point[1] for point in points))
+        for y in range(minimum_y, maximum_y + 1):
+            intersections = []
+            for index, first in enumerate(points):
+                second = points[(index + 1) % len(points)]
+                if first[1] == second[1]:
+                    continue
+                low, high = sorted((first, second), key=lambda point: point[1])
+                if low[1] <= y < high[1]:
+                    ratio = (y - low[1]) / (high[1] - low[1])
+                    intersections.append(round(low[0] + ratio * (high[0] - low[0])))
+            intersections.sort()
+            for start, end in zip(intersections[0::2], intersections[1::2]):
+                for x in range(start, end + 1):
+                    set_pixel(x, y, color)
+
+    def draw_box(bounds, color, label):
+        left, top, right, bottom = bounds
+        draw_line((left, top), (right, top), color, 3)
+        draw_line((right, top), (right, bottom), color, 3)
+        draw_line((right, bottom), (left, bottom), color, 3)
+        draw_line((left, bottom), (left, top), color, 3)
+
+        for y in range(top, top + 18):
+            for x in range(left, left + 18):
+                set_pixel(x, y, color)
+        digit_patterns = {
+            1: ("010", "110", "010", "010", "111"),
+            2: ("110", "001", "010", "100", "111"),
+            3: ("110", "001", "010", "001", "110"),
+        }
+        for row, pattern in enumerate(digit_patterns[label]):
+            for column, enabled in enumerate(pattern):
+                if enabled == "1":
+                    for offset_y in range(2):
+                        for offset_x in range(2):
+                            set_pixel(left + 6 + column * 2 + offset_x, top + 4 + row * 2 + offset_y, (18, 22, 30))
+
+    for y in range(height):
+        blend = y / height
+        background = (
+            round(16 + 14 * blend),
+            round(23 + 18 * blend),
+            round(38 + 24 * blend),
+        )
+        for x in range(width):
+            set_pixel(x, y, background)
+
+    horizon = 205
+    for x in range(0, width, 40):
+        draw_line((width // 2, horizon), (x, height - 1), (41, 54, 72))
+    for y in (216, 230, 248, 267):
+        draw_line((0, y), (width - 1, y), (41, 54, 72))
+
+    back_top_left = (166, 55)
+    back_top_right = (270, 47)
+    back_bottom_right = (277, 150)
+    back_bottom_left = (172, 163)
+    front_top_left = (196, 82)
+    front_top_right = (300, 74)
+    front_bottom_right = (307, 177)
+    front_bottom_left = (202, 190)
+
+    fill_polygon((back_top_left, back_top_right, front_top_right, front_top_left), (112, 151, 196))
+    fill_polygon((back_top_left, front_top_left, front_bottom_left, back_bottom_left), (62, 91, 130))
+    fill_polygon((front_top_left, front_top_right, front_bottom_right, front_bottom_left), (83, 119, 165))
+
+    cube_edges = (
+        (back_top_left, back_top_right),
+        (back_top_right, back_bottom_right),
+        (back_bottom_right, back_bottom_left),
+        (back_bottom_left, back_top_left),
+        (front_top_left, front_top_right),
+        (front_top_right, front_bottom_right),
+        (front_bottom_right, front_bottom_left),
+        (front_bottom_left, front_top_left),
+        (back_top_left, front_top_left),
+        (back_top_right, front_top_right),
+        (back_bottom_right, front_bottom_right),
+        (back_bottom_left, front_bottom_left),
+    )
+    for edge in cube_edges:
+        draw_line(*edge, (202, 219, 238), 2)
+
+    draw_box((132, 64, 257, 207), (225, 86, 86), 1)
+    draw_box((158, 40, 315, 198), (75, 205, 122), 2)
+    draw_box((214, 30, 382, 170), (76, 139, 231), 3)
+
     rows = bytearray()
     for y in range(height):
         rows.append(0)
-        for x in range(width):
-            color = colors[min(x * len(colors) // width, len(colors) - 1)]
-            shade = 25 if (x // 16 + y // 16) % 2 else 0
-            rows.extend(min(channel + shade, 255) for channel in color)
+        start = y * width * 3
+        rows.extend(pixels[start:start + width * 3])
 
     def chunk(kind, data):
         payload = kind + data
@@ -113,6 +231,26 @@ def interruptible_delay(session, duration=0.08):
     return session["cancel"].wait(duration)
 
 
+def emit_progress_schedule(session, phase, schedule):
+    previous_offset = 0.0
+    for offset, value, label in schedule:
+        delay = offset - previous_offset
+        if delay > 0 and interruptible_delay(session, delay):
+            emit_cancelled(session)
+            return False
+        if session["cancel"].is_set():
+            emit_cancelled(session)
+            return False
+        send({
+            "type": "progress",
+            "run_id": session["run_id"],
+            "phase": phase,
+            "value": value,
+            "label": label,
+        })
+        previous_offset = offset
+    return True
+
 
 def is_valid_run_name(name):
     return (
@@ -136,26 +274,87 @@ def run_worker(session):
         send({"type": "workspace_ready", "run_id": run_id, "workspace_path": str(workspace)})
         send({"type": "log", "run_id": run_id, "text": "Dummy run started: " + session["name"]})
 
+        total_frames = max(1, int(session["config"]["minimum_frames"]))
+        capture_schedule = [(0.0, 0.0, "Preparing capture...")]
+        for step in range(1, 10):
+            progress = step / 10
+            frame = max(1, round(total_frames * progress))
+            capture_schedule.append((
+                float(step),
+                progress,
+                f"Copying frame {frame}/{total_frames}",
+            ))
+        capture_schedule.append((
+            DUMMY_PHASE_DURATION_SECONDS,
+            1.0,
+            "Phase 1: Capture complete",
+        ))
+
+        masking_start_schedule = [
+            (0.0, 0.0, "Starting Masking Phase..."),
+            (1.0, 0.05, "Loading detection models..."),
+            (2.0, 0.10, "Analyzing frame 1"),
+        ]
+        masking_finish_schedule = [(0.0, 0.10, "Selection received")]
+        masking_progress = (0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.85)
+        for offset, progress in enumerate(masking_progress, start=1):
+            frame = max(1, round(total_frames * progress))
+            masking_finish_schedule.append((
+                float(offset),
+                progress,
+                f"Processed frame {frame}/{total_frames}",
+            ))
+        masking_finish_schedule.append((
+            8.0,
+            1.0,
+            "Phase 2: Masking complete",
+        ))
+
+        spatial_schedule = [
+            (0.0, 0.0, "Phase 3: Preparing images..."),
+            (0.75, 0.05, f"Preparing image {max(1, round(total_frames / 3))} of {total_frames}"),
+            (1.5, 0.10, f"Preparing image {max(1, round(total_frames * 2 / 3))} of {total_frames}"),
+            (2.0, 0.15, "Phase 3: Running Bundle Adjustment..."),
+            (10.0, 1.0, "Phase 3: Spatial initialization complete"),
+        ]
+        geometry_schedule = [
+            (0.0, 0.0, "Phase 4: Preparing reconstruction..."),
+            (1.0, 0.30, "Phase 4: Training 2DGS..."),
+            (2.0, 0.38, "Training 1000/7000 iterations"),
+            (3.0, 0.46, "Training 2000/7000 iterations"),
+            (4.0, 0.54, "Training 3000/7000 iterations"),
+            (5.0, 0.62, "Training 4000/7000 iterations"),
+            (6.0, 0.70, "Training 5000/7000 iterations"),
+            (7.0, 0.78, "Training 6000/7000 iterations"),
+            (8.5, 0.85, "Phase 4: Extracting mesh..."),
+            (10.0, 1.0, "Phase 4: Geometry complete"),
+        ]
+        export_schedule = [
+            (0.0, 0.0, "Phase 5: Loading mesh..."),
+            (1.0, 0.05, "Phase 5: Cleaning topology..."),
+            (2.5, 0.15, "Phase 5: Decimating mesh..."),
+            (4.0, 0.45, "Phase 5: Computing normals..."),
+            (5.0, 0.50, "Phase 5: Unwrapping UVs..."),
+            (7.0, 0.80, "Phase 5: Baking 4K texture..."),
+            (9.0, 0.95, "Phase 5: Exporting OBJ..."),
+            (10.0, 1.0, "Phase 5: Export complete"),
+        ]
+
         phase_labels = ("Capture", "Masking", "Spatial", "Geometry", "Export")
+        phase_schedules = {
+            1: capture_schedule,
+            3: spatial_schedule,
+            4: geometry_schedule,
+            5: export_schedule,
+        }
         for phase, label in enumerate(phase_labels, start=1):
             session["phase"] = phase
             write_manifest(session, "running", phase)
-            for value in (0.0, 0.5, 1.0):
-                if session["cancel"].is_set():
-                    emit_cancelled(session)
-                    return
-                send({
-                    "type": "progress",
-                    "run_id": run_id,
-                    "phase": phase,
-                    "value": value,
-                    "label": label,
-                })
-                if interruptible_delay(session):
-                    emit_cancelled(session)
-                    return
 
             if phase == 2:
+                if not emit_progress_schedule(session, phase, masking_start_schedule):
+                    return
+
                 preview = (workspace / "mask-preview.png").resolve()
                 write_preview(preview)
                 send({
@@ -173,6 +372,11 @@ def run_worker(session):
                     emit_cancelled(session)
                     return
                 send({"type": "log", "run_id": run_id, "text": "Selection received"})
+
+                if not emit_progress_schedule(session, phase, masking_finish_schedule):
+                    return
+            elif not emit_progress_schedule(session, phase, phase_schedules[phase]):
+                return
 
             session["completed"].append(label.lower())
             write_manifest(session, "running", phase)
