@@ -5,7 +5,7 @@ include(FetchContent)
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG        docking
+    GIT_TAG        v1.92.9b-docking
     SUBBUILD_DIR   "${CMAKE_SOURCE_DIR}/vendor/imgui/subbuild"
     SOURCE_DIR     "${CMAKE_SOURCE_DIR}/vendor/imgui/src"
     BINARY_DIR     "${CMAKE_SOURCE_DIR}/vendor/imgui/build"
@@ -50,7 +50,7 @@ FetchContent_MakeAvailable(glm)
 FetchContent_Declare(
     tinyobjloader
     GIT_REPOSITORY https://github.com/tinyobjloader/tinyobjloader.git
-    GIT_TAG        release
+    GIT_TAG        v2.0.0rc13
     SUBBUILD_DIR   "${CMAKE_SOURCE_DIR}/vendor/tinyobjloader/subbuild"
     SOURCE_DIR     "${CMAKE_SOURCE_DIR}/vendor/tinyobjloader/src"
     BINARY_DIR     "${CMAKE_SOURCE_DIR}/vendor/tinyobjloader/build"
@@ -88,5 +88,3 @@ target_link_libraries(vendor_imgui PUBLIC
 add_library(vendor_stb INTERFACE)
 add_library(vendor::stb ALIAS vendor_stb)
 target_include_directories(vendor_stb INTERFACE "${CMAKE_SOURCE_DIR}/vendor/stb")
-
-
