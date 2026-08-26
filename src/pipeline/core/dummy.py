@@ -11,6 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 INVALID_RUN_NAME_PATTERN = re.compile(r'[<>:"/\\|?*]|[\x00-\x1f]')
 DUMMY_PHASE_DURATION_SECONDS = 10.0
+DUMMY_TIME_SCALE = 0.5
 
 CUBE_OBJ = """# Dummy backend cube
 v -0.5 -0.5 -0.5
@@ -234,7 +235,7 @@ def interruptible_delay(session, duration=0.08):
 def emit_progress_schedule(session, phase, schedule):
     previous_offset = 0.0
     for offset, value, label in schedule:
-        delay = offset - previous_offset
+        delay = (offset - previous_offset) * DUMMY_TIME_SCALE
         if delay > 0 and interruptible_delay(session, delay):
             emit_cancelled(session)
             return False
@@ -312,9 +313,14 @@ def run_worker(session):
 
         spatial_schedule = [
             (0.0, 0.0, "Phase 3: Preparing images..."),
-            (0.75, 0.05, f"Preparing image {max(1, round(total_frames / 3))} of {total_frames}"),
-            (1.5, 0.10, f"Preparing image {max(1, round(total_frames * 2 / 3))} of {total_frames}"),
-            (2.0, 0.15, "Phase 3: Running Bundle Adjustment..."),
+            (3.5, 0.05, f"Preparing image {max(1, round(total_frames / 3))} of {total_frames}"),
+            (5.25, 0.10, f"Preparing image {max(1, round(total_frames * 2 / 3))} of {total_frames}"),
+            (7.0, 0.15, "Phase 3: Running Bundle Adjustment..."),
+            (7.5, 0.30, "Phase 3: Matching image features..."),
+            (8.0, 0.45, "Phase 3: Registering cameras..."),
+            (8.5, 0.60, "Phase 3: Optimizing camera poses..."),
+            (9.0, 0.75, "Phase 3: Triangulating scene points..."),
+            (9.5, 0.90, "Phase 3: Refining reconstruction..."),
             (10.0, 1.0, "Phase 3: Spatial initialization complete"),
         ]
         geometry_schedule = [
