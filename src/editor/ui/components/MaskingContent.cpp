@@ -1,5 +1,7 @@
 #include "editor/ui/components/MaskingContent.h"
 
+#include "editor/ui/UIStyle.h"
+
 #include <algorithm>
 #include <string>
 
@@ -23,14 +25,51 @@ void MaskingContent::Render(
         LoadPreview(previewPath.c_str());
     }
 
-    ImGui::TextUnformatted("Mask selection");
-    ImGui::Spacing();
+    UIStyle::SectionTitle(
+        "MASK SELECTION",
+        "Choose the candidate that best isolates the subject, or skip this image."
+    );
     if (textureId_ != 0) {
+        constexpr float framePadding = 8.0f;
         const ImVec2 available = ImGui::GetContentRegionAvail();
-        const float scale = std::min(available.x / textureWidth_, 420.0f / textureHeight_);
+        const float maxImageWidth = std::max(1.0f, available.x - framePadding * 2.0f);
+        const float scale = std::min(
+            maxImageWidth / static_cast<float>(std::max(1, textureWidth_)),
+            420.0f / static_cast<float>(std::max(1, textureHeight_))
+        );
         const ImVec2 imageSize(textureWidth_ * scale, textureHeight_ * scale);
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (available.x - imageSize.x) * 0.5f));
-        ImGui::Image(static_cast<ImTextureID>(textureId_), imageSize);
+        const ImVec2 frameSize(
+            imageSize.x + framePadding * 2.0f,
+            imageSize.y + framePadding * 2.0f
+        );
+        ImGui::SetCursorPosX(
+            ImGui::GetCursorPosX() +
+            std::max(0.0f, (available.x - frameSize.x) * 0.5f)
+        );
+
+        const ImVec2 framePosition = ImGui::GetCursorScreenPos();
+        ImGui::Dummy(frameSize);
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddRectFilled(
+            framePosition,
+            ImVec2(framePosition.x + frameSize.x, framePosition.y + frameSize.y),
+            ImGui::GetColorU32(ImVec4(0.055f, 0.063f, 0.078f, 1.0f)),
+            3.0f
+        );
+        drawList->AddImage(
+            static_cast<ImTextureID>(textureId_),
+            ImVec2(framePosition.x + framePadding, framePosition.y + framePadding),
+            ImVec2(
+                framePosition.x + framePadding + imageSize.x,
+                framePosition.y + framePadding + imageSize.y
+            )
+        );
+        drawList->AddRect(
+            framePosition,
+            ImVec2(framePosition.x + frameSize.x, framePosition.y + frameSize.y),
+            ImGui::GetColorU32(ImGuiCol_Border),
+            3.0f
+        );
     } else {
         ImGui::TextDisabled("Preview image unavailable");
     }
@@ -40,7 +79,11 @@ void MaskingContent::Render(
     const int safeCandidateCount = std::max(0, candidateCount);
     for (int candidate = 0; candidate < safeCandidateCount; ++candidate) {
         const std::string label = "Candidate " + std::to_string(candidate + 1);
-        if (ImGui::Button(label.c_str())) {
+        if (UIStyle::Button(
+            label.c_str(),
+            UIStyle::ButtonKind::Secondary,
+            ImVec2(112.0f, 0.0f)
+        )) {
             inputs.push_back({UIClick::SubmitSelection, std::to_string(candidate)});
         }
         if (candidate + 1 < safeCandidateCount) {
@@ -50,7 +93,11 @@ void MaskingContent::Render(
     if (safeCandidateCount > 0) {
         ImGui::SameLine();
     }
-    if (ImGui::Button("Skip")) {
+    if (UIStyle::Button(
+        "Skip",
+        UIStyle::ButtonKind::Ghost,
+        ImVec2(64.0f, 0.0f)
+    )) {
         inputs.push_back({UIClick::SubmitSelection, "-1"});
     }
     ImGui::EndDisabled();

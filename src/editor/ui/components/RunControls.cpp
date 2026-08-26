@@ -1,5 +1,7 @@
 #include "editor/ui/components/RunControls.h"
 
+#include "editor/ui/UIStyle.h"
+
 #include <imgui.h>
 
 void RunControls::Render(
@@ -8,21 +10,21 @@ void RunControls::Render(
     std::vector<UIInput>& inputs
 ) {
     if (statusText == "pending") {
-        if (ImGui::Button("Start")) {
+        if (UIStyle::Button("Start", UIStyle::ButtonKind::Primary)) {
             inputs.push_back({UIClick::StartRun, runId});
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
+        if (UIStyle::Button("Cancel", UIStyle::ButtonKind::Danger)) {
             inputs.push_back({UIClick::CancelRun, runId});
         }
     } else if (statusText == "running") {
-        if (ImGui::Button("Cancel")) {
+        if (UIStyle::Button("Cancel", UIStyle::ButtonKind::Danger)) {
             inputs.push_back({UIClick::CancelRun, runId});
         }
     } else if (statusText == "cancelling") {
         ImGui::TextUnformatted("Cancelling...");
     } else if (statusText == "failed" || statusText == "cancelled") {
-        if (ImGui::Button("New Run")) {
+        if (UIStyle::Button("New Run", UIStyle::ButtonKind::Primary)) {
             inputs.push_back({UIClick::NewRun, {}});
         }
     }
