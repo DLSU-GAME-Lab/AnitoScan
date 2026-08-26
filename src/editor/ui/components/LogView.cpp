@@ -7,8 +7,6 @@
 #include <imgui.h>
 
 void LogView::Render(const std::vector<std::string>& logs) {
-    ImGui::Separator();
-
     constexpr float footerHeight = 30.0f;
     const ImVec2 footerCursor = ImGui::GetCursorPos();
     const ImVec2 footerPosition = ImGui::GetCursorScreenPos();
@@ -56,7 +54,6 @@ void LogView::Render(const std::vector<std::string>& logs) {
         return;
     }
 
-    ImGui::Spacing();
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.035f, 0.041f, 0.052f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.16f, 0.18f, 0.22f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.78f, 0.82f, 0.87f, 1.0f));
