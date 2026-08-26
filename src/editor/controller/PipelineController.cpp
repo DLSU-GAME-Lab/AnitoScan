@@ -277,7 +277,8 @@ PhaseDisplayData PipelineController::GetPhaseDisplayData() const {
     } else {
         display.kind = PhaseDisplayKind::Processing;
     }
-    display.maskSelectionEnabled = viewingLatest_ && activeRun_->status == "running" &&
+    const bool viewingLivePhase = currentPhaseData_ && phase == &*currentPhaseData_;
+    display.maskSelectionEnabled = viewingLivePhase && activeRun_->status == "running" &&
         display.kind == PhaseDisplayKind::MaskSelection;
     return display;
 }
@@ -340,6 +341,9 @@ const PhaseData* PipelineController::GetViewedPhase() const {
     if (viewedPhaseIndex_ < phaseHistory_.size()) {
         return &phaseHistory_[viewedPhaseIndex_];
     }
+    if (viewedPhaseIndex_ == phaseHistory_.size() && currentPhaseData_) {
+        return &*currentPhaseData_;
+    }
     return nullptr;
 }
 
@@ -348,7 +352,13 @@ bool PipelineController::CanViewPreviousPhase() const {
 }
 
 bool PipelineController::CanViewNextPhase() const {
-    return !viewingLatest_ && viewedPhaseIndex_ + 1 < phaseHistory_.size();
+    if (viewingLatest_) {
+        return false;
+    }
+    if (viewedPhaseIndex_ + 1 < phaseHistory_.size()) {
+        return true;
+    }
+    return currentPhaseData_ && viewedPhaseIndex_ + 1 == phaseHistory_.size();
 }
 
 void PipelineController::QueueMessage(std::string type, std::string value) {
