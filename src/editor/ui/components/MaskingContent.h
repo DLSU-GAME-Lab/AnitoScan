@@ -10,6 +10,7 @@ public:
     void Render(
         const std::string& previewPath,
         int candidateCount,
+        bool selectionEnabled,
         std::vector<UIInput>& inputs
     );
     void Shutdown();

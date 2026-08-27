@@ -10,7 +10,11 @@ enum class UIClick {
     CancelRun,
     DeleteRun,
     SubmitSelection,
-    NewRun
+    NewRun,
+    PreviousPhase,
+    NextPhase,
+    FollowLive,
+    StopFollowingLive
 };
 
 struct UIInput {

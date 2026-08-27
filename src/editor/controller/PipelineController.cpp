@@ -24,6 +24,15 @@ std::vector<std::string> Split(std::string_view value) {
 bool IsCompleted(const RunSummary& summary) {
     return summary.status == "completed";
 }
+
+std::string PhaseTitle(const std::string& phaseName) {
+    if (phaseName == "1") return "Capture";
+    if (phaseName == "2") return "Masking";
+    if (phaseName == "3") return "Spatial";
+    if (phaseName == "4") return "Geometry";
+    if (phaseName == "5") return "Export";
+    return phaseName;
+}
 }
 
 
@@ -46,8 +55,7 @@ CreateRunResult PipelineController::CreateRun(std::string name, RunConfig config
     run.config = std::move(config);
     run.status = "pending";
     activeRun_ = std::move(run);
-    currentPhaseData_.reset();
-    phaseHistory_.clear();
+    ResetPhaseView();
     return CreateRunResult::Created;
 }
 
@@ -61,8 +69,7 @@ void PipelineController::RestoreRuns(std::vector<RunSummary> summaries) {
 
 void PipelineController::LoadRun(RunState run) {
     activeRun_ = std::move(run);
-    currentPhaseData_.reset();
-    phaseHistory_.clear();
+    ResetPhaseView();
 }
 
 void PipelineController::HandleBackendInput(const BackendInput& input) {
@@ -93,15 +100,12 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
         return;
     }
     if (input.type == "progress" && values.size() >= 4 && values[0] == activeRun_->id) {
-        if (!currentPhaseData_) {
-            currentPhaseData_ = PhaseData{};
-        }
-        currentPhaseData_->phaseName = values[1];
+        BeginPhaseIfNeeded(values[1]);
         currentPhaseData_->progress = std::stof(values[2]);
         currentPhaseData_->progressText = values[3];
         return;
     }
-    if (input.type == "log" && values.size() >= 2) {
+    if (input.type == "log" && values.size() >= 2 && values[0] == activeRun_->id) {
         if (!currentPhaseData_) {
             currentPhaseData_ = PhaseData{};
         }
@@ -109,15 +113,14 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
         return;
     }
     if (input.type == "selection_required" && values.size() >= 4 && values[0] == activeRun_->id) {
-        if (!currentPhaseData_) {
-            currentPhaseData_ = PhaseData{};
-        }
-        currentPhaseData_->phaseName = "Masking";
+        BeginPhaseIfNeeded("2");
         currentPhaseData_->previewPath = values[1];
         currentPhaseData_->candidateCount = std::stoi(values[3]);
         return;
     }
     if (input.type == "run_completed" && values.size() >= 2 && values[0] == activeRun_->id) {
+        CommitLivePhase();
+        currentPhaseData_.reset();
         activeRun_->status = "completed";
         activeRun_->outputModelPath = values[1];
         QueuePersistenceRequest("save", activeRun_->id);
@@ -158,7 +161,7 @@ void PipelineController::CancelRun(const std::string& runId) {
     }
     if (activeRun_->status == "pending") {
         activeRun_.reset();
-        currentPhaseData_.reset();
+        ResetPhaseView();
         return;
     }
     if (activeRun_->status == "running") {
@@ -197,8 +200,7 @@ void PipelineController::DeleteRun(const std::string& runId) {
 
 void PipelineController::ClearActiveRun() {
     activeRun_.reset();
-    currentPhaseData_.reset();
-    phaseHistory_.clear();
+    ResetPhaseView();
 }
 
 void PipelineController::PrepareForShutdown() {
@@ -217,9 +219,96 @@ void PipelineController::PrepareForShutdown() {
     }
 }
 
+void PipelineController::ViewPreviousPhase() {
+    if (!CanViewPreviousPhase()) {
+        return;
+    }
+    if (viewingLatest_) {
+        viewingLatest_ = false;
+        viewedPhaseIndex_ = phaseHistory_.size() - 1;
+    } else {
+        --viewedPhaseIndex_;
+    }
+}
+
+void PipelineController::ViewNextPhase() {
+    if (!CanViewNextPhase()) {
+        return;
+    }
+    const bool opensPostExport = activeRun_ && activeRun_->status == "completed" &&
+        viewedPhaseIndex_ + 1 == phaseHistory_.size();
+    if (opensPostExport) {
+        viewingLatest_ = true;
+        return;
+    }
+    ++viewedPhaseIndex_;
+}
+
+void PipelineController::FollowLivePhase() {
+    viewingLatest_ = true;
+}
+
+void PipelineController::StopFollowingLivePhase() {
+    if (!viewingLatest_ || !currentPhaseData_) {
+        return;
+    }
+    viewingLatest_ = false;
+    viewedPhaseIndex_ = phaseHistory_.size();
+}
+
 const std::vector<RunSummary>& PipelineController::GetRunSummaries() const { return runSummaries_; }
 const RunState* PipelineController::GetActiveRun() const { return activeRun_ ? &*activeRun_ : nullptr; }
-const PhaseData* PipelineController::GetCurrentPhaseData() const { return currentPhaseData_ ? &*currentPhaseData_ : nullptr; }
+
+PhaseDisplayData PipelineController::GetPhaseDisplayData() const {
+    PhaseDisplayData display;
+    if (!activeRun_) {
+        return display;
+    }
+
+    display.runId = activeRun_->id;
+    display.runName = activeRun_->name;
+    display.statusText = activeRun_->status;
+    display.navigation = GetPhaseNavigationData();
+
+    const PhaseData* phase = GetViewedPhase();
+    if (!phase) {
+        return display;
+    }
+
+    display.phaseText = PhaseTitle(phase->phaseName);
+    display.progressText = phase->progressText;
+    display.progress = phase->progress;
+    display.previewPath = phase->previewPath;
+    display.candidateCount = phase->candidateCount;
+    display.logs = phase->logs;
+    display.errorText = phase->error;
+
+    if (!phase->error.empty()) {
+        display.kind = PhaseDisplayKind::Error;
+    } else if (!phase->previewPath.empty() || phase->candidateCount > 0) {
+        display.kind = PhaseDisplayKind::MaskSelection;
+    } else if (!phase->progressText.empty() || phase->progress > 0.0f) {
+        display.kind = PhaseDisplayKind::Progress;
+    } else {
+        display.kind = PhaseDisplayKind::Processing;
+    }
+    const bool viewingLivePhase = currentPhaseData_ && phase == &*currentPhaseData_;
+    display.maskSelectionEnabled = viewingLivePhase && activeRun_->status == "running" &&
+        display.kind == PhaseDisplayKind::MaskSelection;
+    return display;
+}
+
+PhaseNavigationData PipelineController::GetPhaseNavigationData() const {
+    PhaseNavigationData navigation;
+    navigation.viewingLatest = viewingLatest_;
+    navigation.canGoBack = CanViewPreviousPhase();
+    navigation.canGoNext = CanViewNextPhase();
+    const bool completed = activeRun_ && activeRun_->status == "completed";
+    navigation.canFollowLive = !viewingLatest_ && !completed;
+    navigation.canStopFollowingLive = viewingLatest_ && currentPhaseData_.has_value();
+    return navigation;
+}
+
 bool PipelineController::CanCreateRun() const { return backendAvailable_; }
 
 std::vector<PipelineMessage> PipelineController::PollMessages() {
@@ -232,6 +321,65 @@ std::vector<PersistenceRequest> PipelineController::PollPersistenceRequests() {
     std::vector<PersistenceRequest> requests;
     requests.swap(persistenceRequests_);
     return requests;
+}
+
+void PipelineController::BeginPhaseIfNeeded(const std::string& phaseName) {
+    if (!currentPhaseData_) {
+        currentPhaseData_ = PhaseData{};
+    }
+    if (currentPhaseData_->phaseName.empty()) {
+        currentPhaseData_->phaseName = phaseName;
+        return;
+    }
+    if (currentPhaseData_->phaseName != phaseName) {
+        CommitLivePhase();
+        currentPhaseData_ = PhaseData{};
+        currentPhaseData_->phaseName = phaseName;
+    }
+}
+
+void PipelineController::CommitLivePhase() {
+    if (currentPhaseData_ && !currentPhaseData_->phaseName.empty()) {
+        phaseHistory_.push_back(*currentPhaseData_);
+    }
+}
+
+void PipelineController::ResetPhaseView() {
+    phaseHistory_.clear();
+    currentPhaseData_.reset();
+    viewedPhaseIndex_ = 0;
+    viewingLatest_ = true;
+}
+
+const PhaseData* PipelineController::GetViewedPhase() const {
+    if (viewingLatest_) {
+        return currentPhaseData_ ? &*currentPhaseData_ : nullptr;
+    }
+    if (viewedPhaseIndex_ < phaseHistory_.size()) {
+        return &phaseHistory_[viewedPhaseIndex_];
+    }
+    if (viewedPhaseIndex_ == phaseHistory_.size() && currentPhaseData_) {
+        return &*currentPhaseData_;
+    }
+    return nullptr;
+}
+
+bool PipelineController::CanViewPreviousPhase() const {
+    return viewingLatest_ ? !phaseHistory_.empty() : viewedPhaseIndex_ > 0;
+}
+
+bool PipelineController::CanViewNextPhase() const {
+    if (viewingLatest_) {
+        return false;
+    }
+    if (viewedPhaseIndex_ + 1 < phaseHistory_.size()) {
+        return true;
+    }
+    const bool completed = activeRun_ && activeRun_->status == "completed";
+    if (completed && viewedPhaseIndex_ + 1 == phaseHistory_.size()) {
+        return true;
+    }
+    return currentPhaseData_ && viewedPhaseIndex_ + 1 == phaseHistory_.size();
 }
 
 void PipelineController::QueueMessage(std::string type, std::string value) {

@@ -1,5 +1,7 @@
 #include "editor/ui/UIManager.h"
 
+#include "editor/ui/UIStyle.h"
+
 #include <iostream>
 #include <utility>
 
@@ -15,7 +17,7 @@ bool UIManager::Initialize(SDL_Window* window, SDL_GLContext glContext) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     contextCreated_ = true;
-    ImGui::StyleColorsDark();
+    UIStyle::ApplyTheme();
 
     if (!ImGui_ImplSDL2_InitForOpenGL(window, glContext)) {
         std::cerr << "ImGui SDL2 backend initialization failed\n";
@@ -102,15 +104,15 @@ std::vector<UIInput> UIManager::PollInputs() {
 }
 
 int UIManager::GetViewportWidth() const {
-    return postExportScreen_.GetViewportWidth();
+    return screen_ == UIScreen::PostExport ? postExportScreen_.GetViewportWidth() : 0;
 }
 
 int UIManager::GetViewportHeight() const {
-    return postExportScreen_.GetViewportHeight();
+    return screen_ == UIScreen::PostExport ? postExportScreen_.GetViewportHeight() : 0;
 }
 
 bool UIManager::IsViewportHovered() const {
-    return postExportScreen_.IsViewportHovered();
+    return screen_ == UIScreen::PostExport && postExportScreen_.IsViewportHovered();
 }
 
 bool UIManager::ConsumeRecenterRequest() {

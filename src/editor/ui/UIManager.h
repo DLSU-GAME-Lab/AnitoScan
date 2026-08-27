@@ -1,5 +1,6 @@
 #pragma once
 
+#include "editor/controller/ControllerTypes.h"
 #include "editor/ui/UIInput.h"
 #include "editor/ui/screens/PhaseScreen.h"
 #include "editor/ui/screens/PostExportScreen.h"
@@ -24,21 +25,11 @@ struct RunSetupData {
     bool canCreateRun = false;
 };
 
-struct PhaseDisplayData {
-    std::string runId;
-    std::string runName;
-    std::string statusText;
-    std::string phaseText;
-    std::string progressText;
-    std::string previewPath;
-    std::string errorText;
-    float progress = 0.0f;
-    int candidateCount = 0;
-    std::vector<std::string> logs;
-};
 
 struct PostExportData {
     std::string runName;
+    std::string statusText;
+    PhaseNavigationData navigation;
     unsigned int textureId = 0;
 };
 
