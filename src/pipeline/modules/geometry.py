@@ -1,4 +1,5 @@
 import argparse
+from collections import deque
 import os
 import queue
 import re
@@ -46,9 +47,20 @@ def _iter_child_output(process: subprocess.Popen, cancel_event):
     finished = object()
 
     def read_output() -> None:
+        buffered = []
         try:
-            for line in process.stdout:
-                output_queue.put(line)
+            while True:
+                character = process.stdout.read(1)
+                if character == "":
+                    break
+                if character in "\r\n":
+                    if buffered:
+                        output_queue.put("".join(buffered))
+                        buffered.clear()
+                else:
+                    buffered.append(character)
+            if buffered:
+                output_queue.put("".join(buffered))
         finally:
             process.stdout.close()
             output_queue.put(finished)
@@ -185,9 +197,16 @@ def run_surface_reconstruction(
         try:
             check_cancelled(cancel_event)
             process = subprocess.Popen(
-                train_cmd, cwd=str(GS_PATH), env=env,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1
+                train_cmd,
+                cwd=str(GS_PATH),
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
             )
         except (OSError, ValueError) as error:
             append_failed_phase_benchmark(
@@ -200,8 +219,12 @@ def run_surface_reconstruction(
                 error=error,
             )
             raise
+        log_info(f"2DGS training process started (PID {process.pid})")
+        training_output = deque(maxlen=20)
         for line in _iter_child_output(process, cancel_event):
             line = line.rstrip()
+            if line:
+                training_output.append(line)
             match = re.search(r'(\d+)\s*/\s*(\d+)', line)
             if match:
                 current = int(match.group(1))
@@ -217,7 +240,11 @@ def run_surface_reconstruction(
         process.wait()
         _check_child_cancelled(process, cancel_event)
         if process.returncode != 0:
-            error = RuntimeError("Phase 4: Training failed")
+            last_output = training_output[-1] if training_output else "No child-process output"
+            error = RuntimeError(
+                f"Phase 4: Training failed with exit code {process.returncode}. "
+                f"Last output: {last_output}"
+            )
             benchmark_metrics["training_return_code"] = process.returncode
             append_failed_phase_benchmark(
                 manifest,
@@ -245,9 +272,16 @@ def run_surface_reconstruction(
         try:
             check_cancelled(cancel_event)
             process = subprocess.Popen(
-                render_cmd, cwd=str(GS_PATH), env=os.environ.copy(),
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1
+                render_cmd,
+                cwd=str(GS_PATH),
+                env=os.environ.copy(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
             )
         except (OSError, ValueError) as error:
             append_failed_phase_benchmark(
@@ -260,14 +294,21 @@ def run_surface_reconstruction(
                 error=error,
             )
             raise
+        log_info(f"2DGS render process started (PID {process.pid})")
+        render_output = deque(maxlen=20)
         for line in _iter_child_output(process, cancel_event):
             stripped = line.rstrip()
             if stripped:
+                render_output.append(stripped)
                 log_info(f"[render] {stripped}")
         process.wait()
         _check_child_cancelled(process, cancel_event)
         if process.returncode != 0:
-            error = RuntimeError("Phase 4: Meshing failed")
+            last_output = render_output[-1] if render_output else "No child-process output"
+            error = RuntimeError(
+                f"Phase 4: Meshing failed with exit code {process.returncode}. "
+                f"Last output: {last_output}"
+            )
             benchmark_metrics["meshing_return_code"] = process.returncode
             append_failed_phase_benchmark(
                 manifest,

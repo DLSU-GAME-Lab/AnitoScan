@@ -1,4 +1,5 @@
 import argparse
+import gc
 import shutil
 import sys
 import time
@@ -23,6 +24,26 @@ MODULE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
 MODELS_DIR = PROJECT_ROOT / "models" / "02_masking"
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
+
+
+def _release_accelerator_memory() -> None:
+    """Release masking allocations before the separate 2DGS process starts."""
+    gc.collect()
+    try:
+        if torch.cuda.is_available():
+            reserved_before = torch.cuda.memory_reserved()
+            torch.cuda.empty_cache()
+            reserved_after = torch.cuda.memory_reserved()
+            released_mib = max(0, reserved_before - reserved_after) / (1024 * 1024)
+            log_info(f"Released {released_mib:.0f} MiB of cached CUDA memory after masking")
+        elif (
+            hasattr(torch, "mps")
+            and hasattr(torch.mps, "empty_cache")
+            and torch.backends.mps.is_available()
+        ):
+            torch.mps.empty_cache()
+    except RuntimeError as error:
+        log_info(f"Could not release cached accelerator memory: {error}")
 
 
 def _calculate_iou(boxA, boxB):
@@ -265,6 +286,8 @@ def run_remove_background(
     )
     benchmark_settings["device"] = device
 
+    detector = None
+    segmenter = None
     try:
         check_cancelled(cancel_event)
         detector = YOLOE(str(MODELS_DIR / f"yoloe-26{yoloe_model_size}-seg-pf.pt"))
@@ -272,6 +295,9 @@ def run_remove_background(
         segmenter = SAM(str(MODELS_DIR / "sam2.1_s.pt"))
         check_cancelled(cancel_event)
     except (RuntimeError, ValueError, OSError) as error:
+        detector = None
+        segmenter = None
+        _release_accelerator_memory()
         append_failed_phase_benchmark(
             manifest,
             2,
@@ -295,6 +321,8 @@ def run_remove_background(
     prev_box = None
 
     total_imgs = len(source_images)
+    det_results = None
+    sam_results = None
     try:
         for i, img_path in enumerate(source_images):
             check_cancelled(cancel_event)
@@ -464,7 +492,12 @@ def run_remove_background(
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
         raise
-
+    finally:
+        detector = None
+        segmenter = None
+        det_results = None
+        sam_results = None
+        _release_accelerator_memory()
 
     total_time = time.perf_counter() - start_perf
     processing_time = total_time - total_user_time
