@@ -14,6 +14,8 @@ target_include_directories(${MAIN_TARGET} PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
 
+target_compile_definitions(${MAIN_TARGET} PRIVATE SDL_MAIN_HANDLED)
+
 target_link_libraries(${MAIN_TARGET} PRIVATE
     editor_backend
     editor_controller

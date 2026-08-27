@@ -168,7 +168,9 @@ bool BackendProcess::Start(const std::filesystem::path& executable,
     startup.hStdError = stderrWrite;
     PROCESS_INFORMATION processInfo {};
     const wchar_t* directory = workingDirectory.empty() ? nullptr : workingDirectory.c_str();
-    const BOOL created = CreateProcessW(executable.c_str(), mutableCommandLine.data(), nullptr, nullptr,
+    // Pass the executable through the command line so Windows can resolve bare
+    // names such as "uv" using the process PATH.
+    const BOOL created = CreateProcessW(nullptr, mutableCommandLine.data(), nullptr, nullptr,
                                         TRUE, CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, directory,
                                         &startup, &processInfo);
     CloseHandleIfSet(stdinRead);
