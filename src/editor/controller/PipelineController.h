@@ -31,6 +31,7 @@ public:
     void CancelRun(const std::string& runId);
     void SubmitSelection(const std::string& runId, const std::string& selection);
     void SelectRun(const std::string& runId);
+    void SelectOutputModel(const std::string& runId, const std::string& path);
     void DeleteRun(const std::string& runId);
     void ClearActiveRun();
     void ViewPreviousPhase();

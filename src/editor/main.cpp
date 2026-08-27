@@ -55,7 +55,7 @@ namespace {
                 .arguments = {"run", "--no-project", "python", kDummyScriptPath},
                 .workingDirectory = std::filesystem::path(PROJECT_ROOT_DIR),
             },
-            .runsDirectory = std::filesystem::path(PROJECT_ROOT_DIR) / "data" / "runs" / "dummy",
+            .runsDirectory = std::filesystem::path(PROJECT_ROOT_DIR) / "data" / "runs",
         };
     }
 } // namespace

@@ -46,20 +46,13 @@ const char* ModelSizeText(int value) {
     return value >= 0 && value < 5 ? sizes[value] : "s";
 }
 
-StoredRun ToStoredRun(const RunState& run) {
-    return {
-        run.id, run.name, run.status, run.config.inputSource, run.config.mode,
-        run.config.captureMode, run.config.quality, run.config.force,
-        run.config.iouThreshold, run.config.minimumFrames, run.config.driftLimit,
-        run.config.yoloModelSize, run.outputModelPath
-    };
-}
 
 RunState ToRunState(const StoredRun& run) {
     RunState result;
     result.id = run.id;
     result.name = run.name;
     result.status = run.status;
+    result.outputModelPaths = run.outputModelPaths;
     result.outputModelPath = run.outputModelPath;
     result.config.inputSource = run.inputSource;
     result.config.mode = run.mode;
@@ -201,6 +194,8 @@ void App::Run() {
                 run->name,
                 run->status,
                 navigation,
+                run->outputModelPaths,
+                run->outputModelPath,
                 scene_->GetModel() ? scene_->GetColorTexture() : 0
             });
         } else {
@@ -215,6 +210,7 @@ void App::Run() {
             else if (input.click == UIClick::CancelRun) controller_->CancelRun(input.value);
             else if (input.click == UIClick::DeleteRun) controller_->DeleteRun(input.value);
             else if (input.click == UIClick::SelectRun) controller_->SelectRun(input.value);
+            else if (input.click == UIClick::SelectOutputModel && run) controller_->SelectOutputModel(run->id, input.value);
             else if (input.click == UIClick::SubmitSelection && run) controller_->SubmitSelection(run->id, input.value);
             else if (input.click == UIClick::NewRun) controller_->ClearActiveRun();
             else if (input.click == UIClick::PreviousPhase) controller_->ViewPreviousPhase();
@@ -264,11 +260,7 @@ void App::HandleViewportInput(const SDL_Event& event) {
 
 void App::ProcessPersistenceRequests() {
     for (const PersistenceRequest& request : controller_->PollPersistenceRequests()) {
-        if (request.type == "save") {
-            if (const RunState* run = controller_->GetActiveRun(); run && run->id == request.runId) {
-                runStore_.SaveRun(ToStoredRun(*run));
-            }
-        } else if (request.type == "load") {
+        if (request.type == "load") {
             StoredRun run;
             if (runStore_.LoadRun(request.runId, run)) {
                 controller_->LoadRun(ToRunState(run));
@@ -282,10 +274,13 @@ void App::ProcessPersistenceRequests() {
 void App::SynchronizeScene() {
     const RunState* run = controller_->GetActiveRun();
     if (!run || run->status != "completed" || run->outputModelPath.empty()) {
-        if (displayedRunId_) { scene_->ClearModel(); displayedRunId_.reset(); }
+        if (displayedModelPath_) { scene_->ClearModel(); displayedModelPath_.reset(); }
         return;
     }
-    if (displayedRunId_ != run->id) { scene_->LoadModel(run->outputModelPath); displayedRunId_ = run->id; }
+    if (displayedModelPath_ != run->outputModelPath) {
+        scene_->LoadModel(run->outputModelPath);
+        displayedModelPath_ = run->outputModelPath;
+    }
 }
 
 void App::Shutdown() {

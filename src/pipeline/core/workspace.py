@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Any
 
@@ -7,6 +8,8 @@ from manifest import (
     load_manifest,
     update_manifest_settings,
 )
+
+INVALID_RUN_NAME_PATTERN = re.compile(r'[<>:"/\\|?*]|[\x00-\x1f]')
 
 CACHE_RELEVANT_FIELDS = [
     ("run_name",),
@@ -34,10 +37,21 @@ def _format_field(keys: tuple[str, ...]) -> str:
     return ".".join(keys)
 
 
-def _is_editor_pending_manifest(manifest: dict[str, Any]) -> bool:
-    """Returns whether an editor stub is waiting to be expanded by the real pipeline."""
-    status = manifest.get("status")
-    return isinstance(status, dict) and status.get("state") == "pending"
+def _validate_run_name(name: Any, workspace_dir: Path) -> str:
+    if (
+        not isinstance(name, str)
+        or not name
+        or name in {".", ".."}
+        or name.endswith((" ", "."))
+        or INVALID_RUN_NAME_PATTERN.search(name) is not None
+    ):
+        raise ValueError(f"Invalid run name: {name!r}")
+
+    workspace_root = workspace_dir.resolve()
+    run_root = (workspace_root / name).resolve()
+    if run_root.parent != workspace_root:
+        raise ValueError(f"Run name escapes the workspace directory: {name!r}")
+    return name
 
 
 def _find_manifest_conflicts(existing: dict[str, Any], desired: dict[str, Any]) -> list[str]:
@@ -54,9 +68,14 @@ def _find_manifest_conflicts(existing: dict[str, Any], desired: dict[str, Any]) 
     return conflicts
 
 
-def init_workspace(project_root: Path, workspace_dir: Path, args: dict) -> tuple[Path, Path]:
-    """Creates the run folder tree, validates input, and writes initial manifest.json."""
-    name = args.get("name") or "unnamed_run"
+def init_workspace(
+    project_root: Path,
+    workspace_dir: Path,
+    args: dict,
+    validate_input: bool = True,
+) -> tuple[Path, Path]:
+    """Create the run folder tree and initial manifest, optionally validating input."""
+    name = _validate_run_name(args.get("name") or "unnamed_run", workspace_dir)
     input_src = args.get("input") or ""
 
     base_dir = (workspace_dir / name).resolve()
@@ -71,7 +90,7 @@ def init_workspace(project_root: Path, workspace_dir: Path, args: dict) -> tuple
         d.mkdir(parents=True, exist_ok=True)
 
     input_path = (project_root / "data" / "input" / input_src).resolve()
-    if not input_path.exists():
+    if validate_input and not input_path.exists():
         raise FileNotFoundError(f"Input source not found: {input_src}")
 
     paths_dict = {
@@ -87,7 +106,6 @@ def init_workspace(project_root: Path, workspace_dir: Path, args: dict) -> tuple
     force = bool(args.get("force", False))
 
     if manifest_path.exists():
-        pending_upgrade = False
         try:
             _, existing_manifest = load_manifest(manifest_path)
         except (OSError, ValueError) as error:
@@ -97,9 +115,8 @@ def init_workspace(project_root: Path, workspace_dir: Path, args: dict) -> tuple
                     "Use --force to recreate this run folder's manifest, or choose a new --name."
                 ) from error
         else:
-            pending_upgrade = _is_editor_pending_manifest(existing_manifest)
             conflicts = _find_manifest_conflicts(existing_manifest, desired_manifest)
-            if conflicts and not force and not pending_upgrade:
+            if conflicts and not force:
                 conflict_lines = "\n".join(f"  - {conflict}" for conflict in conflicts)
                 raise RuntimeError(
                     "This run folder already exists with different cache-relevant settings.\n"
@@ -108,7 +125,7 @@ def init_workspace(project_root: Path, workspace_dir: Path, args: dict) -> tuple
                     "Use --force to rebuild the run with the requested settings, or choose a new --name."
                 )
 
-        if not force and not pending_upgrade:
+        if not force:
             update_manifest_settings(
                 manifest_path,
                 existing_manifest,

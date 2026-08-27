@@ -41,7 +41,7 @@ private:
     UIManager uiManager_;
     std::unique_ptr<Scene> scene_;
 
-    std::optional<std::string> displayedRunId_;
+    std::optional<std::string> displayedModelPath_;
 
     SDL_Window* window_ = nullptr;
     SDL_GLContext glContext_ = nullptr;

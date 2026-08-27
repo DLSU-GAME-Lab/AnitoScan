@@ -5,6 +5,20 @@
 
 #include <imgui.h>
 
+#include <filesystem>
+#include <string>
+
+namespace {
+std::string ModelLabel(const std::string& path, const std::string& runName) {
+    const std::filesystem::path modelPath(path);
+    const std::string stem = modelPath.stem().string();
+    if (stem == runName + "_fast") return "Fast";
+    if (stem == runName + "_medium") return "Medium";
+    if (stem == runName + "_detailed") return "Detailed";
+    return modelPath.filename().string();
+}
+}
+
 void PostExportScreen::Render(const PostExportData& data, std::vector<UIInput>& inputs) {
     const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(mainViewport->WorkPos);
@@ -45,6 +59,18 @@ void PostExportScreen::Render(const PostExportData& data, std::vector<UIInput>& 
             inputs.push_back({UIClick::PreviousPhase, {}});
         }
         ImGui::EndDisabled();
+
+        for (const std::string& modelPath : data.outputModelPaths) {
+            ImGui::SameLine();
+            const std::string label = ModelLabel(modelPath, data.runName);
+            const std::string buttonId = label + "##" + modelPath;
+            const UIStyle::ButtonKind kind = modelPath == data.selectedOutputModelPath
+                ? UIStyle::ButtonKind::Primary
+                : UIStyle::ButtonKind::Secondary;
+            if (UIStyle::Button(buttonId.c_str(), kind)) {
+                inputs.push_back({UIClick::SelectOutputModel, modelPath});
+            }
+        }
     }
     ImGui::EndChild();
     ImGui::Spacing();

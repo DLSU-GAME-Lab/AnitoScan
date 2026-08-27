@@ -81,7 +81,6 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
             }
             currentPhaseData_->error = "Backend process disconnected";
             activeRun_->status = "failed";
-            QueuePersistenceRequest("save", activeRun_->id);
             runSummaries_.push_back({activeRun_->id, activeRun_->name, activeRun_->status});
         }
         return;
@@ -122,8 +121,8 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
         CommitLivePhase();
         currentPhaseData_.reset();
         activeRun_->status = "completed";
+        activeRun_->outputModelPaths = {values[1]};
         activeRun_->outputModelPath = values[1];
-        QueuePersistenceRequest("save", activeRun_->id);
         runSummaries_.push_back({activeRun_->id, activeRun_->name, activeRun_->status});
         return;
     }
@@ -136,7 +135,6 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
             }
             currentPhaseData_->error = values[1];
         }
-        QueuePersistenceRequest("save", activeRun_->id);
         runSummaries_.push_back({activeRun_->id, activeRun_->name, activeRun_->status});
     }
 }
@@ -146,7 +144,6 @@ void PipelineController::StartRun(const std::string& runId) {
         return;
     }
     activeRun_->status = "running";
-    QueuePersistenceRequest("save", activeRun_->id);
     QueueMessage("start_run", activeRun_->id + "\n" + activeRun_->name + "\n" +
         activeRun_->config.inputSource.string() + "\n" + std::to_string(activeRun_->config.minimumFrames) + "\n" +
         activeRun_->config.mode + "\n" + activeRun_->config.captureMode + "\n" +
@@ -190,6 +187,15 @@ void PipelineController::SelectRun(const std::string& runId) {
     QueuePersistenceRequest("load", runId);
 }
 
+void PipelineController::SelectOutputModel(const std::string& runId, const std::string& path) {
+    if (!activeRun_ || activeRun_->id != runId ||
+        std::find(activeRun_->outputModelPaths.begin(), activeRun_->outputModelPaths.end(), path) ==
+            activeRun_->outputModelPaths.end()) {
+        return;
+    }
+    activeRun_->outputModelPath = path;
+}
+
 void PipelineController::DeleteRun(const std::string& runId) {
     QueuePersistenceRequest("delete", runId);
     std::erase_if(runSummaries_, [&runId](const RunSummary& item) { return item.id == runId; });
@@ -215,7 +221,6 @@ void PipelineController::PrepareForShutdown() {
 
     if (activeRun_->status == "running" || activeRun_->status == "cancelling") {
         activeRun_->status = "cancelled";
-        QueuePersistenceRequest("save", activeRun_->id);
     }
 }
 

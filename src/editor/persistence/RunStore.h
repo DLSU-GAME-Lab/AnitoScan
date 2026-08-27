@@ -17,6 +17,7 @@ struct StoredRun {
     int minimumFrames = 45;
     int driftLimit = 200;
     std::string yoloModelSize;
+    std::vector<std::string> outputModelPaths;
     std::string outputModelPath;
 };
 
@@ -31,7 +32,6 @@ public:
         StoredRun& run
     ) const;
 
-    bool SaveRun(const StoredRun& run) const;
     bool DeleteRun(const std::string& runId) const;
 
 private:

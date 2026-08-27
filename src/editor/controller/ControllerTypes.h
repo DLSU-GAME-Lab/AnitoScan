@@ -21,6 +21,7 @@ struct RunState {
     std::string name;
     RunConfig config;
     std::string status;
+    std::vector<std::string> outputModelPaths;
     std::string outputModelPath;
 };
 

@@ -15,7 +15,6 @@ __all__ = [
     "initialize_manifest",
     "load_manifest",
     "update_manifest",
-    "update_manifest_lifecycle",
 ]
 
 
@@ -41,7 +40,6 @@ def build_manifest(
             "drift_limit": args.get("drift_limit", 200),
         },
         "status": {
-            "state": "running",
             "phase": 0,
             "completed": [],
         },
@@ -91,36 +89,23 @@ def update_manifest(
     if source_type:
         manifest["settings"]["source_type"] = source_type
 
+    _normalize_legacy_schema(manifest)
     _save_manifest(manifest_path, manifest)
 
 
-def update_manifest_lifecycle(
-    manifest_path: str | Path,
-    state: str,
-    output_path: str | Path | None = None,
-    error: str | None = None,
-) -> dict[str, Any]:
-    """Updates run lifecycle fields without disturbing phase completion tracking."""
-    path, manifest = load_manifest(manifest_path)
+def _normalize_legacy_schema(manifest: dict[str, Any]) -> None:
+    """Remove lifecycle fields that are not part of the pipeline manifest contract."""
     status = manifest.setdefault("status", {})
-    status.setdefault("phase", 0)
-    status.setdefault("completed", [])
-    status["state"] = state
-
-    if output_path is not None:
-        manifest.setdefault("paths", {})["output_model"] = str(output_path)
-    if error is not None:
-        manifest["error"] = error
-    elif state == "completed":
-        manifest.pop("error", None)
-
-    _save_manifest(path, manifest)
-    return manifest
+    status.pop("state", None)
+    manifest.setdefault("paths", {}).pop("output_model", None)
+    manifest.pop("error", None)
 
 
 def _save_manifest(manifest_path: Path, manifest_data: dict) -> None:
-    """Saves the manifest dictionary back to disk formatted cleanly."""
-    manifest_path.write_text(json.dumps(manifest_data, indent=4), encoding="utf-8")
+    """Atomically save a manifest so readers never observe a partial JSON document."""
+    temporary_path = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
+    temporary_path.write_text(json.dumps(manifest_data, indent=4), encoding="utf-8")
+    temporary_path.replace(manifest_path)
 
 
 def update_manifest_settings(
@@ -129,4 +114,5 @@ def update_manifest_settings(
     settings: dict,
 ) -> None:
     manifest.setdefault("settings", {}).update(settings)
+    _normalize_legacy_schema(manifest)
     _save_manifest(manifest_path, manifest)

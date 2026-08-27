@@ -30,6 +30,8 @@ struct PostExportData {
     std::string runName;
     std::string statusText;
     PhaseNavigationData navigation;
+    std::vector<std::string> outputModelPaths;
+    std::string selectedOutputModelPath;
     unsigned int textureId = 0;
 };
 

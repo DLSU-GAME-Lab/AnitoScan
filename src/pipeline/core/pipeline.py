@@ -12,7 +12,7 @@ from benchmark import (
 from config import build_phase_cmd, parse_cli_args
 from ipc_handlers import PipelineCancelled, await_ipc_selection, listen_for_ipc_commands
 from log import log_done, log_error, log_event, log_info, set_ipc_mode
-from manifest import load_manifest, update_manifest_lifecycle
+from manifest import load_manifest
 from workspace import init_workspace
 
 # DIRECTORY RESOLUTION
@@ -149,7 +149,41 @@ def run_phase2(parent_module_path, manifest_path, args, ipc_mode=False, cancel_e
         _run_phase(2, "Masking", cmd, ipc_mode, cancel_event)
 
 
-def run_pipeline_with_args(args: dict, ipc_mode: bool = False, cancel_event=None):
+def run_real_phase(
+    phase_num: int,
+    manifest_path: Path,
+    args: dict,
+    ipc_mode: bool = False,
+    cancel_event=None,
+) -> None:
+    """Execute one phase using the production pipeline modules."""
+    phase_names = {
+        1: "Capture",
+        2: "Masking",
+        3: "Spatial Initialization",
+        4: "Geometry Generation",
+        5: "Export and Baking",
+    }
+    if phase_num not in phase_names:
+        raise ValueError(f"Unknown pipeline phase: {phase_num}")
+
+    parent_module_path = MODULES_DIR
+    log_info(f"Starting Phase {phase_num}: {phase_names[phase_num]}")
+    if phase_num == 2:
+        run_phase2(parent_module_path, manifest_path, args, ipc_mode, cancel_event)
+        return
+
+    cmd = build_phase_cmd(phase_num, parent_module_path, manifest_path, args, ipc_mode)
+    _run_phase(phase_num, phase_names[phase_num], cmd, ipc_mode, cancel_event)
+
+
+def run_pipeline_with_args(
+    args: dict,
+    ipc_mode: bool = False,
+    cancel_event=None,
+    phase_executor=None,
+    validate_input: bool = True,
+):
     set_ipc_mode(ipc_mode)
     os.environ[BENCHMARK_INVOCATION_ENV] = create_invocation_id()
 
@@ -162,32 +196,27 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool = False, cancel_event=None
         args["video"] = capture_mode == "video"
 
     _check_cancelled(cancel_event)
-    base_dir, manifest_path = init_workspace(PROJECT_ROOT, WORKSPACE_DIR, args)
+    base_dir, manifest_path = init_workspace(
+        PROJECT_ROOT,
+        WORKSPACE_DIR,
+        args,
+        validate_input=validate_input,
+    )
     name = args.get("name") or "unnamed_run"
     log_event("workspace_ready", {"workspace_path": str(base_dir)})
 
-    parent_module_path = Path(__file__).parent.parent / "modules"
+    execute_phase = phase_executor or run_real_phase
 
     try:
-        _check_cancelled(cancel_event)
-        log_info("Starting Phase 1: Capture")
-        _run_phase(1, "Capture", build_phase_cmd(1, parent_module_path, manifest_path, args, ipc_mode), ipc_mode, cancel_event)
-
-        _check_cancelled(cancel_event)
-        log_info("Starting Phase 2: Masking")
-        run_phase2(parent_module_path, manifest_path, args, ipc_mode, cancel_event)
-        _check_cancelled(cancel_event)
-
-        log_info("Starting Phase 3: Spatial")
-        _run_phase(3, "Spatial Initialization", build_phase_cmd(3, parent_module_path, manifest_path, args, ipc_mode), ipc_mode, cancel_event)
-
-        _check_cancelled(cancel_event)
-        log_info("Starting Phase 4: Geometry")
-        _run_phase(4, "Geometry Generation", build_phase_cmd(4, parent_module_path, manifest_path, args, ipc_mode), ipc_mode, cancel_event)
-
-        _check_cancelled(cancel_event)
-        log_info("Starting Phase 5: Export")
-        _run_phase(5, "Export and Baking", build_phase_cmd(5, parent_module_path, manifest_path, args, ipc_mode), ipc_mode, cancel_event)
+        for phase_num in range(1, 6):
+            _check_cancelled(cancel_event)
+            execute_phase(
+                phase_num,
+                manifest_path,
+                args,
+                ipc_mode=ipc_mode,
+                cancel_event=cancel_event,
+            )
         _check_cancelled(cancel_event)
 
         _, manifest = load_manifest(manifest_path)
@@ -195,15 +224,10 @@ def run_pipeline_with_args(args: dict, ipc_mode: bool = False, cancel_event=None
         if not final_obj_path.is_file():
             raise FileNotFoundError(f"Final OBJ was not created: {final_obj_path}")
 
-        update_manifest_lifecycle(manifest_path, "completed", output_path=final_obj_path)
         if not ipc_mode:
             log_done(name, str(final_obj_path))
         return final_obj_path
     except PipelineCancelled:
-        update_manifest_lifecycle(manifest_path, "cancelled")
-        raise
-    except Exception as error:
-        update_manifest_lifecycle(manifest_path, "failed", error=str(error))
         raise
 
 
