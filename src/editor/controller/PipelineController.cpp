@@ -98,6 +98,10 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
     if (input.type == "workspace_ready" && values.size() >= 2 && values[0] == activeRun_->id) {
         return;
     }
+    if (input.type == "phase_started" && values.size() >= 2 && values[0] == activeRun_->id) {
+        BeginPhaseIfNeeded(values[1]);
+        return;
+    }
     if (input.type == "progress" && values.size() >= 4 && values[0] == activeRun_->id) {
         BeginPhaseIfNeeded(values[1]);
         currentPhaseData_->progress = std::stof(values[2]);

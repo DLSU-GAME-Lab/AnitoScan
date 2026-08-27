@@ -126,7 +126,34 @@ bool RunStore::LoadRun(const std::string& runId, StoredRun& run) const {
 bool RunStore::DeleteRun(const std::string& runId) const {
     const std::filesystem::path manifestPath = FindManifest(runsDirectory_, runId);
     if (manifestPath.empty()) return false;
-    std::error_code error;
-    std::filesystem::remove_all(manifestPath.parent_path(), error);
-    return !error;
+
+    const std::filesystem::path workspacePath = manifestPath.parent_path();
+    std::string runName = workspacePath.filename().string();
+    try {
+        std::ifstream input(manifestPath);
+        Json manifest;
+        if (input >> manifest) {
+            const auto manifestRunName = manifest.find("run_name");
+            if (manifestRunName != manifest.end() && manifestRunName->is_string() &&
+                !manifestRunName->get_ref<const std::string&>().empty()) {
+                runName = manifestRunName->get<std::string>();
+            }
+        }
+    } catch (...) {}
+
+    const std::filesystem::path outputRoot =
+        (runsDirectory_.parent_path() / "output").lexically_normal();
+    const std::filesystem::path outputPath = (outputRoot / runName).lexically_normal();
+    const bool outputPathIsDirectChild =
+        outputPath != outputRoot && outputPath.parent_path() == outputRoot;
+
+    std::error_code workspaceError;
+    std::filesystem::remove_all(workspacePath, workspaceError);
+
+    std::error_code outputError;
+    if (outputPathIsDirectChild) {
+        std::filesystem::remove_all(outputPath, outputError);
+    }
+
+    return !workspaceError && outputPathIsDirectChild && !outputError;
 }

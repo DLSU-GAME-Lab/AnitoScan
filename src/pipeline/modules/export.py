@@ -9,6 +9,7 @@ core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
 from benchmark import append_failed_phase_benchmark, append_phase_benchmark
+from cancellation import check_cancelled
 from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
 from manifest import load_manifest, update_manifest
 
@@ -32,9 +33,15 @@ MESH_PROCESSING_EXCEPTIONS = _mesh_processing_exceptions()
 EXPORT_PROCESSING_EXCEPTIONS = (*MESH_PROCESSING_EXCEPTIONS, AttributeError)
 
 
-def run_export_and_baking(manifest_path_string: str, force: bool = False, ipc_mode: bool = False):
+def run_export_and_baking(
+    manifest_path_string: str,
+    force: bool = False,
+    ipc_mode: bool = False,
+    cancel_event=None,
+):
     set_ipc_mode(ipc_mode)
     set_phase(5)
+    check_cancelled(cancel_event)
 
     manifest_path, manifest = load_manifest(manifest_path_string)
     phase_start = time.perf_counter()
@@ -105,6 +112,7 @@ def run_export_and_baking(manifest_path_string: str, force: bool = False, ipc_mo
     if final_obj_path.exists() and not force:
         log_info(f"Found existing exported asset: {final_obj_path}")
         log_info("Skipping Phase 5 (Export & Baking)...")
+        check_cancelled(cancel_event)
         update_manifest(manifest_path, manifest, phase=5)
         append_phase_benchmark(
             manifest,
@@ -124,16 +132,22 @@ def run_export_and_baking(manifest_path_string: str, force: bool = False, ipc_mo
     log_progress(0.0, "Phase 5: Loading mesh...")
 
     try:
+        check_cancelled(cancel_event)
         ms = pymeshlab.MeshSet()  # type: ignore
         ms.load_new_mesh(str(input_ply))
+        check_cancelled(cancel_event)
         benchmark_metrics["mesh_loaded"] = True
 
         log_info("Mesh loaded. Cleaning raw topology...")
         log_progress(0.05, "Phase 5: Cleaning topology...")
         ms.meshing_remove_unreferenced_vertices()
+        check_cancelled(cancel_event)
         ms.meshing_remove_duplicate_faces()
+        check_cancelled(cancel_event)
         ms.meshing_repair_non_manifold_edges()
+        check_cancelled(cancel_event)
         ms.meshing_repair_non_manifold_vertices()
+        check_cancelled(cancel_event)
         benchmark_metrics["topology_cleaned"] = True
 
         # --- AUTOMATED RETOPOLOGY / REMESHING ---
@@ -147,17 +161,20 @@ def run_export_and_baking(manifest_path_string: str, force: bool = False, ipc_mo
             planarquadric=True,
             preservetopology=True,
         )
+        check_cancelled(cancel_event)
         benchmark_metrics["decimated"] = True
 
         log_info("Generating smooth surface normals...")
         log_progress(0.45, "Phase 5: Computing normals...")
         ms.compute_normal_per_vertex()
+        check_cancelled(cancel_event)
         benchmark_metrics["normals_computed"] = True
 
         log_info("Unwrapping UV Coordinates...")
         log_progress(0.50, "Phase 5: Unwrapping UVs...")
         log_info("Using Trivial Per-Wedge parameterization...")
         ms.compute_texcoord_parametrization_triangle_trivial_per_wedge(textdim=4096)
+        check_cancelled(cancel_event)
         benchmark_metrics["uv_unwrapped"] = True
 
         log_info(f"Baking vertex colors to {final_texture_name} (4K Resolution)...")
@@ -165,11 +182,13 @@ def run_export_and_baking(manifest_path_string: str, force: bool = False, ipc_mo
         ms.transfer_attributes_to_texture_per_vertex(
             textname=final_texture_name, textw=4096, texth=4096
         )
+        check_cancelled(cancel_event)
         benchmark_metrics["texture_baked"] = True
 
         log_info(f"Exporting final optimized OBJ package to {export_dir}...")
         log_progress(0.95, "Phase 5: Exporting OBJ...")
         ms.save_current_mesh(str(final_obj_path))
+        check_cancelled(cancel_event)
 
     except EXPORT_PROCESSING_EXCEPTIONS as error:
         append_failed_phase_benchmark(
@@ -185,6 +204,7 @@ def run_export_and_baking(manifest_path_string: str, force: bool = False, ipc_mo
             f"A fatal error occurred during mesh processing: {error}"
         ) from error
 
+    check_cancelled(cancel_event)
     update_manifest(manifest_path, manifest, phase=5)
 
     total_time = time.perf_counter() - phase_start

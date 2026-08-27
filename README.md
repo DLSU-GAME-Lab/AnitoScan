@@ -73,17 +73,16 @@ Once the initial C++/CUDA compilation via uv sync is complete, you can run the p
 
 
 1. Place video input or image folders inside `data/input/`.
-   If it does not exists, create the folders in the project root.
-2. Execute the pipeline:
+   If it does not exist, create the folder in the project root.
+2. Execute the pipeline. Values passed to `--input` are relative to `data/input/`:
 
 ```powershell
 uv run src\pipeline\core\pipeline.py --name <run_name> --input <file_or_dir> --minimum_frames <target_count>
-
 ```
 
 Example Command:
 ```
-uv run src\pipeline\core\pipeline.py --name test_scan --input data\input\sample_video.mp4 --minimum_frames 100
+uv run src\pipeline\core\pipeline.py --name test_scan --input sample_video.mp4 --minimum_frames 100
 ```
 
 ## Running the editor
@@ -91,6 +90,19 @@ uv run src\pipeline\core\pipeline.py --name test_scan --input data\input\sample_
 1. Open the project folder in Visual Studio.
 2. Build Tab -> `Build All`
 3. After building, the `.exe` file should be in `out > build > debug > bin`.
+
+The editor uses the dummy backend by default. Launch it from the project root with one of these commands:
+
+```powershell
+# Default (dummy backend)
+.\out\build\debug\bin\AnitoScan.exe
+
+# Explicit dummy backend
+.\out\build\debug\bin\AnitoScan.exe --backend dummy
+
+# Real pipeline backend using IPC
+.\out\build\debug\bin\AnitoScan.exe --backend pipeline
+```
 
 ## 🛠 Maintenance & Development
 *   **Adding Dependencies**: `uv add <package_name>`

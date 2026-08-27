@@ -10,15 +10,24 @@ core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
 from benchmark import append_failed_phase_benchmark, append_phase_benchmark
+from cancellation import check_cancelled
 from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
 from manifest import load_manifest, update_manifest
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
 
 
-def run_capture(manifest_path_string: str, is_image_mode=False, is_video_mode=False, force=False, ipc_mode=False):
+def run_capture(
+    manifest_path_string: str,
+    is_image_mode=False,
+    is_video_mode=False,
+    force=False,
+    ipc_mode=False,
+    cancel_event=None,
+):
     set_ipc_mode(ipc_mode)
     set_phase(phase=1)
+    check_cancelled(cancel_event)
 
     manifest_path, manifest = load_manifest(manifest_path_string)
 
@@ -74,6 +83,7 @@ def run_capture(manifest_path_string: str, is_image_mode=False, is_video_mode=Fa
 
     try:
         # --- SKIP LOGIC ---
+        check_cancelled(cancel_event)
         if output_dir.exists() and not force:
             existing_frames = [
                 f for f in output_dir.iterdir() if f.suffix.lower() in IMAGE_EXTENSIONS
@@ -83,6 +93,7 @@ def run_capture(manifest_path_string: str, is_image_mode=False, is_video_mode=Fa
                 log_info(f"Found {len(existing_frames)} existing frames in {output_dir}.")
                 log_info("Skipping capture phase...")
 
+                check_cancelled(cancel_event)
                 update_manifest(manifest_path, manifest, phase=1, source_type=source_type)
                 append_phase_benchmark(
                     manifest,
@@ -101,6 +112,7 @@ def run_capture(manifest_path_string: str, is_image_mode=False, is_video_mode=Fa
                 return
         # -----------------------
 
+        check_cancelled(cancel_event)
         if force and output_dir.exists():
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -121,6 +133,7 @@ def run_capture(manifest_path_string: str, is_image_mode=False, is_video_mode=Fa
             total_imgs = len(source_images)
             benchmark_metrics["input_images"] = total_imgs
             for i, img_path in enumerate(source_images):
+                check_cancelled(cancel_event)
                 target_path = output_dir / f"frame_{i:04d}{img_path.suffix}"
                 shutil.copy2(img_path, target_path)
                 benchmark_metrics["output_frames"] = i + 1
@@ -159,11 +172,14 @@ def run_capture(manifest_path_string: str, is_image_mode=False, is_video_mode=Fa
 
             try:
                 while True:
+                    check_cancelled(cancel_event)
                     ret, frame = cap.read()
+                    check_cancelled(cancel_event)
                     if not ret:
                         break
 
                     if frame_idx % frame_skip == 0:
+                        check_cancelled(cancel_event)
                         target_path = output_dir / f"frame_{saved_count:04d}.png"
                         cv2.imwrite(str(target_path), frame)
                         saved_count += 1
@@ -184,6 +200,7 @@ def run_capture(manifest_path_string: str, is_image_mode=False, is_video_mode=Fa
 
         total_time = time.perf_counter() - start_perf
 
+        check_cancelled(cancel_event)
         update_manifest(manifest_path, manifest, phase=1, source_type=source_type)
         append_phase_benchmark(
             manifest,

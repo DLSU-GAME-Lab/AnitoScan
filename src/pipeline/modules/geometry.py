@@ -1,9 +1,11 @@
 import argparse
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -11,6 +13,7 @@ core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
 from benchmark import append_failed_phase_benchmark, append_phase_benchmark
+from cancellation import check_cancelled
 from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
 from manifest import load_manifest, update_manifest
 
@@ -23,16 +26,61 @@ GS_PATH = PROJECT_ROOT / "vendor" / "2d-gaussian-splatting"  # Vendor Path for 2
 TRAIN_END = 0.85  # training ends at 85% and meshing begins for progress logging
 
 
+def _check_child_cancelled(process: subprocess.Popen, cancel_event) -> None:
+    if cancel_event is None or not cancel_event.is_set():
+        return
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+    check_cancelled(cancel_event)
+
+
+def _iter_child_output(process: subprocess.Popen, cancel_event):
+    """Yield child output while polling cancellation even when the child is quiet."""
+    assert process.stdout is not None
+    output_queue = queue.Queue()
+    finished = object()
+
+    def read_output() -> None:
+        try:
+            for line in process.stdout:
+                output_queue.put(line)
+        finally:
+            process.stdout.close()
+            output_queue.put(finished)
+
+    reader = threading.Thread(target=read_output, name="geometry-output", daemon=True)
+    reader.start()
+
+    while True:
+        _check_child_cancelled(process, cancel_event)
+        try:
+            item = output_queue.get(timeout=0.1)
+        except queue.Empty:
+            continue
+        if item is finished:
+            break
+        yield item
+
+    reader.join()
+
+
 def run_surface_reconstruction(
     manifest_path_string,
     train_iterations,
     densify_until_iter,
     opacity_reset_interval,
     force=False,
-    ipc_mode=False
+    ipc_mode=False,
+    cancel_event=None,
 ):
     set_ipc_mode(ipc_mode)
     set_phase(4)
+    check_cancelled(cancel_event)
 
     manifest_path, manifest = load_manifest(manifest_path_string)
     phase_start = time.perf_counter()
@@ -76,6 +124,7 @@ def run_surface_reconstruction(
         )
         raise error
 
+    check_cancelled(cancel_event)
     if force and gs_model_dir.exists():
         shutil.rmtree(gs_model_dir)
     gs_model_dir.mkdir(parents=True, exist_ok=True)
@@ -134,6 +183,7 @@ def run_surface_reconstruction(
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         try:
+            check_cancelled(cancel_event)
             process = subprocess.Popen(
                 train_cmd, cwd=str(GS_PATH), env=env,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -150,9 +200,7 @@ def run_surface_reconstruction(
                 error=error,
             )
             raise
-        assert process.stdout is not None
-
-        for line in process.stdout:
+        for line in _iter_child_output(process, cancel_event):
             line = line.rstrip()
             match = re.search(r'(\d+)\s*/\s*(\d+)', line)
             if match:
@@ -167,6 +215,7 @@ def run_surface_reconstruction(
                     log_info(f"\r[train] {stripped}")
 
         process.wait()
+        _check_child_cancelled(process, cancel_event)
         if process.returncode != 0:
             error = RuntimeError("Phase 4: Training failed")
             benchmark_metrics["training_return_code"] = process.returncode
@@ -194,6 +243,7 @@ def run_surface_reconstruction(
         log_info("Found existing mesh output. Skipping meshing...")
     else:
         try:
+            check_cancelled(cancel_event)
             process = subprocess.Popen(
                 render_cmd, cwd=str(GS_PATH), env=os.environ.copy(),
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -210,12 +260,12 @@ def run_surface_reconstruction(
                 error=error,
             )
             raise
-        assert process.stdout is not None
-        for line in process.stdout:
+        for line in _iter_child_output(process, cancel_event):
             stripped = line.rstrip()
             if stripped:
                 log_info(f"[render] {stripped}")
         process.wait()
+        _check_child_cancelled(process, cancel_event)
         if process.returncode != 0:
             error = RuntimeError("Phase 4: Meshing failed")
             benchmark_metrics["meshing_return_code"] = process.returncode
@@ -246,6 +296,7 @@ def run_surface_reconstruction(
         )
         raise error
 
+    check_cancelled(cancel_event)
     possible_meshes = list(mesh_output_dir.rglob("*_post.ply"))
     benchmark_metrics["candidate_meshes"] = len(possible_meshes)
     if not possible_meshes:
@@ -264,7 +315,9 @@ def run_surface_reconstruction(
     best_mesh = possible_meshes[0]
     benchmark_paths["source_mesh"] = best_mesh
     try:
+        check_cancelled(cancel_event)
         shutil.copy2(str(best_mesh), str(target_fused_ply))
+        check_cancelled(cancel_event)
     except OSError as error:
         append_failed_phase_benchmark(
             manifest,
@@ -280,6 +333,7 @@ def run_surface_reconstruction(
     benchmark_metrics["fused_mesh_bytes"] = target_fused_ply.stat().st_size if target_fused_ply.exists() else 0
     log_info(f"Base geometry staged for Phase 5 at: {target_fused_ply}")
 
+    check_cancelled(cancel_event)
     update_manifest(manifest_path, manifest, phase=4)
 
     total_time = time.perf_counter() - start_time

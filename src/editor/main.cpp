@@ -11,12 +11,12 @@
 #include <memory>
 
 // TODO: Move argument parsing and AppConfig out of main.cpp into a dedicated 'cli' module
-// once real backend options (--backend pipeline) or new application flags (--mode, --log-level)
-// are added. Remove BackendConfig.h include from main.cpp when extracted.
-// The current hand-rolled logic is strictly positional; switch to a flexible token loop or
-// library parser when extracting.
+// when new application flags (--mode, --log-level) are added. Remove BackendConfig.h include
+// from main.cpp when extracted. The current hand-rolled logic is strictly positional; switch
+// to a flexible token loop or library parser when extracting.
 namespace {
     constexpr const char* kDummyScriptPath = "src/pipeline/core/dummy.py";
+    constexpr const char* kPipelineScriptPath = "src/pipeline/core/pipeline.py";
 
     struct AppConfig {
         BackendConfig backendConfig;
@@ -27,34 +27,38 @@ namespace {
     };
 
     std::optional<AppConfig> ParseCliArgs(int argc, char** argv) {
+        std::string_view backend = "dummy";
         if (argc != 1) {
             const std::string_view arg1 = (argc >= 2) ? argv[1] : "";
             if (argc == 2 && arg1 == "--backend") {
-                std::cerr << "Missing value for --backend (expected 'dummy')\n";
+                std::cerr << "Missing value for --backend (expected 'dummy' or 'pipeline')\n";
                 return std::nullopt;
             }
-            if (argc == 3 && arg1 == "--backend") {
-                const std::string_view backend = argv[2];
-                if (backend == "pipeline") {
-                    std::cerr << "Backend 'pipeline' is not supported by the current protocol\n";
-                    return std::nullopt;
-                }
-                if (backend != "dummy") {
-                    std::cerr << "Unknown backend '" << backend << "' (expected 'dummy')\n";
-                    return std::nullopt;
-                }
-            } else {
-                std::cerr << "Unknown option. Usage: " << argv[0] << " [--backend dummy]\n";
+            if (argc != 3 || arg1 != "--backend") {
+                std::cerr << "Unknown option. Usage: " << argv[0]
+                          << " [--backend <dummy|pipeline>]\n";
+                return std::nullopt;
+            }
+
+            backend = argv[2];
+            if (backend != "dummy" && backend != "pipeline") {
+                std::cerr << "Unknown backend '" << backend
+                          << "' (expected 'dummy' or 'pipeline')\n";
                 return std::nullopt;
             }
         }
 
+        BackendConfig backendConfig{
+            .executable = "uv",
+            .arguments = {"run", "--no-project", "python", kDummyScriptPath},
+            .workingDirectory = std::filesystem::path(PROJECT_ROOT_DIR),
+        };
+        if (backend == "pipeline") {
+            backendConfig.arguments = {"run", "python", kPipelineScriptPath, "--ipc"};
+        }
+
         return AppConfig{
-            .backendConfig = BackendConfig{
-                .executable = "uv",
-                .arguments = {"run", "--no-project", "python", kDummyScriptPath},
-                .workingDirectory = std::filesystem::path(PROJECT_ROOT_DIR),
-            },
+            .backendConfig = std::move(backendConfig),
             .runsDirectory = std::filesystem::path(PROJECT_ROOT_DIR) / "data" / "runs",
         };
     }

@@ -42,6 +42,7 @@ std::optional<ProtocolMessage> ParseMessage(std::string_view message) {
         const std::string runId = json.value("run_id", "");
         if (type == "log") return ProtocolMessage{type, runId + "\n" + json.at("text").get<std::string>()};
         if (type == "workspace_ready") return ProtocolMessage{type, runId + "\n" + json.at("workspace_path").get<std::string>()};
+        if (type == "phase_started") return ProtocolMessage{type, runId + "\n" + std::to_string(json.at("phase").get<int>())};
         if (type == "progress") return ProtocolMessage{type, runId + "\n" + std::to_string(json.at("phase").get<int>()) + "\n" + std::to_string(json.at("value").get<float>()) + "\n" + json.at("label").get<std::string>()};
         if (type == "selection_required") return ProtocolMessage{type, runId + "\n" + json.at("preview_path").get<std::string>() + "\n" + json.at("frame").get<std::string>() + "\n" + std::to_string(json.at("candidate_count").get<int>())};
         if (type == "run_completed") return ProtocolMessage{type, runId + "\n" + json.at("output_model_path").get<std::string>()};

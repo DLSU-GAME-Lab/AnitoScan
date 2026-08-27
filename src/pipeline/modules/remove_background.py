@@ -15,6 +15,7 @@ core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
 from benchmark import append_failed_phase_benchmark, append_phase_benchmark
+from cancellation import PipelineCancelled, check_cancelled
 from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
 from manifest import load_manifest, update_manifest
 
@@ -42,11 +43,13 @@ def _calculate_centroid_drift(boxA, boxB):
     return np.linalg.norm(centerA - centerB)
 
 
-def _get_user_selection(img, detector, temp_dir, frame_name, device):
+def _get_user_selection(img, detector, temp_dir, frame_name, device, cancel_event=None):
     """Yields an intervention request to the pipeline orchestrator."""
+    check_cancelled(cancel_event)
     start_wait = time.perf_counter()
     log_info(f"Running YOLOE-26 on {frame_name}...")
     results = detector.predict(source=img, conf=0.35, device=device, verbose=False)[0]
+    check_cancelled(cancel_event)
 
     if results.boxes is None or len(results.boxes) == 0:
         log_error("YOLOE found no valid subjects in this frame.")
@@ -122,6 +125,7 @@ def _get_user_selection(img, detector, temp_dir, frame_name, device):
     alpha = 0.6
     cv2.addWeighted(overlay, alpha, preview_img, 1 - alpha, 0, preview_img)
 
+    check_cancelled(cancel_event)
     temp_dir.mkdir(parents=True, exist_ok=True)
     preview_path = temp_dir / f"{frame_name}_candidates.png"
 
@@ -131,12 +135,14 @@ def _get_user_selection(img, detector, temp_dir, frame_name, device):
             f"OpenCV failed to write the preview image to: {preview_path}"
         )
 
+    check_cancelled(cancel_event)
     choice, wait_time = (yield {
         "type": "SELECTION_REQUIRED",
         "preview_path": str(preview_path),
         "total_candidates": len(valid_boxes),
         "frame_name": frame_name,
     })
+    check_cancelled(cancel_event)
 
     if choice is not None and 0 <= choice < len(valid_boxes):
         return valid_boxes[choice], wait_time
@@ -146,10 +152,11 @@ def _get_user_selection(img, detector, temp_dir, frame_name, device):
 
 def run_remove_background(
     manifest_path_string, yoloe_model_size, iou_threshold, drift_limit,
-    force=False, ipc_mode=False
+    force=False, ipc_mode=False, cancel_event=None
 ) -> Generator[dict, tuple[int | None, float], None]:
     set_ipc_mode(ipc_mode)
     set_phase(phase=2)
+    check_cancelled(cancel_event)
 
     manifest_path, manifest = load_manifest(manifest_path_string)
     phase_start = time.perf_counter()
@@ -201,12 +208,14 @@ def run_remove_background(
 
 
     # --- SKIP LOGIC ---
+    check_cancelled(cancel_event)
     if output_dir.exists() and not force:
         existing_masks = [f for f in output_dir.iterdir() if f.suffix.lower() == ".png"]
         if len(existing_masks) == total_frames and total_frames > 0:
             log_info(f"Found {len(existing_masks)} existing masked frames in {output_dir}.")
             log_info("Skipping Masking phase...")
 
+            check_cancelled(cancel_event)
             update_manifest(manifest_path, manifest, phase=2)
             append_phase_benchmark(
                 manifest,
@@ -234,6 +243,7 @@ def run_remove_background(
             return
     # -----------------------
 
+    check_cancelled(cancel_event)
     if force and output_dir.exists():
         log_info(f"Force flag detected. Wiping: {output_dir}")
         shutil.rmtree(output_dir)
@@ -256,8 +266,11 @@ def run_remove_background(
     benchmark_settings["device"] = device
 
     try:
+        check_cancelled(cancel_event)
         detector = YOLOE(str(MODELS_DIR / f"yoloe-26{yoloe_model_size}-seg-pf.pt"))
+        check_cancelled(cancel_event)
         segmenter = SAM(str(MODELS_DIR / "sam2.1_s.pt"))
+        check_cancelled(cancel_event)
     except (RuntimeError, ValueError, OSError) as error:
         append_failed_phase_benchmark(
             manifest,
@@ -284,8 +297,10 @@ def run_remove_background(
     total_imgs = len(source_images)
     try:
         for i, img_path in enumerate(source_images):
+            check_cancelled(cancel_event)
             benchmark_metrics["processed_frames"] = i
             img = cv2.imread(str(img_path))
+            check_cancelled(cancel_event)
             if img is None:
                 unreadable_frame_count += 1
                 benchmark_metrics["unreadable_frames"] = unreadable_frame_count
@@ -296,13 +311,16 @@ def run_remove_background(
             target_path = output_dir / f"{img_path.stem}.png"
 
             # 1. YOLOE Bounding Box Prediction
+            check_cancelled(cancel_event)
             det_results = detector.predict(
                 source=img, conf=0.25, device=device, verbose=False
             )[0]
+            check_cancelled(cancel_event)
             valid_boxes = []
 
             if det_results.boxes is not None:
                 for box in det_results.boxes:
+                    check_cancelled(cancel_event)
                     coords = box.xyxy[0].cpu().numpy()
                     box_area = (coords[2] - coords[0]) * (coords[3] - coords[1])
                     if (box_area / img_area) < 0.70:
@@ -315,8 +333,9 @@ def run_remove_background(
                 user_selection_requests += 1
                 benchmark_metrics["user_selection_requests"] = user_selection_requests
                 chosen_box, wait_time = yield from _get_user_selection(
-                    img, detector, temp_dir, img_path.stem, device
+                    img, detector, temp_dir, img_path.stem, device, cancel_event
                 )
+                check_cancelled(cancel_event)
                 total_user_time += wait_time
                 benchmark_metrics["total_user_interaction_seconds"] = total_user_time
             elif valid_boxes:
@@ -324,6 +343,7 @@ def run_remove_background(
                 best_match = None
 
                 for candidate in valid_boxes:
+                    check_cancelled(cancel_event)
                     iou = _calculate_iou(prev_box, candidate)
                     drift = _calculate_centroid_drift(prev_box, candidate)
 
@@ -341,21 +361,24 @@ def run_remove_background(
                     user_selection_requests += 1
                     benchmark_metrics["user_selection_requests"] = user_selection_requests
                     chosen_box, wait_time = yield from _get_user_selection(
-                        img, detector, temp_dir, img_path.stem, device
+                        img, detector, temp_dir, img_path.stem, device, cancel_event
                     )
+                    check_cancelled(cancel_event)
                     total_user_time += wait_time
                     benchmark_metrics["total_user_interaction_seconds"] = total_user_time
             else:
                 user_selection_requests += 1
                 benchmark_metrics["user_selection_requests"] = user_selection_requests
                 chosen_box, wait_time = yield from _get_user_selection(
-                    img, detector, temp_dir, img_path.stem, device
+                    img, detector, temp_dir, img_path.stem, device, cancel_event
                 )
+                check_cancelled(cancel_event)
                 total_user_time += wait_time
                 benchmark_metrics["total_user_interaction_seconds"] = total_user_time
 
             # If skipped or failed, write zeroed blank structural mask frame matching target shape
             if chosen_box is None:
+                check_cancelled(cancel_event)
                 cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
                 blank_mask_count += 1
                 user_skip_or_failed_selection_count += 1
@@ -378,9 +401,11 @@ def run_remove_background(
             ]
 
             try:
+                check_cancelled(cancel_event)
                 sam_results = segmenter.predict(
                     source=img, bboxes=[padded_box], device=device, verbose=False
                 )[0]
+                check_cancelled(cancel_event)
             except (RuntimeError, ValueError, OSError) as e:
                 log_info(f"[!] SAM failed on {img_path.name}: {e}")
                 sam_failure_count += 1
@@ -403,10 +428,12 @@ def run_remove_background(
                 bgra[:, :, 3] = mask_resized
 
                 # executor.submit(cv2.imwrite, str(target_path), bgra)
+                check_cancelled(cancel_event)
                 cv2.imwrite(str(target_path), bgra)
                 successful_mask_count += 1
                 benchmark_metrics["successful_masks"] = successful_mask_count
             else:
+                check_cancelled(cancel_event)
                 cv2.imwrite(str(target_path), np.zeros((h_img, w_img, 4), dtype=np.uint8))
                 blank_mask_count += 1
                 benchmark_metrics["blank_masks"] = blank_mask_count
@@ -415,6 +442,10 @@ def run_remove_background(
             benchmark_metrics["processed_frames"] = i + 1
             if i % 5 == 0 or i == total_imgs - 1:
                 log_progress(value=(i+1)/total_imgs, label=f"Processed frame {i+1}/{total_imgs}")
+    except PipelineCancelled:
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+        raise
     except (RuntimeError, ValueError, OSError, cv2.error) as error:
         output_mask_count = len([f for f in output_dir.iterdir() if f.suffix.lower() == ".png"])
         benchmark_metrics["output_masks"] = output_mask_count
@@ -440,6 +471,7 @@ def run_remove_background(
 
     output_mask_count = len([f for f in output_dir.iterdir() if f.suffix.lower() == ".png"])
 
+    check_cancelled(cancel_event)
     update_manifest(manifest_path, manifest, phase=2)
     append_phase_benchmark(
         manifest,

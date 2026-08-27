@@ -13,15 +13,21 @@ core_path = str(Path(__file__).resolve().parent.parent / "core")
 sys.path.insert(0, core_path)
 
 from benchmark import append_failed_phase_benchmark, append_phase_benchmark
+from cancellation import check_cancelled
 from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
 from manifest import load_manifest, update_manifest
 
 
-def run_bundle_adjustment(image_dir: Path, output_dir: Path) -> tuple[Path, int, int]:
+def run_bundle_adjustment(
+    image_dir: Path,
+    output_dir: Path,
+    cancel_event=None,
+) -> tuple[Path, int, int]:
     """
     Runs a mathematically rigorous Bundle Adjustment pass using pycolmap
     to generate sub-pixel perfect camera poses and a sparse feature cloud.
     """
+    check_cancelled(cancel_event)
     log_info("Starting Geometric Bundle Adjustment...")
     database_path = output_dir / "database.db"
     if database_path.exists():
@@ -37,12 +43,15 @@ def run_bundle_adjustment(image_dir: Path, output_dir: Path) -> tuple[Path, int,
         camera_mode=pycolmap.CameraMode.SINGLE,  # type: ignore
         reader_options=reader_options,
     )
+    check_cancelled(cancel_event)
 
     log_info("Matching features...")
     pycolmap.match_exhaustive(database_path)  # type: ignore
+    check_cancelled(cancel_event)
 
     log_info("Running Ceres Solver (Bundle Adjustment)...")
     maps = pycolmap.incremental_mapping(database_path, image_dir, output_dir)  # type: ignore
+    check_cancelled(cancel_event)
 
     if not maps or len(maps) == 0:
         raise RuntimeError(
@@ -66,9 +75,15 @@ def run_bundle_adjustment(image_dir: Path, output_dir: Path) -> tuple[Path, int,
     return output_dir, len(best_map.images), total_input_images
 
 
-def run_spatial_initialization(manifest_path_string: str, force: bool = False, ipc_mode: bool = False) -> None:
+def run_spatial_initialization(
+    manifest_path_string: str,
+    force: bool = False,
+    ipc_mode: bool = False,
+    cancel_event=None,
+) -> None:
     set_ipc_mode(ipc_mode)
     set_phase(3)
+    check_cancelled(cancel_event)
 
     manifest_path, manifest = load_manifest(manifest_path_string)
     phase_start = time.perf_counter()
@@ -95,6 +110,7 @@ def run_spatial_initialization(manifest_path_string: str, force: bool = False, i
         log_info(f"Found existing spatial initialization in {input_data_path}. Skipping prep and bundle adjustment...")
         masked_frames = sorted(Path(manifest["paths"]["masked_frames"]).glob("*.png"))
         prepared_images = sorted(image_dir.glob("*")) if image_dir.exists() else []
+        check_cancelled(cancel_event)
         update_manifest(manifest_path, manifest, phase=3)
         append_phase_benchmark(
             manifest,
@@ -134,6 +150,7 @@ def run_spatial_initialization(manifest_path_string: str, force: bool = False, i
 
         prepared_count = 0
         for i, original_png_path in enumerate(masked_frames):
+            check_cancelled(cancel_event)
             target_image_path = image_dir / original_png_path.name
             img_rgba = cv2.imread(str(original_png_path), cv2.IMREAD_UNCHANGED)
 
@@ -157,7 +174,11 @@ def run_spatial_initialization(manifest_path_string: str, force: bool = False, i
 
         log_info("Started running bundle adjustment...")
         log_progress(0.15, "Phase 3: Running Bundle Adjustment...")
-        _, registered_cameras, bundle_input_images = run_bundle_adjustment(image_dir, sparse_dir)
+        _, registered_cameras, bundle_input_images = run_bundle_adjustment(
+            image_dir,
+            sparse_dir,
+            cancel_event,
+        )
 
         benchmark_metrics.update({
             "bundle_input_images": bundle_input_images,
@@ -166,6 +187,7 @@ def run_spatial_initialization(manifest_path_string: str, force: bool = False, i
         })
         total_time_pycolmap = time.perf_counter() - start_time_pycolmap
 
+        check_cancelled(cancel_event)
         update_manifest(manifest_path, manifest, phase=3)
         append_phase_benchmark(
             manifest,

@@ -78,7 +78,7 @@ void MaskingContent::Render(
     ImGui::BeginDisabled(!selectionEnabled);
     const int safeCandidateCount = std::max(0, candidateCount);
     for (int candidate = 0; candidate < safeCandidateCount; ++candidate) {
-        const std::string label = "Candidate " + std::to_string(candidate + 1);
+        const std::string label = "Candidate " + std::to_string(candidate);
         if (UIStyle::Button(
             label.c_str(),
             UIStyle::ButtonKind::Secondary,

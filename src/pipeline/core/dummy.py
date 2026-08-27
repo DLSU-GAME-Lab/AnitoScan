@@ -3,7 +3,8 @@ import struct
 import zlib
 from pathlib import Path
 
-from ipc_handlers import PipelineCancelled, await_ipc_selection, listen_for_ipc_commands
+from cancellation import check_cancelled
+from ipc_handlers import await_ipc_selection, listen_for_ipc_commands
 from log import log_info, log_progress, set_phase
 from manifest import load_manifest, update_manifest
 from pipeline import run_pipeline_with_args
@@ -174,18 +175,14 @@ def write_preview(path: Path) -> None:
     path.write_bytes(png)
 
 
-def _check_cancelled(cancel_event) -> None:
-    if cancel_event is not None and cancel_event.is_set():
-        raise PipelineCancelled("Pipeline cancelled")
-
 
 def _emit_schedule(schedule, cancel_event) -> None:
     previous_offset = 0.0
     for offset, value, label in schedule:
         delay = (offset - previous_offset) * DUMMY_TIME_SCALE
-        if delay > 0 and cancel_event is not None and cancel_event.wait(delay):
-            raise PipelineCancelled("Pipeline cancelled")
-        _check_cancelled(cancel_event)
+        if delay > 0 and cancel_event is not None:
+            cancel_event.wait(delay)
+        check_cancelled(cancel_event)
         log_progress(value, label)
         previous_offset = offset
 
@@ -250,7 +247,7 @@ def _run_dummy_masking(manifest: dict, total_frames: int, cancel_event) -> None:
         "preview_path": str(preview_path.resolve()),
         "total_candidates": 3,
     })
-    _check_cancelled(cancel_event)
+    check_cancelled(cancel_event)
     log_info(f"Selection received: {choice}")
 
     finish_schedule = [(0.0, 0.10, "Selection received")]
@@ -270,7 +267,7 @@ def run_dummy_phase(
 ) -> None:
     """Simulate one pipeline phase without importing or invoking a processing module."""
     del ipc_mode
-    _check_cancelled(cancel_event)
+    check_cancelled(cancel_event)
     set_phase(phase_num)
     path, manifest = load_manifest(manifest_path)
     total_frames = max(1, int(args.get("minimum_frames", 45)))
@@ -284,7 +281,7 @@ def run_dummy_phase(
             raise ValueError(f"Unknown pipeline phase: {phase_num}")
         _emit_schedule(schedule, cancel_event)
 
-    _check_cancelled(cancel_event)
+    check_cancelled(cancel_event)
     if phase_num == 5:
         output_dir = Path(manifest["paths"]["export"])
         output_dir.mkdir(parents=True, exist_ok=True)

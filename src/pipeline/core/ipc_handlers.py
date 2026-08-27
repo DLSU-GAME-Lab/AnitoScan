@@ -5,11 +5,8 @@ import time
 from typing import Optional, Tuple
 
 import ipc
+from cancellation import PipelineCancelled, check_cancelled
 from log import get_run_id, log_error, log_event, log_info, set_ipc_mode, set_run_id
-
-
-class PipelineCancelled(Exception):
-    """Raised when the editor cancels the active pipeline run."""
 
 
 _STATE_LOCK = threading.Lock()
@@ -66,10 +63,8 @@ def await_ipc_selection(request: dict) -> Tuple[Optional[int], float]:
 
     try:
         while not session.selection_event.wait(0.1):
-            if session.cancel_event.is_set():
-                raise PipelineCancelled("pipeline run cancelled")
-        if session.cancel_event.is_set():
-            raise PipelineCancelled("pipeline run cancelled")
+            check_cancelled(session.cancel_event)
+        check_cancelled(session.cancel_event)
         return session.selection, time.perf_counter() - started
     finally:
         with _STATE_LOCK:
@@ -86,8 +81,7 @@ def _run_worker(session, callback, args):
             ipc_mode=True,
             cancel_event=session.cancel_event,
         )
-        if session.cancel_event.is_set():
-            raise PipelineCancelled("pipeline run cancelled")
+        check_cancelled(session.cancel_event)
         ipc.send({
             "type": "run_completed",
             "run_id": session.run_id,
