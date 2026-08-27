@@ -27,15 +27,16 @@ void MaskingContent::Render(
 
     UIStyle::SectionTitle(
         "MASK SELECTION",
-        "Choose the candidate that best isolates the subject, or skip this image."
+        "Choose the best candidate or skip this image. Hover over the preview to magnify details."
     );
     if (textureId_ != 0) {
         constexpr float framePadding = 8.0f;
+        constexpr float maxImageHeight = 640.0f;
         const ImVec2 available = ImGui::GetContentRegionAvail();
         const float maxImageWidth = std::max(1.0f, available.x - framePadding * 2.0f);
         const float scale = std::min(
             maxImageWidth / static_cast<float>(std::max(1, textureWidth_)),
-            420.0f / static_cast<float>(std::max(1, textureHeight_))
+            maxImageHeight / static_cast<float>(std::max(1, textureHeight_))
         );
         const ImVec2 imageSize(textureWidth_ * scale, textureHeight_ * scale);
         const ImVec2 frameSize(
@@ -56,13 +57,18 @@ void MaskingContent::Render(
             ImGui::GetColorU32(ImVec4(0.055f, 0.063f, 0.078f, 1.0f)),
             3.0f
         );
+        const ImVec2 imageMin(
+            framePosition.x + framePadding,
+            framePosition.y + framePadding
+        );
+        const ImVec2 imageMax(
+            imageMin.x + imageSize.x,
+            imageMin.y + imageSize.y
+        );
         drawList->AddImage(
             static_cast<ImTextureID>(textureId_),
-            ImVec2(framePosition.x + framePadding, framePosition.y + framePadding),
-            ImVec2(
-                framePosition.x + framePadding + imageSize.x,
-                framePosition.y + framePadding + imageSize.y
-            )
+            imageMin,
+            imageMax
         );
         drawList->AddRect(
             framePosition,
@@ -70,6 +76,42 @@ void MaskingContent::Render(
             ImGui::GetColorU32(ImGuiCol_Border),
             3.0f
         );
+
+        if (ImGui::IsMouseHoveringRect(imageMin, imageMax)) {
+            constexpr float zoom = 4.0f;
+            const ImVec2 magnifierSize(420.0f, 280.0f);
+            const ImVec2 mousePosition = ImGui::GetIO().MousePos;
+            const float cursorU = std::clamp(
+                (mousePosition.x - imageMin.x) / std::max(1.0f, imageSize.x),
+                0.0f,
+                1.0f
+            );
+            const float cursorV = std::clamp(
+                (mousePosition.y - imageMin.y) / std::max(1.0f, imageSize.y),
+                0.0f,
+                1.0f
+            );
+            const float halfU = std::min(
+                0.5f,
+                magnifierSize.x / (2.0f * zoom * static_cast<float>(std::max(1, textureWidth_)))
+            );
+            const float halfV = std::min(
+                0.5f,
+                magnifierSize.y / (2.0f * zoom * static_cast<float>(std::max(1, textureHeight_)))
+            );
+            const float centerU = std::clamp(cursorU, halfU, 1.0f - halfU);
+            const float centerV = std::clamp(cursorV, halfV, 1.0f - halfV);
+
+            ImGui::BeginTooltip();
+            ImGui::TextDisabled("4x zoom");
+            ImGui::Image(
+                static_cast<ImTextureID>(textureId_),
+                magnifierSize,
+                ImVec2(centerU - halfU, centerV - halfV),
+                ImVec2(centerU + halfU, centerV + halfV)
+            );
+            ImGui::EndTooltip();
+        }
     } else {
         ImGui::TextDisabled("Preview image unavailable");
     }
