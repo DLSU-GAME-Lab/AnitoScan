@@ -93,9 +93,9 @@ def write_preview(path: Path) -> None:
             for x in range(left, left + 18):
                 set_pixel(x, y, color)
         digit_patterns = {
+            0: ("111", "101", "101", "101", "111"),
             1: ("010", "110", "010", "010", "111"),
             2: ("110", "001", "010", "100", "111"),
-            3: ("110", "001", "010", "001", "110"),
         }
         for row, pattern in enumerate(digit_patterns[label]):
             for column, enabled in enumerate(pattern):
@@ -154,9 +154,9 @@ def write_preview(path: Path) -> None:
     for edge in cube_edges:
         draw_line(*edge, (202, 219, 238), 2)
 
-    draw_box((132, 64, 257, 207), (225, 86, 86), 1)
-    draw_box((158, 40, 315, 198), (75, 205, 122), 2)
-    draw_box((214, 30, 382, 170), (76, 139, 231), 3)
+    draw_box((132, 64, 257, 207), (225, 86, 86), 0)
+    draw_box((158, 40, 315, 198), (75, 205, 122), 1)
+    draw_box((214, 30, 382, 170), (76, 139, 231), 2)
 
     rows = bytearray()
     for y in range(height):
