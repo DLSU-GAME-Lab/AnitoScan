@@ -121,3 +121,12 @@ def update_manifest_lifecycle(
 def _save_manifest(manifest_path: Path, manifest_data: dict) -> None:
     """Saves the manifest dictionary back to disk formatted cleanly."""
     manifest_path.write_text(json.dumps(manifest_data, indent=4), encoding="utf-8")
+
+
+def update_manifest_settings(
+    manifest_path: Path,
+    manifest: dict,
+    settings: dict,
+) -> None:
+    manifest.setdefault("settings", {}).update(settings)
+    _save_manifest(manifest_path, manifest)

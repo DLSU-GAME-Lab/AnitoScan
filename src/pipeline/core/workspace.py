@@ -1,14 +1,19 @@
 from pathlib import Path
 from typing import Any
 
-from manifest import build_manifest, initialize_manifest, load_manifest
+from manifest import (
+    build_manifest,
+    initialize_manifest,
+    load_manifest,
+    update_manifest_settings,
+)
 
 CACHE_RELEVANT_FIELDS = [
     ("run_name",),
     ("input_source",),
     ("mode",),
     ("settings", "minimum_frames"),
-    ("settings", "quality"),
+    # ("settings", "quality"),
     ("settings", "capture_mode"),
     ("settings", "yoloe_model_size"),
     ("settings", "iou_threshold"),
@@ -104,7 +109,15 @@ def init_workspace(project_root: Path, workspace_dir: Path, args: dict) -> tuple
                 )
 
         if not force and not pending_upgrade:
+            update_manifest_settings(
+                manifest_path,
+                existing_manifest,
+                {
+                    "quality": desired_manifest["settings"]["quality"],
+                },
+            )
             return base_dir, manifest_path
+
 
     initialize_manifest(manifest_path, name, input_path, args, paths_dict)
 

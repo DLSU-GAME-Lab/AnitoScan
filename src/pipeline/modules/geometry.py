@@ -20,6 +20,7 @@ from manifest import load_manifest, update_manifest
 MODULE_PATH = Path(__file__).resolve()  # /src/pipeline/modules/geometry.py
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
 GS_PATH = PROJECT_ROOT / "vendor" / "2d-gaussian-splatting"  # Vendor Path for 2DGS
+TRAIN_END = 0.85  # training ends at 85% and meshing begins for progress logging
 
 
 def run_surface_reconstruction(
@@ -116,7 +117,7 @@ def run_surface_reconstruction(
     ]
 
     log_info(f"Starting 2DGS Training ({train_iterations} iterations)...")
-    log_progress(0.30, "Phase 4: Training 2DGS...")
+    log_progress(0, "Phase 4: Training 2DGS...")
     start_time = time.perf_counter()
 
     train_checkpoint_exists = (
@@ -151,10 +152,6 @@ def run_surface_reconstruction(
             raise
         assert process.stdout is not None
 
-        TRAIN_START = 0.30
-        TRAIN_END = 0.85
-        TRAIN_RANGE = TRAIN_END - TRAIN_START
-
         for line in process.stdout:
             line = line.rstrip()
             match = re.search(r'(\d+)\s*/\s*(\d+)', line)
@@ -162,12 +159,12 @@ def run_surface_reconstruction(
                 current = int(match.group(1))
                 total = int(match.group(2))
                 benchmark_metrics["training_iteration"] = current
-                progress = TRAIN_START + (current / total) * TRAIN_RANGE
+                progress = (current / total) * TRAIN_END
                 log_progress(progress, f"Training {current}/{total} iterations")
             else:
                 stripped = line.strip()
                 if stripped and not stripped.startswith("("):
-                    log_info(f"[train] {stripped}")
+                    log_info(f"\r[train] {stripped}")
 
         process.wait()
         if process.returncode != 0:
@@ -186,7 +183,7 @@ def run_surface_reconstruction(
 
     # 6. Rendering / TSDF Fusion
     log_info("Starting Mesh Extraction (TSDF Fusion)...")
-    log_progress(0.85, "Phase 4: Extracting mesh...")
+    log_progress(TRAIN_END, "Phase 4: Extracting mesh...")
     mesh_output_dir = gs_model_dir / "train" / f"ours_{train_iterations}"
     benchmark_paths["mesh_output_dir"] = mesh_output_dir
 
