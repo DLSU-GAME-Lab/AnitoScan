@@ -37,6 +37,11 @@ struct PhaseData {
     float progress = 0.0f;
     std::string previewPath;
     int candidateCount = 0;
+    int imageWidth = 0;
+    int imageHeight = 0;
+    int selectionId = 0;
+    bool selectionSubmitting = false;
+    std::string selectionError;
     std::vector<std::string> logs;
     std::string error;
 };
@@ -68,6 +73,11 @@ struct PhaseDisplayData {
     std::string errorText;
     float progress = 0.0f;
     int candidateCount = 0;
+    int imageWidth = 0;
+    int imageHeight = 0;
+    int selectionId = 0;
+    bool selectionSubmitting = false;
+    std::string selectionError;
     std::vector<std::string> logs;
     PhaseNavigationData navigation;
     bool maskSelectionEnabled = false;

@@ -246,6 +246,8 @@ def _run_dummy_masking(manifest: dict, total_frames: int, cancel_event) -> None:
         "frame_name": "frame-0001",
         "preview_path": str(preview_path.resolve()),
         "total_candidates": 3,
+        "image_width": 480,
+        "image_height": 270,
     })
     check_cancelled(cancel_event)
     log_info(f"Selection received: {choice}")

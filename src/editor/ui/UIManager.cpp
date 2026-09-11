@@ -68,6 +68,9 @@ void UIManager::EndFrame() {
 }
 
 void UIManager::SwitchScreen(UIScreen screen) {
+    if (screen_ == UIScreen::Phase && screen != UIScreen::Phase) {
+        phaseScreen_.ResetInteraction();
+    }
     screen_ = screen;
 }
 
@@ -76,6 +79,11 @@ void UIManager::SetRunSetupData(RunSetupData data) {
 }
 
 void UIManager::SetPhaseData(PhaseDisplayData data) {
+    if (data.kind != PhaseDisplayKind::MaskSelection || !data.maskSelectionEnabled ||
+        data.selectionSubmitting || data.runId != phaseData_.runId ||
+        data.selectionId != phaseData_.selectionId) {
+        phaseScreen_.ResetInteraction();
+    }
     phaseData_ = std::move(data);
 }
 

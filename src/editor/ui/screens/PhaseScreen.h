@@ -12,6 +12,7 @@ struct UIInput;
 class PhaseScreen {
 public:
     void Render(const PhaseDisplayData& data, std::vector<UIInput>& inputs);
+    void ResetInteraction();
     void Shutdown();
 
 private:

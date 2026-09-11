@@ -19,6 +19,7 @@ from benchmark import append_failed_phase_benchmark, append_phase_benchmark
 from cancellation import PipelineCancelled, check_cancelled
 from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
 from manifest import load_manifest, update_manifest
+from mask_selection import SelectionChoice, resolve_selection
 
 MODULE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = MODULE_PATH.parent.parent.parent.parent
@@ -64,30 +65,28 @@ def _calculate_centroid_drift(boxA, boxB):
     return np.linalg.norm(centerA - centerB)
 
 
-def _get_user_selection(img, detector, temp_dir, frame_name, device, cancel_event=None):
+def _get_user_selection(
+    img, detector, temp_dir, frame_name, device, cancel_event=None
+) -> Generator[dict, tuple[SelectionChoice, float], tuple[list[int | float] | None, float]]:
     """Yields an intervention request to the pipeline orchestrator."""
     check_cancelled(cancel_event)
-    start_wait = time.perf_counter()
     log_info(f"Running YOLOE-26 on {frame_name}...")
     results = detector.predict(source=img, conf=0.35, device=device, verbose=False)[0]
     check_cancelled(cancel_event)
 
-    if results.boxes is None or len(results.boxes) == 0:
-        log_error("YOLOE found no valid subjects in this frame.")
-        return None, time.perf_counter() - start_wait
 
     h_img, w_img = img.shape[:2]
     img_area = h_img * w_img
     valid_boxes = []
 
-    for box in results.boxes:
+    for box in results.boxes if results.boxes is not None else []:
         coords = box.xyxy[0].cpu().numpy()
         box_area = (coords[2] - coords[0]) * (coords[3] - coords[1])
         if (box_area / img_area) < 0.70:
             valid_boxes.append(coords.tolist())
 
     if not valid_boxes:
-        return None, time.perf_counter() - start_wait
+        log_info("YOLOE found no valid candidates; requesting a custom box or skip.")
 
     preview_img = img.copy()
     overlay = img.copy()  # Create an overlay for transparency
@@ -162,19 +161,18 @@ def _get_user_selection(img, detector, temp_dir, frame_name, device, cancel_even
         "preview_path": str(preview_path),
         "total_candidates": len(valid_boxes),
         "frame_name": frame_name,
+        "image_width": w_img,
+        "image_height": h_img,
     })
     check_cancelled(cancel_event)
 
-    if choice is not None and 0 <= choice < len(valid_boxes):
-        return valid_boxes[choice], wait_time
-
-    return None, wait_time
+    return resolve_selection(choice, valid_boxes, w_img, h_img), wait_time
 
 
 def run_remove_background(
     manifest_path_string, yoloe_model_size, iou_threshold, drift_limit,
     force=False, ipc_mode=False, cancel_event=None
-) -> Generator[dict, tuple[int | None, float], None]:
+) -> Generator[dict, tuple[SelectionChoice, float], None]:
     set_ipc_mode(ipc_mode)
     set_phase(phase=2)
     check_cancelled(cancel_event)
@@ -580,7 +578,10 @@ if __name__ == "__main__":
 
                 print("\n==================================================")
                 print(" ACTION REQUIRED: Click on the image window to focus it.")
-                print(f" Press the number key (0-{request['total_candidates'] - 1}) corresponding to the correct subject.")
+                if request["total_candidates"]:
+                    print(f" Press the number key (0-{request['total_candidates'] - 1}) corresponding to the correct subject.")
+                else:
+                    print(" No candidates found. Custom boxes are available through the editor only.")
                 print(" Press 's' to skip this frame.")
                 print("==================================================")
 

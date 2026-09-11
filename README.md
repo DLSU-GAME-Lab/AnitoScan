@@ -104,6 +104,16 @@ The editor uses the dummy backend by default. Launch it from the project root wi
 .\out\build\debug\bin\AnitoScan.exe --backend pipeline
 ```
 
+### Mask selection
+
+When masking needs input, choose a numbered candidate, click **Draw custom box** and drag around the subject, or click **Skip**. After drawing, click **Use custom box** to submit; drag again to replace the box, **Clear** to remove it, or **Exit drawing mode** to return to the normal preview. The hover magnifier is disabled while drawing.
+
+Manual selection is also available when no candidates are detected. Those frames now wait for a custom box or Skip instead of being skipped automatically. Skip keeps the existing behavior: a transparent output frame, followed by a fresh selection on the next readable frame.
+
+Boxes are sent as `[x1, y1, x2, y2]` in original-image pixels, with the origin at the top-left. The editor accounts for preview scaling and padding; no coordinate conversion is required from the user. A custom box prompts SAM using the same 8% padding and subsequent tracking as an automatic candidate—it is not a rectangular final mask.
+
+The editor and backend must use the same selection protocol: requests include source dimensions and a selection ID, and responses echo the run/selection IDs with an integer candidate, `null` for Skip, or `{"bbox": [x1, y1, x2, y2]}`. Rejected selections leave the prompt available for retry. The dummy backend exercises selection delivery without running segmentation; use `--backend pipeline` to validate actual masks. The standalone OpenCV CLI still supports candidate/Skip input, not mouse-drawn boxes.
+
 ## 🛠 Maintenance & Development
 *   **Adding Dependencies**: `uv add <package_name>`
 *   **Updating Environment**: If the `uv.lock` or `pyproject.toml` changes (e.g., after a `git pull`), simply run `uv sync` to align your local environment.

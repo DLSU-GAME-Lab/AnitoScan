@@ -1,9 +1,14 @@
 #include "editor/ui/components/MaskingContent.h"
 
 #include "editor/ui/UIStyle.h"
+#include "editor/controller/ControllerTypes.h"
 
 #include <algorithm>
 #include <string>
+#include <iomanip>
+#include <limits>
+#include <locale>
+#include <sstream>
 
 #include <glad/gl.h>
 #include <imgui.h>
@@ -11,24 +16,70 @@
 #include <stb_image.h>
 
 void MaskingContent::Render(
-    const std::string& previewPath,
-    int candidateCount,
-    bool selectionEnabled,
+    const PhaseDisplayData& data,
     std::vector<UIInput>& inputs
 ) {
-    if (previewPath.empty()) {
-        Shutdown();
-        return;
+    UpdateInteraction(data);
+    const bool selectionEnabled = data.maskSelectionEnabled && !data.selectionSubmitting;
+    const int candidateCount = data.candidateCount;
+    if (data.previewPath != loadedPath_) {
+        if (data.previewPath.empty()) {
+            Shutdown();
+        } else {
+            LoadPreview(data.previewPath.c_str());
+        }
     }
-
-    if (previewPath != loadedPath_) {
-        LoadPreview(previewPath.c_str());
+    const bool customEnabled = selectionEnabled && textureId_ != 0 &&
+        data.imageWidth > 0 && data.imageHeight > 0;
+    if (!customEnabled) {
+        ResetInteraction();
     }
 
     UIStyle::SectionTitle(
         "MASK SELECTION",
-        "Choose the best candidate or skip this image. Hover over the preview to magnify details."
+        candidateCount > 0
+            ? "Choose a candidate, draw a custom box, or skip this image. Hover over the preview to magnify details."
+            : "No candidates found. Draw a custom box around the subject, or skip this image."
     );
+    if (data.selectionSubmitting) {
+        ImGui::TextWrapped("Submitting selection...");
+    }
+    if (!data.selectionError.empty()) {
+        ImGui::TextWrapped("%s", data.selectionError.c_str());
+    }
+    ImGui::BeginDisabled(!customEnabled);
+    if (!drawingMode_) {
+        if (UIStyle::Button("Draw custom box", UIStyle::ButtonKind::Secondary)) {
+            drawingMode_ = true;
+        }
+    } else {
+        if (UIStyle::Button("Exit drawing mode", UIStyle::ButtonKind::Ghost)) {
+            ResetInteraction();
+        }
+        ImGui::SameLine();
+        if (UIStyle::Button("Clear", UIStyle::ButtonKind::Ghost)) {
+            ResetInteraction();
+            drawingMode_ = true;
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!hasBox_ || dragging_);
+        if (UIStyle::Button("Use custom box", UIStyle::ButtonKind::Primary)) {
+            std::ostringstream payload;
+            payload.imbue(std::locale::classic());
+            payload << std::setprecision(std::numeric_limits<double>::max_digits10)
+                    << "bbox\n" << boxX1_ << '\n' << boxY1_ << '\n'
+                    << boxX2_ << '\n' << boxY2_;
+            inputs.push_back({UIClick::SubmitSelection, payload.str()});
+            ResetInteraction();
+        }
+        ImGui::EndDisabled();
+    }
+    ImGui::EndDisabled();
+    if (drawingMode_) {
+        ImGui::TextWrapped("Left-drag around the subject. Drag again to replace the box, then choose Use custom box.");
+    } else if (textureId_ != 0 && (data.imageWidth <= 0 || data.imageHeight <= 0)) {
+        ImGui::TextDisabled("Custom boxes require source image dimensions.");
+    }
     if (textureId_ != 0) {
         constexpr float framePadding = 8.0f;
         constexpr float maxImageHeight = 640.0f;
@@ -50,6 +101,7 @@ void MaskingContent::Render(
 
         const ImVec2 framePosition = ImGui::GetCursorScreenPos();
         ImGui::Dummy(frameSize);
+        const ImVec2 afterFrame = ImGui::GetCursorScreenPos();
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         drawList->AddRectFilled(
             framePosition,
@@ -77,7 +129,63 @@ void MaskingContent::Render(
             3.0f
         );
 
-        if (ImGui::IsMouseHoveringRect(imageMin, imageMax)) {
+        ImGui::SetCursorScreenPos(imageMin);
+        ImGui::BeginDisabled(!customEnabled || !drawingMode_);
+        ImGui::InvisibleButton("##CustomBoxImage", imageSize, ImGuiButtonFlags_MouseButtonLeft);
+        if (drawingMode_ && customEnabled) {
+            const ImVec2 mouse = ImGui::GetIO().MousePos;
+            const double sourceX = std::clamp(
+                static_cast<double>(mouse.x - imageMin.x) / imageSize.x, 0.0, 1.0
+            ) * data.imageWidth;
+            const double sourceY = std::clamp(
+                static_cast<double>(mouse.y - imageMin.y) / imageSize.y, 0.0, 1.0
+            ) * data.imageHeight;
+            if (ImGui::IsItemActivated()) {
+                anchorX_ = sourceX;
+                anchorY_ = sourceY;
+                boxX1_ = boxX2_ = sourceX;
+                boxY1_ = boxY2_ = sourceY;
+                dragging_ = true;
+                hasBox_ = false;
+                passedDragThreshold_ = false;
+            }
+            // Keep tracking outside the image; only the initial press needs a clipped hit.
+            if (dragging_) {
+                passedDragThreshold_ = passedDragThreshold_ ||
+                    ImGui::IsMouseDragging(ImGuiMouseButton_Left, 3.0f);
+                boxX1_ = std::min(anchorX_, sourceX);
+                boxY1_ = std::min(anchorY_, sourceY);
+                boxX2_ = std::max(anchorX_, sourceX);
+                boxY2_ = std::max(anchorY_, sourceY);
+                if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                    dragging_ = false;
+                    hasBox_ = passedDragThreshold_ &&
+                        boxX2_ - boxX1_ >= 1.0 && boxY2_ - boxY1_ >= 1.0;
+                }
+            }
+            if (dragging_ || hasBox_) {
+                const ImVec2 boxMin(
+                    imageMin.x + static_cast<float>(boxX1_ / data.imageWidth) * imageSize.x,
+                    imageMin.y + static_cast<float>(boxY1_ / data.imageHeight) * imageSize.y
+                );
+                const ImVec2 boxMax(
+                    imageMin.x + static_cast<float>(boxX2_ / data.imageWidth) * imageSize.x,
+                    imageMin.y + static_cast<float>(boxY2_ / data.imageHeight) * imageSize.y
+                );
+                drawList->PushClipRect(imageMin, imageMax, true);
+                drawList->AddRectFilled(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_ButtonHovered, 0.25f));
+                drawList->AddRect(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_ButtonHovered), 0.0f, 0, 2.0f);
+                drawList->PopClipRect();
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::SetCursorScreenPos(afterFrame);
+        if (drawingMode_ && (dragging_ || hasBox_)) {
+            ImGui::Text("Source box (xyxy): %.2f, %.2f, %.2f, %.2f px",
+                boxX1_, boxY1_, boxX2_, boxY2_);
+        }
+
+        if (!drawingMode_ && ImGui::IsMouseHoveringRect(imageMin, imageMax)) {
             constexpr float zoom = 4.0f;
             const ImVec2 magnifierSize(420.0f, 280.0f);
             const ImVec2 mousePosition = ImGui::GetIO().MousePos;
@@ -145,7 +253,26 @@ void MaskingContent::Render(
     ImGui::EndDisabled();
 }
 
+void MaskingContent::UpdateInteraction(const PhaseDisplayData& data) {
+    if (promptRunId_ != data.runId || promptSelectionId_ != data.selectionId ||
+        !data.maskSelectionEnabled || data.selectionSubmitting) {
+        ResetInteraction();
+    }
+    promptRunId_ = data.runId;
+    promptSelectionId_ = data.selectionId;
+}
+
+void MaskingContent::ResetInteraction() {
+    drawingMode_ = false;
+    dragging_ = false;
+    hasBox_ = false;
+    passedDragThreshold_ = false;
+    anchorX_ = anchorY_ = 0.0;
+    boxX1_ = boxY1_ = boxX2_ = boxY2_ = 0.0;
+}
+
 void MaskingContent::Shutdown() {
+    ResetInteraction();
     if (textureId_ != 0) {
         glDeleteTextures(1, &textureId_);
         textureId_ = 0;

@@ -115,10 +115,33 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
         currentPhaseData_->logs.push_back(values.back());
         return;
     }
-    if (input.type == "selection_required" && values.size() >= 4 && values[0] == activeRun_->id) {
+    if (input.type == "selection_required" && values.size() == 7 && values[0] == activeRun_->id &&
+        activeRun_->status == "running") {
         BeginPhaseIfNeeded("2");
         currentPhaseData_->previewPath = values[1];
         currentPhaseData_->candidateCount = std::stoi(values[3]);
+        currentPhaseData_->imageWidth = std::stoi(values[4]);
+        currentPhaseData_->imageHeight = std::stoi(values[5]);
+        currentPhaseData_->selectionId = std::stoi(values[6]);
+        currentPhaseData_->selectionSubmitting = false;
+        currentPhaseData_->selectionError.clear();
+        return;
+    }
+    if ((input.type == "selection_accepted" || input.type == "selection_rejected") &&
+        values.size() >= 2 && values[0] == activeRun_->id && currentPhaseData_ &&
+        currentPhaseData_->selectionSubmitting && activeRun_->status == "running" &&
+        values[1] == std::to_string(currentPhaseData_->selectionId)) {
+        currentPhaseData_->selectionSubmitting = false;
+        if (input.type == "selection_accepted") {
+            currentPhaseData_->previewPath.clear();
+            currentPhaseData_->candidateCount = 0;
+            currentPhaseData_->imageWidth = 0;
+            currentPhaseData_->imageHeight = 0;
+            currentPhaseData_->selectionId = 0;
+            currentPhaseData_->selectionError.clear();
+        } else {
+            currentPhaseData_->selectionError = values.size() >= 3 ? values[2] : "Selection rejected. Please try again.";
+        }
         return;
     }
     if (input.type == "run_completed" && values.size() >= 2 && values[0] == activeRun_->id) {
@@ -172,13 +195,13 @@ void PipelineController::CancelRun(const std::string& runId) {
 }
 
 void PipelineController::SubmitSelection(const std::string& runId, const std::string& selection) {
-    if (activeRun_ && activeRun_->id == runId && activeRun_->status == "running") {
-        if (currentPhaseData_) {
-            currentPhaseData_->previewPath.clear();
-            currentPhaseData_->candidateCount = 0;
-        }
-        QueueMessage("submit_selection", runId + "\n" + selection);
+    if (!activeRun_ || activeRun_->id != runId || !GetPhaseDisplayData().maskSelectionEnabled ||
+        !currentPhaseData_ || currentPhaseData_->selectionId <= 0) {
+        return;
     }
+    currentPhaseData_->selectionSubmitting = true;
+    currentPhaseData_->selectionError.clear();
+    QueueMessage("submit_selection", runId + "\n" + std::to_string(currentPhaseData_->selectionId) + "\n" + selection);
 }
 
 void PipelineController::SelectRun(const std::string& runId) {
@@ -289,6 +312,11 @@ PhaseDisplayData PipelineController::GetPhaseDisplayData() const {
     display.progress = phase->progress;
     display.previewPath = phase->previewPath;
     display.candidateCount = phase->candidateCount;
+    display.imageWidth = phase->imageWidth;
+    display.imageHeight = phase->imageHeight;
+    display.selectionId = phase->selectionId;
+    display.selectionSubmitting = phase->selectionSubmitting;
+    display.selectionError = phase->selectionError;
     display.logs = phase->logs;
     display.errorText = phase->error;
 
@@ -303,7 +331,7 @@ PhaseDisplayData PipelineController::GetPhaseDisplayData() const {
     }
     const bool viewingLivePhase = currentPhaseData_ && phase == &*currentPhaseData_;
     display.maskSelectionEnabled = viewingLivePhase && activeRun_->status == "running" &&
-        display.kind == PhaseDisplayKind::MaskSelection;
+        display.kind == PhaseDisplayKind::MaskSelection && phase->selectionId > 0 && !phase->selectionSubmitting;
     return display;
 }
 

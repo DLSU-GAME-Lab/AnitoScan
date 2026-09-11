@@ -9,6 +9,11 @@
 #include <imgui.h>
 
 void PhaseScreen::Render(const PhaseDisplayData& data, std::vector<UIInput>& inputs) {
+    if (data.kind != PhaseDisplayKind::MaskSelection) {
+        ResetInteraction();
+    } else {
+        maskingContent_.UpdateInteraction(data);
+    }
     const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(mainViewport->WorkPos);
     ImGui::SetNextWindowSize(mainViewport->WorkSize);
@@ -115,12 +120,7 @@ void PhaseScreen::Render(const PhaseDisplayData& data, std::vector<UIInput>& inp
             break;
         }
         case PhaseDisplayKind::MaskSelection:
-            maskingContent_.Render(
-                data.previewPath,
-                data.candidateCount,
-                data.maskSelectionEnabled,
-                inputs
-            );
+            maskingContent_.Render(data, inputs);
             break;
         case PhaseDisplayKind::Error: {
             const float errorWidth = std::min(ImGui::GetContentRegionAvail().x, 720.0f);
@@ -142,6 +142,10 @@ void PhaseScreen::Render(const PhaseDisplayData& data, std::vector<UIInput>& inp
     ImGui::Spacing();
     logView_.Render(data.logs);
     ImGui::End();
+}
+
+void PhaseScreen::ResetInteraction() {
+    maskingContent_.ResetInteraction();
 }
 
 void PhaseScreen::Shutdown() {

@@ -6,7 +6,8 @@ from typing import Optional, Tuple
 
 import ipc
 from cancellation import PipelineCancelled, check_cancelled
-from log import get_run_id, log_error, log_event, log_info, set_ipc_mode, set_run_id
+from log import get_run_id, log_error, log_info, set_ipc_mode, set_run_id
+from mask_selection import SelectionChoice, validate_selection
 
 
 _STATE_LOCK = threading.Lock()
@@ -18,7 +19,9 @@ class _Session:
         self.run_id = run_id
         self.cancel_event = threading.Event()
         self.selection_event = threading.Event()
-        self.selection: Optional[int] = None
+        self.selection: SelectionChoice = None
+        self.selection_id = 0
+        self.selection_request: Optional[dict] = None
         self.awaiting_selection = False
         self.worker: Optional[threading.Thread] = None
 
@@ -33,7 +36,7 @@ def _active_session():
 
 
 
-def await_ipc_selection(request: dict) -> Tuple[Optional[int], float]:
+def await_ipc_selection(request: dict) -> Tuple[SelectionChoice, float]:
     """Request an editor selection and wait without reading protocol stdin."""
     session = _active_session()
     if session is None or get_run_id() != session.run_id:
@@ -43,22 +46,29 @@ def await_ipc_selection(request: dict) -> Tuple[Optional[int], float]:
         frame = request["frame_name"]
         preview_path = request["preview_path"]
         candidate_count = request["total_candidates"]
+        image_width = request["image_width"]
+        image_height = request["image_height"]
     except KeyError as error:
         raise ValueError(f"selection request missing {error.args[0]}") from error
 
+    started = time.perf_counter()
     with _STATE_LOCK:
         if session.awaiting_selection:
             raise RuntimeError("a selection request is already pending")
         session.selection = None
+        session.selection_id += 1
+        session.selection_request = {
+            "run_id": session.run_id,
+            "selection_id": session.selection_id,
+            "frame": frame,
+            "preview_path": preview_path,
+            "candidate_count": candidate_count,
+            "image_width": image_width,
+            "image_height": image_height,
+        }
         session.selection_event.clear()
         session.awaiting_selection = True
-
-    started = time.perf_counter()
-    log_event("selection_required", {
-        "frame": frame,
-        "preview_path": preview_path,
-        "candidate_count": candidate_count,
-    })
+        ipc.send({"type": "selection_required", **session.selection_request})
     log_info(f"Opened {frame} preview: {preview_path}")
 
     try:
@@ -69,6 +79,7 @@ def await_ipc_selection(request: dict) -> Tuple[Optional[int], float]:
     finally:
         with _STATE_LOCK:
             session.awaiting_selection = False
+            session.selection_request = None
             session.selection_event.clear()
 
 
@@ -131,22 +142,54 @@ def _start_run(cmd, callback):
 
 
 def _submit_selection(cmd):
-    session = _active_session()
-    if session is None:
-        _diagnostic("submit_selection received without an active run")
-        return
-    if cmd.get("run_id") != session.run_id:
-        _diagnostic("submit_selection run_id does not match the active run")
-        return
+    def reject(message):
+        ipc.send({
+            "type": "selection_rejected",
+            "run_id": cmd.get("run_id"),
+            "selection_id": cmd.get("selection_id"),
+            "message": message,
+        })
+
     with _STATE_LOCK:
-        if not session.awaiting_selection:
-            _diagnostic("submit_selection received with no pending selection")
+        session = _ACTIVE_SESSION
+        if session is None or cmd.get("run_id") != session.run_id:
+            reject("submit_selection does not match an active run")
             return
-        choice = cmd.get("choice")
-        if choice is not None and (not isinstance(choice, int) or isinstance(choice, bool)):
-            _diagnostic("submit_selection choice must be an integer or null")
+        selection_id = cmd.get("selection_id")
+        if (
+            not isinstance(selection_id, int)
+            or isinstance(selection_id, bool)
+            or selection_id <= 0
+        ):
+            reject("submit_selection requires a positive integer selection_id")
             return
+        if (
+            not session.awaiting_selection
+            or session.selection_request is None
+            or selection_id != session.selection_id
+            or session.cancel_event.is_set()
+        ):
+            reject("submit_selection does not match a pending selection")
+            return
+        if "choice" not in cmd:
+            reject("submit_selection requires an explicit choice")
+            return
+        request = session.selection_request
+        try:
+            choice = validate_selection(
+                cmd["choice"], request["candidate_count"],
+                request["image_width"], request["image_height"],
+            )
+        except ValueError as error:
+            reject(str(error))
+            return
+        ipc.send({
+            "type": "selection_accepted",
+            "run_id": session.run_id,
+            "selection_id": selection_id,
+        })
         session.selection = choice
+        session.awaiting_selection = False
         session.selection_event.set()
 
 
