@@ -6,6 +6,7 @@
 
 #include <iostream>
 #include <memory>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -141,6 +142,8 @@ bool App::InitializeOpenGL() {
 }
 
 void App::Run() {
+    std::string inputError;
+    std::string rejectedInputSource;
     while (running_) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -177,6 +180,8 @@ void App::Run() {
         if (!run) {
             RunSetupData data;
             data.canCreateRun = controller_->CanCreateRun();
+            data.inputError = inputError;
+            data.rejectedInputSource = rejectedInputSource;
             if (!data.canCreateRun) {
                 data.message = "Backend unavailable";
             }
@@ -230,6 +235,17 @@ void App::Run() {
                     config.driftLimit = std::stoi(values[7]);
                     config.yoloModelSize = ModelSizeText(std::stoi(values[8]));
                     config.force = values[9] == "1";
+                    inputError.clear();
+                    rejectedInputSource.clear();
+                    // Match workspace.py: relative sources are under data/input; absolute paths remain absolute.
+                    const auto inputPath = std::filesystem::path(PROJECT_ROOT_DIR) / "data" / "input" / config.inputSource;
+                    std::error_code error;
+                    if (!std::filesystem::exists(inputPath, error)) {
+                        rejectedInputSource = values[1];
+                        inputError = error ? "Unable to access input source" :
+                            (config.captureMode == "image" ? "Input folder does not exist" : "Input video does not exist");
+                        continue;
+                    }
                     controller_->CreateRun(values[0], std::move(config));
                 }
             }

@@ -22,6 +22,8 @@ struct RunSetupData {
     std::vector<std::string> runStatuses;
     std::vector<std::string> runIds;
     std::string message;
+    std::string inputError;
+    std::string rejectedInputSource;
     bool canCreateRun = false;
 };
 

@@ -95,7 +95,8 @@ void RunSetupScreen::Render(const RunSetupData& data, std::vector<UIInput>& inpu
 
         ImGui::Spacing();
         const bool validInput = runName_[0] != '\0' && inputSource_[0] != '\0';
-        ImGui::BeginDisabled(!data.canCreateRun || !validInput);
+        const bool duplicateName = std::find(data.runNames.begin(), data.runNames.end(), runName_.data()) != data.runNames.end();
+        ImGui::BeginDisabled(!data.canCreateRun || !validInput || duplicateName);
         if (UIStyle::Button("Create Run", UIStyle::ButtonKind::Primary)) {
             inputs.push_back({
                 UIClick::CreateRun,
@@ -107,9 +108,16 @@ void RunSetupScreen::Render(const RunSetupData& data, std::vector<UIInput>& inpu
             });
         }
         ImGui::EndDisabled();
-        if (!data.message.empty()) {
+        std::string message = data.message;
+        if (message.empty() && duplicateName) {
+            message = "Run already exists";
+        }
+        if (message.empty() && data.rejectedInputSource == inputSource_.data()) {
+            message = data.inputError;
+        }
+        if (!message.empty()) {
             ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.94f, 0.67f, 0.24f, 1.0f), "%s", data.message.c_str());
+            ImGui::TextColored(ImVec4(0.94f, 0.67f, 0.24f, 1.0f), "%s", message.c_str());
         }
     }
     ImGui::EndChild();
