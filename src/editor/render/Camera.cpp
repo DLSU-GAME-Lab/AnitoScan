@@ -1,0 +1,98 @@
+#include "Camera.h"
+
+#include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
+
+// Sets the target and the distance of the camera from it
+Camera::Camera(glm::vec3 target, float distance) {
+	target_ = target;
+	distance_ = distance;
+}
+
+Camera::~Camera() {}
+
+// Mouse controls for controlling the orbital movement of the camera
+void Camera::ProcessMouseDrag(float dx, float dy) {
+	if (dx == 0.0f && dy == 0.0f) return;
+
+	float yawAngle = glm::radians(dx * orbitSensitivity_);
+	float pitchAngle = glm::radians(-dy * orbitSensitivity_);
+
+	glm::vec3 localRight = orientation_ * glm::vec3(1.0f, 0.0f, 0.0f);
+	glm::vec3 localUp = orientation_ * glm::vec3(0.0f, 1.0f, 0.0f);
+
+	glm::vec3 combinedAxisAngle = localUp * yawAngle + localRight * pitchAngle;
+	float angle = glm::length(combinedAxisAngle);
+
+	if (angle > 0.0f) {
+		glm::vec3 axis = combinedAxisAngle / angle;
+		glm::quat rotation = glm::angleAxis(angle, axis);
+		orientation_ = glm::normalize(rotation * orientation_);
+	}
+}
+
+// Keyboard controls for controlling the orbital movement of the camera
+void Camera::ProcessKeyboard(bool left, bool right, bool up, bool down, float deltaTime) {
+	if (!left && !right && !up && !down) return;
+
+	float orbitSpeed = 60.0f;
+	float yawAngle = glm::radians((right ? 1.0f : left ? -1.0f : 0.0f) * orbitSpeed * deltaTime);
+	float pitchAngle = glm::radians((down ? 1.0f : up ? -1.0f : 0.0f) * orbitSpeed * deltaTime);
+
+	glm::vec3 localUp = orientation_ * glm::vec3(0.0f, 1.0f, 0.0f);
+	glm::vec3 localRight = orientation_ * glm::vec3(1.0f, 0.0f, 0.0f);
+	glm::vec3 combined = localUp * yawAngle + localRight * pitchAngle;
+	float angle = glm::length(combined);
+
+	if (angle > 0.0f) {
+		orientation_ = glm::normalize(glm::angleAxis(angle, combined / angle) * orientation_);
+	}
+}
+
+// Adjusts distance from the model
+void Camera::ProcessScroll(float delta) {
+	distance_ -= delta * zoomSensitivity_;
+	distance_ = std::clamp(distance_, minDistance_, maxDistance_);
+}
+
+// Transforms the horizontal and vertical pixel deltas into the camera's local 
+// right and up vector workspace, scaling the movement speed based on view distance
+void Camera::ProcessPan(float dx, float dy) {
+	glm::vec3 localRight = orientation_ * glm::vec3(1.0f, 0.0f, 0.0f);
+	glm::vec3 localUp = orientation_ * glm::vec3(0.0f, 1.0f, 0.0f);
+
+	float scale = distance_ * panSensitivity_;
+
+	target_ += (-dx * localRight + dy * localUp) * scale;
+}
+
+// Sets the 3D focal coordinates that the camera looks at
+void Camera::SetTarget(glm::vec3 target) {
+	target_ = target;
+}
+
+// Sets the orbit radius distance from the focal target, clamped to prevent inversion
+void Camera::SetDistance(float distance) {
+	distance_ = std::max(distance, 0.01f);
+}
+
+glm::vec3 Camera::GetPosition() {
+	glm::vec3 baseOffset(0.0f, 0.0f, distance_);
+	return target_ + orientation_ * baseOffset;
+}
+
+// Computes for the view matrix
+glm::mat4 Camera::GetViewMatrix() {
+	glm::vec3 position = GetPosition();
+
+	glm::vec3 forward = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+	glm::vec3 up = orientation_ * glm::vec3(0.0f, 1.0f, 0.0f);
+
+	return glm::lookAt(position, position + forward, up);
+}
+
+// Computes for the projection matrix
+glm::mat4 Camera::GetProjectionMatrix(float aspectRatio) {
+	return glm::perspective(glm::radians(fov_), aspectRatio, nearPlane_, farPlane_);
+}
+

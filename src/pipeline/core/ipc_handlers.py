@@ -1,0 +1,314 @@
+import json
+import sys
+import threading
+import time
+from typing import Optional, Tuple
+
+import ipc
+from asset_export import export_asset, export_formats, validate_request
+from cancellation import PipelineCancelled, check_cancelled
+from log import get_run_id, log_error, log_info, set_ipc_mode, set_run_id
+from mask_selection import SelectionChoice, validate_selection
+
+
+_STATE_LOCK = threading.Lock()
+_ACTIVE_SESSION = None
+_ACTIVE_EXPORT = None
+
+
+class _Session:
+    def __init__(self, run_id):
+        self.run_id = run_id
+        self.cancel_event = threading.Event()
+        self.selection_event = threading.Event()
+        self.selection: SelectionChoice = None
+        self.selection_id = 0
+        self.selection_request: Optional[dict] = None
+        self.awaiting_selection = False
+        self.worker: Optional[threading.Thread] = None
+
+
+def _diagnostic(message):
+    print(f"[ipc] {message}", file=sys.stderr, flush=True)
+
+
+def _active_session():
+    with _STATE_LOCK:
+        return _ACTIVE_SESSION
+
+
+
+def await_ipc_selection(request: dict) -> Tuple[SelectionChoice, float]:
+    """Request an editor selection and wait without reading protocol stdin."""
+    session = _active_session()
+    if session is None or get_run_id() != session.run_id:
+        raise RuntimeError("selection requested without an active IPC run")
+
+    try:
+        frame = request["frame_name"]
+        preview_path = request["preview_path"]
+        candidate_count = request["total_candidates"]
+        image_width = request["image_width"]
+        image_height = request["image_height"]
+    except KeyError as error:
+        raise ValueError(f"selection request missing {error.args[0]}") from error
+
+    started = time.perf_counter()
+    with _STATE_LOCK:
+        if session.awaiting_selection:
+            raise RuntimeError("a selection request is already pending")
+        session.selection = None
+        session.selection_id += 1
+        session.selection_request = {
+            "run_id": session.run_id,
+            "selection_id": session.selection_id,
+            "frame": frame,
+            "preview_path": preview_path,
+            "candidate_count": candidate_count,
+            "image_width": image_width,
+            "image_height": image_height,
+        }
+        session.selection_event.clear()
+        session.awaiting_selection = True
+        ipc.send({"type": "selection_required", **session.selection_request})
+    log_info(f"Opened {frame} preview: {preview_path}")
+
+    try:
+        while not session.selection_event.wait(0.1):
+            check_cancelled(session.cancel_event)
+        check_cancelled(session.cancel_event)
+        return session.selection, time.perf_counter() - started
+    finally:
+        with _STATE_LOCK:
+            session.awaiting_selection = False
+            session.selection_request = None
+            session.selection_event.clear()
+
+
+def _run_worker(session, callback, args):
+    global _ACTIVE_SESSION
+    set_run_id(session.run_id)
+    try:
+        output_path = callback(
+            args,
+            ipc_mode=True,
+            cancel_event=session.cancel_event,
+        )
+        check_cancelled(session.cancel_event)
+        with _STATE_LOCK:
+            if _ACTIVE_SESSION is session:
+                _ACTIVE_SESSION = None
+            ipc.send({
+                "type": "run_completed",
+                "run_id": session.run_id,
+                "output_model_path": str(output_path),
+            })
+    except PipelineCancelled:
+        ipc.send({"type": "run_cancelled", "run_id": session.run_id})
+    except Exception as error:
+        ipc.send({
+            "type": "run_failed",
+            "run_id": session.run_id,
+            "message": str(error),
+        })
+        log_error(f"run {session.run_id} failed: {error}")
+    finally:
+        set_run_id(None)
+        with _STATE_LOCK:
+            if _ACTIVE_SESSION is session:
+                _ACTIVE_SESSION = None
+
+
+def _start_run(cmd, callback):
+    global _ACTIVE_SESSION
+    run_id = cmd.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        _diagnostic("start_run requires a non-empty string run_id")
+        return
+    if not isinstance(cmd.get("name"), str) or not cmd["name"].strip():
+        _diagnostic("start_run requires a non-empty name")
+        return
+    args = dict(cmd)
+    args.pop("action", None)
+
+    with _STATE_LOCK:
+        if _ACTIVE_SESSION is not None or _ACTIVE_EXPORT is not None:
+            _diagnostic("start_run rejected: a backend job is already active")
+            return
+        session = _Session(run_id)
+        _ACTIVE_SESSION = session
+        session.worker = threading.Thread(
+            target=_run_worker,
+            args=(session, callback, args),
+            name=f"pipeline-{run_id}",
+            daemon=False,
+        )
+        session.worker.start()
+
+
+def _export_failed(cmd, message):
+    ipc.send({
+        "type": "export_failed",
+        "request_id": cmd.get("request_id"),
+        "run_id": cmd.get("run_id"),
+        "message": message,
+    })
+
+
+def _export_worker(session, cmd, export_callback):
+    global _ACTIVE_EXPORT
+    result = {
+        "request_id": cmd["request_id"],
+        "run_id": cmd["run_id"],
+    }
+    try:
+        ipc.send({"type": "export_started", **result})
+        output = export_callback(cmd, session.cancel_event)
+        result.update(
+            type="export_completed",
+            output_path=output["path"],
+            preview_model_path=output["preview_path"],
+        )
+    except PipelineCancelled:
+        result.update(type="export_failed", message="Export cancelled during backend shutdown")
+    except Exception as error:
+        result.update(type="export_failed", message=str(error))
+    finally:
+        # Release the job slot before the terminal event becomes visible to the editor.
+        with _STATE_LOCK:
+            if _ACTIVE_EXPORT is session:
+                _ACTIVE_EXPORT = None
+            ipc.send(result)
+
+
+def _start_export(cmd, export_callback):
+    global _ACTIVE_EXPORT
+    try:
+        validate_request(cmd)
+    except (ValueError, TypeError) as error:
+        _export_failed(cmd, str(error))
+        return
+    with _STATE_LOCK:
+        if _ACTIVE_SESSION is not None or _ACTIVE_EXPORT is not None:
+            _export_failed(cmd, "A backend job is already active")
+            return
+        session = _Session(cmd["run_id"])
+        _ACTIVE_EXPORT = session
+        session.worker = threading.Thread(
+            target=_export_worker,
+            args=(session, dict(cmd), export_callback),
+            name=f"export-{cmd['request_id']}",
+            daemon=False,
+        )
+        try:
+            session.worker.start()
+        except Exception as error:
+            _ACTIVE_EXPORT = None
+            _export_failed(cmd, str(error))
+
+
+def _submit_selection(cmd):
+    def reject(message):
+        ipc.send({
+            "type": "selection_rejected",
+            "run_id": cmd.get("run_id"),
+            "selection_id": cmd.get("selection_id"),
+            "message": message,
+        })
+
+    with _STATE_LOCK:
+        session = _ACTIVE_SESSION
+        if session is None or cmd.get("run_id") != session.run_id:
+            reject("submit_selection does not match an active run")
+            return
+        selection_id = cmd.get("selection_id")
+        if (
+            not isinstance(selection_id, int)
+            or isinstance(selection_id, bool)
+            or selection_id <= 0
+        ):
+            reject("submit_selection requires a positive integer selection_id")
+            return
+        if (
+            not session.awaiting_selection
+            or session.selection_request is None
+            or selection_id != session.selection_id
+            or session.cancel_event.is_set()
+        ):
+            reject("submit_selection does not match a pending selection")
+            return
+        if "choice" not in cmd:
+            reject("submit_selection requires an explicit choice")
+            return
+        request = session.selection_request
+        try:
+            choice = validate_selection(
+                cmd["choice"], request["candidate_count"],
+                request["image_width"], request["image_height"],
+            )
+        except ValueError as error:
+            reject(str(error))
+            return
+        ipc.send({
+            "type": "selection_accepted",
+            "run_id": session.run_id,
+            "selection_id": selection_id,
+        })
+        session.selection = choice
+        session.awaiting_selection = False
+        session.selection_event.set()
+
+
+
+def _cancel_run(cmd):
+    session = _active_session()
+    if session is None:
+        _diagnostic("cancel_run received without an active run")
+        return
+    if cmd.get("run_id") != session.run_id:
+        _diagnostic("cancel_run run_id does not match the active run")
+        return
+    session.cancel_event.set()
+    session.selection_event.set()
+
+
+def listen_for_ipc_commands(run_pipeline_callback, *, export_callback=export_asset, supported_export_formats=None):
+    """Process editor commands while at most one reconstruction or export runs."""
+    set_ipc_mode(True)
+    formats = export_formats() if supported_export_formats is None else list(supported_export_formats)
+    ipc.send({"type": "backend_ready", "export_formats": formats})
+
+    try:
+        for raw_line in sys.stdin:
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                cmd = json.loads(line)
+            except json.JSONDecodeError as error:
+                _diagnostic(f"malformed JSON: {error}")
+                continue
+            if not isinstance(cmd, dict) or not isinstance(cmd.get("action"), str):
+                _diagnostic("command must be an object with a string action")
+                continue
+
+            action = cmd["action"]
+            if action == "start_run":
+                _start_run(cmd, run_pipeline_callback)
+            elif action == "export_asset":
+                _start_export(cmd, export_callback)
+            elif action == "submit_selection":
+                _submit_selection(cmd)
+            elif action == "cancel_run":
+                _cancel_run(cmd)
+            else:
+                _diagnostic(f"unknown command action: {action}")
+    finally:
+        with _STATE_LOCK:
+            sessions = [job for job in (_ACTIVE_SESSION, _ACTIVE_EXPORT) if job is not None]
+            for session in sessions:
+                session.cancel_event.set()
+                session.selection_event.set()
+        for session in sessions:
+            if session.worker is not None:
+                session.worker.join()
