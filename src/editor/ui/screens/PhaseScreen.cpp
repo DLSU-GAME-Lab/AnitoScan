@@ -35,7 +35,9 @@ void PhaseScreen::Render(const PhaseDisplayData& data, std::vector<UIInput>& inp
             UIStyle::StatusBadge(data.statusText);
             ImGui::TableNextColumn();
             ImGui::Dummy(ImVec2(0.0f, 10.0f));
+            ImGui::BeginDisabled(data.exportState.busy);
             runControls_.Render(data.runId, data.statusText, inputs);
+            ImGui::EndDisabled();
             ImGui::EndTable();
         }
     }
@@ -43,7 +45,7 @@ void PhaseScreen::Render(const PhaseDisplayData& data, std::vector<UIInput>& inp
     ImGui::Spacing();
 
     if (ImGui::BeginChild("PhaseToolbar", ImVec2(0.0f, 60.0f), true, ImGuiWindowFlags_NoScrollbar)) {
-        ImGui::BeginDisabled(!data.navigation.canGoBack);
+        ImGui::BeginDisabled(data.exportState.busy || !data.navigation.canGoBack);
         if (UIStyle::Button("Back", UIStyle::ButtonKind::Secondary)) {
             inputs.push_back({UIClick::PreviousPhase, {}});
         }
@@ -52,9 +54,11 @@ void PhaseScreen::Render(const PhaseDisplayData& data, std::vector<UIInput>& inp
         if (data.navigation.viewingLatest) {
             ImGui::SameLine();
             if (data.navigation.canStopFollowingLive) {
+                ImGui::BeginDisabled(data.exportState.busy);
                 if (UIStyle::Button("Stop Following Live", UIStyle::ButtonKind::Ghost)) {
                     inputs.push_back({UIClick::StopFollowingLive, {}});
                 }
+                ImGui::EndDisabled();
             } else {
                 ImGui::BeginDisabled();
                 UIStyle::Button("Live", UIStyle::ButtonKind::Ghost);
@@ -119,6 +123,9 @@ void PhaseScreen::Render(const PhaseDisplayData& data, std::vector<UIInput>& inp
             ImGui::EndGroup();
             break;
         }
+        case PhaseDisplayKind::Export:
+            exportContent_.Render(data, inputs);
+            break;
         case PhaseDisplayKind::MaskSelection:
             maskingContent_.Render(data, inputs);
             break;

@@ -2,6 +2,8 @@
 
 
 #include <filesystem>
+#include <map>
+#include <string>
 #include <vector>
 
 struct StoredRun {
@@ -19,6 +21,7 @@ struct StoredRun {
     std::string yoloModelSize;
     std::vector<std::string> outputModelPaths;
     std::string outputModelPath;
+    std::map<std::string, std::string> outputPreviewPaths;
 };
 
 class RunStore {

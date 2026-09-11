@@ -4,6 +4,7 @@ import zlib
 from pathlib import Path
 
 from cancellation import check_cancelled
+from dummy_assets import CUBE_OBJ, export_dummy_asset
 from ipc_handlers import await_ipc_selection, listen_for_ipc_commands
 from log import log_info, log_progress, set_phase
 from manifest import load_manifest, update_manifest
@@ -11,23 +12,6 @@ from pipeline import run_pipeline_with_args
 
 DUMMY_PHASE_DURATION_SECONDS = 10.0
 DUMMY_TIME_SCALE = 0.5
-
-CUBE_OBJ = """# Dummy backend cube
-v -0.5 -0.5 -0.5
-v 0.5 -0.5 -0.5
-v 0.5 0.5 -0.5
-v -0.5 0.5 -0.5
-v -0.5 -0.5 0.5
-v 0.5 -0.5 0.5
-v 0.5 0.5 0.5
-v -0.5 0.5 0.5
-f 1 2 3 4
-f 5 8 7 6
-f 1 5 6 2
-f 2 6 7 3
-f 3 7 8 4
-f 5 1 4 8
-"""
 
 
 def write_preview(path: Path) -> None:
@@ -304,4 +288,8 @@ def run_dummy_pipeline(args: dict, ipc_mode: bool = False, cancel_event=None):
 
 
 if __name__ == "__main__":
-    listen_for_ipc_commands(run_dummy_pipeline)
+    listen_for_ipc_commands(
+        run_dummy_pipeline,
+        export_callback=export_dummy_asset,
+        supported_export_formats=("obj", "glb"),
+    )

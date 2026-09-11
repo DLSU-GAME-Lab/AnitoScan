@@ -7,6 +7,7 @@ enum class UIClick {
     CreateRun,
     SelectRun,
     SelectOutputModel,
+    ExportAsset,
     StartRun,
     CancelRun,
     DeleteRun,

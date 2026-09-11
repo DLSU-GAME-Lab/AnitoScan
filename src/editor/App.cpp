@@ -55,6 +55,7 @@ RunState ToRunState(const StoredRun& run) {
     result.status = run.status;
     result.outputModelPaths = run.outputModelPaths;
     result.outputModelPath = run.outputModelPath;
+    result.outputPreviewPaths = run.outputPreviewPaths;
     result.config.inputSource = run.inputSource;
     result.config.mode = run.mode;
     result.config.captureMode = run.captureMode;
@@ -216,6 +217,7 @@ void App::Run() {
             else if (input.click == UIClick::DeleteRun) controller_->DeleteRun(input.value);
             else if (input.click == UIClick::SelectRun) controller_->SelectRun(input.value);
             else if (input.click == UIClick::SelectOutputModel && run) controller_->SelectOutputModel(run->id, input.value);
+            else if (input.click == UIClick::ExportAsset && run) controller_->ExportAsset(run->id, input.value);
             else if (input.click == UIClick::SubmitSelection && run) controller_->SubmitSelection(run->id, input.value);
             else if (input.click == UIClick::NewRun) controller_->ClearActiveRun();
             else if (input.click == UIClick::PreviousPhase) controller_->ViewPreviousPhase();
@@ -293,9 +295,15 @@ void App::SynchronizeScene() {
         if (displayedModelPath_) { scene_->ClearModel(); displayedModelPath_.reset(); }
         return;
     }
-    if (displayedModelPath_ != run->outputModelPath) {
-        scene_->LoadModel(run->outputModelPath);
-        displayedModelPath_ = run->outputModelPath;
+    const auto preview = run->outputPreviewPaths.find(run->outputModelPath);
+    std::error_code error;
+    if (preview == run->outputPreviewPaths.end() || !std::filesystem::is_regular_file(preview->second, error)) {
+        if (displayedModelPath_) { scene_->ClearModel(); displayedModelPath_.reset(); }
+        return;
+    }
+    if (displayedModelPath_ != preview->second) {
+        scene_->LoadModel(preview->second);
+        displayedModelPath_ = preview->second;
     }
 }
 

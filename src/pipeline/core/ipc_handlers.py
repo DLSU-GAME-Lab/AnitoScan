@@ -5,6 +5,7 @@ import time
 from typing import Optional, Tuple
 
 import ipc
+from asset_export import export_asset, export_formats, validate_request
 from cancellation import PipelineCancelled, check_cancelled
 from log import get_run_id, log_error, log_info, set_ipc_mode, set_run_id
 from mask_selection import SelectionChoice, validate_selection
@@ -12,6 +13,7 @@ from mask_selection import SelectionChoice, validate_selection
 
 _STATE_LOCK = threading.Lock()
 _ACTIVE_SESSION = None
+_ACTIVE_EXPORT = None
 
 
 class _Session:
@@ -93,11 +95,14 @@ def _run_worker(session, callback, args):
             cancel_event=session.cancel_event,
         )
         check_cancelled(session.cancel_event)
-        ipc.send({
-            "type": "run_completed",
-            "run_id": session.run_id,
-            "output_model_path": str(output_path),
-        })
+        with _STATE_LOCK:
+            if _ACTIVE_SESSION is session:
+                _ACTIVE_SESSION = None
+            ipc.send({
+                "type": "run_completed",
+                "run_id": session.run_id,
+                "output_model_path": str(output_path),
+            })
     except PipelineCancelled:
         ipc.send({"type": "run_cancelled", "run_id": session.run_id})
     except Exception as error:
@@ -127,8 +132,8 @@ def _start_run(cmd, callback):
     args.pop("action", None)
 
     with _STATE_LOCK:
-        if _ACTIVE_SESSION is not None:
-            _diagnostic("start_run rejected: a run is already active")
+        if _ACTIVE_SESSION is not None or _ACTIVE_EXPORT is not None:
+            _diagnostic("start_run rejected: a backend job is already active")
             return
         session = _Session(run_id)
         _ACTIVE_SESSION = session
@@ -139,6 +144,67 @@ def _start_run(cmd, callback):
             daemon=False,
         )
         session.worker.start()
+
+
+def _export_failed(cmd, message):
+    ipc.send({
+        "type": "export_failed",
+        "request_id": cmd.get("request_id"),
+        "run_id": cmd.get("run_id"),
+        "message": message,
+    })
+
+
+def _export_worker(session, cmd, export_callback):
+    global _ACTIVE_EXPORT
+    result = {
+        "request_id": cmd["request_id"],
+        "run_id": cmd["run_id"],
+    }
+    try:
+        ipc.send({"type": "export_started", **result})
+        output = export_callback(cmd, session.cancel_event)
+        result.update(
+            type="export_completed",
+            output_path=output["path"],
+            preview_model_path=output["preview_path"],
+        )
+    except PipelineCancelled:
+        result.update(type="export_failed", message="Export cancelled during backend shutdown")
+    except Exception as error:
+        result.update(type="export_failed", message=str(error))
+    finally:
+        # Release the job slot before the terminal event becomes visible to the editor.
+        with _STATE_LOCK:
+            if _ACTIVE_EXPORT is session:
+                _ACTIVE_EXPORT = None
+            ipc.send(result)
+
+
+def _start_export(cmd, export_callback):
+    global _ACTIVE_EXPORT
+    try:
+        validate_request(cmd)
+    except (ValueError, TypeError) as error:
+        _export_failed(cmd, str(error))
+        return
+    with _STATE_LOCK:
+        if _ACTIVE_SESSION is not None or _ACTIVE_EXPORT is not None:
+            _export_failed(cmd, "A backend job is already active")
+            return
+        session = _Session(cmd["run_id"])
+        _ACTIVE_EXPORT = session
+        session.worker = threading.Thread(
+            target=_export_worker,
+            args=(session, dict(cmd), export_callback),
+            name=f"export-{cmd['request_id']}",
+            daemon=False,
+        )
+        try:
+            session.worker.start()
+        except Exception as error:
+            _ACTIVE_EXPORT = None
+            _export_failed(cmd, str(error))
 
 
 def _submit_selection(cmd):
@@ -206,10 +272,11 @@ def _cancel_run(cmd):
     session.selection_event.set()
 
 
-def listen_for_ipc_commands(run_pipeline_callback):
-    """Process editor commands while at most one pipeline worker runs."""
+def listen_for_ipc_commands(run_pipeline_callback, *, export_callback=export_asset, supported_export_formats=None):
+    """Process editor commands while at most one reconstruction or export runs."""
     set_ipc_mode(True)
-    ipc.send({"type": "backend_ready"})
+    formats = export_formats() if supported_export_formats is None else list(supported_export_formats)
+    ipc.send({"type": "backend_ready", "export_formats": formats})
 
     try:
         for raw_line in sys.stdin:
@@ -228,6 +295,8 @@ def listen_for_ipc_commands(run_pipeline_callback):
             action = cmd["action"]
             if action == "start_run":
                 _start_run(cmd, run_pipeline_callback)
+            elif action == "export_asset":
+                _start_export(cmd, export_callback)
             elif action == "submit_selection":
                 _submit_selection(cmd)
             elif action == "cancel_run":
@@ -235,9 +304,11 @@ def listen_for_ipc_commands(run_pipeline_callback):
             else:
                 _diagnostic(f"unknown command action: {action}")
     finally:
-        session = _active_session()
-        if session is not None:
-            session.cancel_event.set()
-            session.selection_event.set()
+        with _STATE_LOCK:
+            sessions = [job for job in (_ACTIVE_SESSION, _ACTIVE_EXPORT) if job is not None]
+            for session in sessions:
+                session.cancel_event.set()
+                session.selection_event.set()
+        for session in sessions:
             if session.worker is not None:
                 session.worker.join()

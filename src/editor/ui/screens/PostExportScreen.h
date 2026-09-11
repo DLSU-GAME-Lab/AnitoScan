@@ -2,6 +2,7 @@
 
 #include "editor/ui/components/Viewport.h"
 
+
 #include <vector>
 
 struct PostExportData;
@@ -19,4 +20,5 @@ public:
 private:
     Viewport viewport_;
     bool recenterRequested_ = false;
+
 };

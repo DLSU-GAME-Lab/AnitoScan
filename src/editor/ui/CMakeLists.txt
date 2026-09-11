@@ -9,6 +9,7 @@ add_library(editor_ui STATIC
     components/RunControls.cpp
     components/RunSelector.cpp
     components/MaskingContent.cpp
+    components/ExportContent.cpp
 )
 
 target_include_directories(editor_ui PUBLIC

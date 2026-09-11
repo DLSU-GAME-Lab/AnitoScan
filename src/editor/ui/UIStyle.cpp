@@ -19,7 +19,7 @@ constexpr ImVec4 kGhostActive(0.14f, 0.17f, 0.21f, 1.0f);
 ImVec4 StatusColor(std::string_view status) {
     if (status == "running") return ImVec4(0.28f, 0.76f, 0.52f, 1.0f);
     if (status == "completed") return ImVec4(0.30f, 0.78f, 0.50f, 1.0f);
-    if (status == "pending" || status == "cancelling") return ImVec4(0.94f, 0.67f, 0.24f, 1.0f);
+    if (status == "pending" || status == "cancelling" || status == "awaiting_export") return ImVec4(0.94f, 0.67f, 0.24f, 1.0f);
     if (status == "failed") return ImVec4(0.94f, 0.36f, 0.38f, 1.0f);
     if (status == "cancelled") return ImVec4(0.76f, 0.40f, 0.42f, 1.0f);
     return ImVec4(0.62f, 0.66f, 0.72f, 1.0f);
@@ -119,6 +119,7 @@ bool Button(const char* label, ButtonKind kind, const ImVec2& size) {
 
 void StatusBadge(std::string_view status) {
     const ImVec4 color = StatusColor(status);
+    if (status == "awaiting_export") status = "Awaiting export";
     const ImVec2 textSize = ImGui::CalcTextSize(status.data(), status.data() + status.size());
     const ImVec2 padding(7.0f, 3.0f);
     const ImVec2 position = ImGui::GetCursorScreenPos();

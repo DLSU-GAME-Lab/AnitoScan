@@ -1,5 +1,6 @@
 #pragma once
 
+#include "editor/ui/components/ExportContent.h"
 #include "editor/ui/components/LogView.h"
 #include "editor/ui/components/MaskingContent.h"
 #include "editor/ui/components/RunControls.h"
@@ -19,4 +20,5 @@ private:
     LogView logView_;
     RunControls runControls_;
     MaskingContent maskingContent_;
+    ExportContent exportContent_;
 };

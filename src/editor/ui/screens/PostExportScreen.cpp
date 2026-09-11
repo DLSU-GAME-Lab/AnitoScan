@@ -5,19 +5,11 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <string>
 
-namespace {
-std::string ModelLabel(const std::string& path, const std::string& runName) {
-    const std::filesystem::path modelPath(path);
-    const std::string stem = modelPath.stem().string();
-    if (stem == runName + "_fast") return "Fast";
-    if (stem == runName + "_medium") return "Medium";
-    if (stem == runName + "_detailed") return "Detailed";
-    return modelPath.filename().string();
-}
-}
 
 void PostExportScreen::Render(const PostExportData& data, std::vector<UIInput>& inputs) {
     const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
@@ -60,21 +52,31 @@ void PostExportScreen::Render(const PostExportData& data, std::vector<UIInput>& 
         }
         ImGui::EndDisabled();
 
-        for (const std::string& modelPath : data.outputModelPaths) {
+        for (const auto& modelPath : data.outputModelPaths) {
             ImGui::SameLine();
-            const std::string label = ModelLabel(modelPath, data.runName);
-            const std::string buttonId = label + "##" + modelPath;
-            const UIStyle::ButtonKind kind = modelPath == data.selectedOutputModelPath
-                ? UIStyle::ButtonKind::Primary
-                : UIStyle::ButtonKind::Secondary;
-            if (UIStyle::Button(buttonId.c_str(), kind)) {
+            const std::string label = std::filesystem::path(modelPath).filename().string();
+            const auto kind = modelPath == data.selectedOutputModelPath ? UIStyle::ButtonKind::Primary : UIStyle::ButtonKind::Secondary;
+            if (UIStyle::Button((label + "##" + modelPath).c_str(), kind)) {
                 inputs.push_back({UIClick::SelectOutputModel, modelPath});
             }
         }
+        std::string extension = std::filesystem::path(data.selectedOutputModelPath).extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        ImGui::SameLine();
+        ImGui::TextDisabled("Format: %s", extension.empty() ? "Unknown" : extension.c_str() + 1);
     }
     ImGui::EndChild();
     ImGui::Spacing();
+
+    // Keep the preview usable even when the outer window must scroll on a small screen.
+    const float previewHeight = std::max(96.0f, ImGui::GetContentRegionAvail().y);
+    ImGui::BeginChild("PostExportPreview", ImVec2(0.0f, previewHeight), false,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    if (data.textureId == 0) {
+        ImGui::TextWrapped("Preview unavailable for this saved export.");
+    }
     viewport_.Render(data.textureId);
+    ImGui::EndChild();
     ImGui::End();
 }
 

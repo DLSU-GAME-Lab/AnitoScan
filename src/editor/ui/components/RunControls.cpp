@@ -17,7 +17,7 @@ void RunControls::Render(
         if (UIStyle::Button("Cancel", UIStyle::ButtonKind::Danger)) {
             inputs.push_back({UIClick::CancelRun, runId});
         }
-    } else if (statusText == "running") {
+    } else if (statusText == "running" || statusText == "awaiting_export") {
         if (UIStyle::Button("Cancel", UIStyle::ButtonKind::Danger)) {
             inputs.push_back({UIClick::CancelRun, runId});
         }

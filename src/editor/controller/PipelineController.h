@@ -32,6 +32,9 @@ public:
     void SubmitSelection(const std::string& runId, const std::string& selection);
     void SelectRun(const std::string& runId);
     void SelectOutputModel(const std::string& runId, const std::string& path);
+    void ExportAsset(const std::string& runId, const std::string& settings);
+
+    bool CanExportAsset() const;
     void DeleteRun(const std::string& runId);
     void ClearActiveRun();
     void ViewPreviousPhase();
@@ -71,4 +74,7 @@ private:
     std::vector<PersistenceRequest> persistenceRequests_;
     unsigned long long nextRunNumber_ = 1;
     bool backendAvailable_ = false;
+    ExportState exportState_;
+    std::vector<std::string> exportFormats_;
+    unsigned long long nextExportNumber_ = 1;
 };

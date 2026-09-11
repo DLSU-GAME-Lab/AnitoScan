@@ -59,6 +59,11 @@ std::string SerializeMessage(std::string_view type, std::string_view value) {
             // Let the backend reject this explicitly so the controller can restore the prompt.
             json["choice"] = {{"invalid", true}};
         }
+    } else if (type == "export_asset" && values.size() == 6) {
+        json = {{"action", "export_asset"}, {"run_id", values[0]}, {"request_id", values[1]},
+            {"source_model_path", values[2]}, {"format", values[3]},
+            {"destination_directory", values[4]}, {"asset_name", values[5]},
+            {"create_destination_directory", true}};
     } else if (type == "cancel_run") {
         json = {{"action", "cancel_run"}, {"run_id", value}};
     } else {
@@ -71,8 +76,22 @@ std::optional<ProtocolMessage> ParseMessage(std::string_view message) {
     try {
         const auto json = nlohmann::json::parse(message);
         const std::string type = json.at("type").get<std::string>();
-        if (type == "backend_ready") return ProtocolMessage{type, ""};
+        if (type == "backend_ready") {
+            std::string formats;
+            for (const auto& format : json.value("export_formats", std::vector<std::string>{})) {
+                if (format != "obj" && format != "glb") continue;
+                if (!formats.empty()) formats += "\n";
+                formats += format;
+            }
+            return ProtocolMessage{type, formats};
+        }
         const std::string runId = json.value("run_id", "");
+        if (type == "export_started" || type == "export_completed" || type == "export_failed") {
+            std::string value = runId + "\n" + json.at("request_id").get<std::string>();
+            if (type == "export_completed") value += "\n" + json.at("output_path").get<std::string>() + "\n" + json.at("preview_model_path").get<std::string>();
+            if (type == "export_failed") value += "\n" + json.at("message").get<std::string>();
+            return ProtocolMessage{type, value};
+        }
         if (type == "log") return ProtocolMessage{type, runId + "\n" + json.at("text").get<std::string>()};
         if (type == "workspace_ready") return ProtocolMessage{type, runId + "\n" + json.at("workspace_path").get<std::string>()};
         if (type == "phase_started") return ProtocolMessage{type, runId + "\n" + std::to_string(json.at("phase").get<int>())};

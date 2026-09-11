@@ -55,6 +55,7 @@ CreateRunResult PipelineController::CreateRun(std::string name, RunConfig config
     run.config = std::move(config);
     run.status = "pending";
     activeRun_ = std::move(run);
+    exportState_ = {};
     ResetPhaseView();
     return CreateRunResult::Created;
 }
@@ -68,6 +69,8 @@ void PipelineController::RestoreRuns(std::vector<RunSummary> summaries) {
 
 
 void PipelineController::LoadRun(RunState run) {
+    if (exportState_.busy) return;
+    exportState_ = {};
     activeRun_ = std::move(run);
     ResetPhaseView();
 }
@@ -75,6 +78,11 @@ void PipelineController::LoadRun(RunState run) {
 void PipelineController::HandleBackendInput(const BackendInput& input) {
     if (input.type == "backend_disconnected") {
         backendAvailable_ = false;
+        exportFormats_.clear();
+        if (exportState_.busy) {
+            exportState_.busy = false;
+            exportState_.error = "Backend disconnected during export. Check the destination before retrying.";
+        }
         if (activeRun_ && (activeRun_->status == "running" || activeRun_->status == "cancelling")) {
             if (!currentPhaseData_) {
                 currentPhaseData_ = PhaseData{};
@@ -88,6 +96,37 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
 
     if (input.type == "backend_ready") {
         backendAvailable_ = true;
+        exportFormats_.clear();
+        for (const auto& format : Split(input.value)) {
+            if (format == "obj" || format == "glb") exportFormats_.push_back(format);
+        }
+        return;
+    }
+    if (input.type == "export_started" || input.type == "export_completed" || input.type == "export_failed") {
+        const auto values = Split(input.value);
+        if (values.size() < 2 || !exportState_.busy || values[0] != exportState_.runId ||
+            values[1] != exportState_.requestId) return;
+        if (input.type == "export_completed" && values.size() == 4 && activeRun_ &&
+            activeRun_->id == values[0] && activeRun_->status == "awaiting_export") {
+            exportState_.busy = false;
+            exportState_.outputPath = values[2];
+            activeRun_->outputModelPaths = {values[2]};
+            activeRun_->outputModelPath = values[2];
+            activeRun_->outputPreviewPaths = {{values[2], values[3]}};
+            if (currentPhaseData_) {
+                currentPhaseData_->progress = 1.0f;
+                currentPhaseData_->progressText = "Export complete";
+            }
+            CommitLivePhase();
+            currentPhaseData_.reset();
+            activeRun_->status = "completed";
+            viewingLatest_ = true;
+            std::erase_if(runSummaries_, [&](const RunSummary& summary) { return summary.id == activeRun_->id; });
+            runSummaries_.push_back({activeRun_->id, activeRun_->name, activeRun_->status});
+        } else if (input.type == "export_failed" && values.size() >= 3) {
+            exportState_.busy = false;
+            exportState_.error = input.value.substr(values[0].size() + values[1].size() + 2);
+        }
         return;
     }
     if (!activeRun_) {
@@ -144,13 +183,21 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
         }
         return;
     }
-    if (input.type == "run_completed" && values.size() >= 2 && values[0] == activeRun_->id) {
-        CommitLivePhase();
-        currentPhaseData_.reset();
-        activeRun_->status = "completed";
-        activeRun_->outputModelPaths = {values[1]};
+    if (input.type == "run_completed" && values.size() >= 2 && values[0] == activeRun_->id &&
+        (activeRun_->status == "running" || activeRun_->status == "cancelling")) {
+        if (activeRun_->status == "cancelling") {
+            activeRun_->status = "cancelled";
+            runSummaries_.push_back({activeRun_->id, activeRun_->name, activeRun_->status});
+            return;
+        }
+        // Preparation finished; user-directed export is still part of the live fifth phase.
+        BeginPhaseIfNeeded("5");
+        currentPhaseData_->progressText = "Choose OBJ or GLB and export to finish this run.";
+        activeRun_->status = "awaiting_export";
+        activeRun_->outputModelPaths.clear();
+        activeRun_->outputPreviewPaths.clear();
         activeRun_->outputModelPath = values[1];
-        runSummaries_.push_back({activeRun_->id, activeRun_->name, activeRun_->status});
+        exportState_ = {};
         return;
     }
     if ((input.type == "run_failed" || input.type == "run_cancelled") &&
@@ -180,7 +227,13 @@ void PipelineController::StartRun(const std::string& runId) {
 }
 
 void PipelineController::CancelRun(const std::string& runId) {
-    if (!activeRun_ || activeRun_->id != runId) {
+    if (exportState_.busy || !activeRun_ || activeRun_->id != runId) {
+        return;
+    }
+    if (activeRun_->status == "awaiting_export") {
+        activeRun_->status = "cancelled";
+        if (currentPhaseData_) currentPhaseData_->progressText = "Export cancelled; run is not complete.";
+        runSummaries_.push_back({activeRun_->id, activeRun_->name, activeRun_->status});
         return;
     }
     if (activeRun_->status == "pending") {
@@ -205,6 +258,7 @@ void PipelineController::SubmitSelection(const std::string& runId, const std::st
 }
 
 void PipelineController::SelectRun(const std::string& runId) {
+    if (exportState_.busy) return;
     const auto summary = std::find_if(runSummaries_.begin(), runSummaries_.end(), [&runId](const RunSummary& item) {
         return item.id == runId && IsCompleted(item);
     });
@@ -215,15 +269,44 @@ void PipelineController::SelectRun(const std::string& runId) {
 }
 
 void PipelineController::SelectOutputModel(const std::string& runId, const std::string& path) {
-    if (!activeRun_ || activeRun_->id != runId ||
+    if (exportState_.busy || !activeRun_ || activeRun_->id != runId ||
         std::find(activeRun_->outputModelPaths.begin(), activeRun_->outputModelPaths.end(), path) ==
             activeRun_->outputModelPaths.end()) {
         return;
     }
     activeRun_->outputModelPath = path;
+    exportState_ = {};
+}
+
+bool PipelineController::CanExportAsset() const {
+    return backendAvailable_ && !exportState_.busy && activeRun_ && viewingLatest_ &&
+        activeRun_->status == "awaiting_export" && currentPhaseData_ && currentPhaseData_->phaseName == "5" &&
+        !activeRun_->outputModelPath.empty() && !exportFormats_.empty();
+}
+
+
+void PipelineController::ExportAsset(const std::string& runId, const std::string& settings) {
+    if (!CanExportAsset() || activeRun_->id != runId) return;
+    exportState_ = {};
+    const auto values = Split(settings);
+    if (values.size() != 3 || values[1].empty() || values[2].empty() ||
+        std::find(exportFormats_.begin(), exportFormats_.end(), values[0]) == exportFormats_.end()) {
+        exportState_.error = "Choose an available format, destination folder, and asset name.";
+        return;
+    }
+    const auto& source = activeRun_->outputModelPath;
+    if (source.find_first_of("\r\n") != std::string::npos || settings.find('\r') != std::string::npos) {
+        exportState_.error = "Export paths and names cannot contain line breaks.";
+        return;
+    }
+    exportState_.busy = true;
+    exportState_.runId = runId;
+    exportState_.requestId = "export-" + std::to_string(nextExportNumber_++);
+    QueueMessage("export_asset", runId + "\n" + exportState_.requestId + "\n" + source + "\n" + settings);
 }
 
 void PipelineController::DeleteRun(const std::string& runId) {
+    if (exportState_.busy) return;
     QueuePersistenceRequest("delete", runId);
     std::erase_if(runSummaries_, [&runId](const RunSummary& item) { return item.id == runId; });
     if (activeRun_ && activeRun_->id == runId) {
@@ -232,6 +315,8 @@ void PipelineController::DeleteRun(const std::string& runId) {
 }
 
 void PipelineController::ClearActiveRun() {
+    if (exportState_.busy) return;
+    exportState_ = {};
     activeRun_.reset();
     ResetPhaseView();
 }
@@ -252,7 +337,7 @@ void PipelineController::PrepareForShutdown() {
 }
 
 void PipelineController::ViewPreviousPhase() {
-    if (!CanViewPreviousPhase()) {
+    if (exportState_.busy || !CanViewPreviousPhase()) {
         return;
     }
     if (viewingLatest_) {
@@ -281,7 +366,7 @@ void PipelineController::FollowLivePhase() {
 }
 
 void PipelineController::StopFollowingLivePhase() {
-    if (!viewingLatest_ || !currentPhaseData_) {
+    if (exportState_.busy || !viewingLatest_ || !currentPhaseData_) {
         return;
     }
     viewingLatest_ = false;
@@ -301,6 +386,7 @@ PhaseDisplayData PipelineController::GetPhaseDisplayData() const {
     display.runName = activeRun_->name;
     display.statusText = activeRun_->status;
     display.navigation = GetPhaseNavigationData();
+    display.exportState = exportState_;
 
     const PhaseData* phase = GetViewedPhase();
     if (!phase) {
@@ -330,6 +416,12 @@ PhaseDisplayData PipelineController::GetPhaseDisplayData() const {
         display.kind = PhaseDisplayKind::Processing;
     }
     const bool viewingLivePhase = currentPhaseData_ && phase == &*currentPhaseData_;
+    if (viewingLatest_ && viewingLivePhase && phase->phaseName == "5" && activeRun_->status == "awaiting_export") {
+        display.kind = PhaseDisplayKind::Export;
+        display.selectedOutputModelPath = activeRun_->outputModelPath;
+        display.exportFormats = exportFormats_;
+        display.exportAvailable = CanExportAsset();
+    }
     display.maskSelectionEnabled = viewingLivePhase && activeRun_->status == "running" &&
         display.kind == PhaseDisplayKind::MaskSelection && phase->selectionId > 0 && !phase->selectionSubmitting;
     return display;

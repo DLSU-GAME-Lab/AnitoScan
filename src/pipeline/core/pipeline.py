@@ -14,7 +14,7 @@ from cancellation import PipelineCancelled, check_cancelled
 from config import build_phase_cmd, parse_cli_args, resolve_geometry_presets
 from ipc_handlers import await_ipc_selection, listen_for_ipc_commands
 from log import log_done, log_error, log_event, log_info, set_ipc_mode
-from manifest import load_manifest
+from manifest import _save_manifest, load_manifest
 from workspace import init_workspace
 
 # DIRECTORY RESOLUTION
@@ -325,6 +325,13 @@ def run_pipeline_with_args(
         args,
         validate_input=validate_input,
     )
+    if ipc_mode:
+        _, manifest = load_manifest(manifest_path)
+        manifest["export_pending"] = True
+        manifest["exports"] = []
+        if args.get("run_id") is not None:
+            manifest["run_id"] = args["run_id"]
+        _save_manifest(manifest_path, manifest)
     name = args.get("name") or "unnamed_run"
     log_event("workspace_ready", {"workspace_path": str(base_dir)})
 
@@ -348,7 +355,11 @@ def run_pipeline_with_args(
         if not final_obj_path.is_file():
             raise FileNotFoundError(f"Final OBJ was not created: {final_obj_path}")
 
-        if not ipc_mode:
+        if ipc_mode:
+            manifest["export_pending"] = True
+            manifest["exports"] = []
+            _save_manifest(manifest_path, manifest)
+        else:
             log_done(name, str(final_obj_path))
         return final_obj_path
     except PipelineCancelled:

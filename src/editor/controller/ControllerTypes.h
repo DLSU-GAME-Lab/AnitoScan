@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,15 @@ struct RunState {
     std::string status;
     std::vector<std::string> outputModelPaths;
     std::string outputModelPath;
+    std::map<std::string, std::string> outputPreviewPaths;
+};
+
+struct ExportState {
+    bool busy = false;
+    std::string requestId;
+    std::string runId;
+    std::string outputPath;
+    std::string error;
 };
 
 struct RunSummary {
@@ -51,6 +61,7 @@ enum class PhaseDisplayKind {
     Processing,
     Progress,
     MaskSelection,
+    Export,
     Error
 };
 
@@ -81,6 +92,10 @@ struct PhaseDisplayData {
     std::vector<std::string> logs;
     PhaseNavigationData navigation;
     bool maskSelectionEnabled = false;
+    std::string selectedOutputModelPath;
+    std::vector<std::string> exportFormats;
+    bool exportAvailable = false;
+    ExportState exportState;
 };
 
 struct BackendInput {

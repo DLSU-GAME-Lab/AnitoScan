@@ -114,6 +114,24 @@ Boxes are sent as `[x1, y1, x2, y2]` in original-image pixels, with the origin a
 
 The editor and backend must use the same selection protocol: requests include source dimensions and a selection ID, and responses echo the run/selection IDs with an integer candidate, `null` for Skip, or `{"bbox": [x1, y1, x2, y2]}`. Rejected selections leave the prompt available for retry. The dummy backend exercises selection delivery without running segmentation; use `--backend pipeline` to validate actual masks. The standalone OpenCV CLI still supports candidate/Skip input, not mouse-drawn boxes.
 
+### Exporting a prepared model
+
+During a new run, **Phase 5** prepares the mesh and then waits at the **Export asset** panel. Choose OBJ or GLB, enter an absolute destination folder and an asset name, then click **Export**. OBJ is selected by default, but nothing is delivered until you explicitly click Export. The run opens the post-export viewer only after export succeeds; failures stay in Phase 5 for retry. Cancelling before export leaves the run incomplete.
+
+The post-export screen and reopened completed runs are viewer-only: they show the selected output's **OBJ/GLB format**, with no export controls. Existing model-variant buttons select already saved outputs, not a new export format. Phase history never exposes the export panel.
+
+- **OBJ is the default.** The exporter copies the selected OBJ together with its referenced MTL files and textures, preserving their internal filenames and relative references.
+- **GLB** converts the prepared OBJ into a single `.glb` with embedded textures using `trimesh`. The export uses non-metallic, fully rough defaults for converted OBJ materials; it does not reconstruct additional PBR maps.
+- **FBX is planned to be implemented.**
+
+Each export creates a new `destination/asset_name/` folder. Missing destination parents are created. Existing asset folders are never overwritten: choose another name or destination to retry. Files are staged before delivery, and failed exports clean up their temporary output. An export error does not remove the prepared assets or advance the run to completion.
+
+The viewer loads exported OBJs directly. For GLB, the backend reads the exported GLB and builds a cached OBJ/MTL/texture preview in the run workspace for the existing renderer; the format label and saved output path still identify the actual GLB. Exporting does not rerun reconstruction, UV generation, or texture baking.
+
+Successful exports are recorded in the run manifest with their actual format, output path, and preview path, so run history can restore OBJ and GLB even when delivered outside the project. New runs with only a prepared internal OBJ are not treated as completed exports. Legacy directory discovery recognizes both extensions; a legacy GLB without a recorded preview cache is listed but displays “Preview unavailable” rather than loading it as OBJ. Geometry is not automatically centered, reoriented, or calibrated to a real-world scale; validate orientation, units, UVs, normals, and appearance in the engine importer.
+
+Export formats are advertised by the backend. The lightweight dummy launcher uses `uv run --no-project` and supports both OBJ and GLB without third-party dependencies. Its GLB exporter writes a valid, untextured cube fixture and matching cached preview; it exercises the same validation, staging, error handling, completion, and history recording as the real exporter. It does not convert real scans or validate textured GLB conversion. The real pipeline backend still requires `trimesh` for GLB export. Restart the editor after changing backend capabilities so the format list is refreshed. Phase 5 shows export progress or a recoverable error. Cancellation and phase navigation are disabled while an export is running. Successful export automatically advances to the viewer.
+
 ## 🛠 Maintenance & Development
 *   **Adding Dependencies**: `uv add <package_name>`
 *   **Updating Environment**: If the `uv.lock` or `pyproject.toml` changes (e.g., after a `git pull`), simply run `uv sync` to align your local environment.

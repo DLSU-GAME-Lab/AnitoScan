@@ -1,6 +1,7 @@
 #include "editor/persistence/RunStore.h"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <vector>
@@ -30,6 +31,48 @@ int ModelQualityRank(const std::string& path) {
     return 3;
 }
 
+std::string ModelExtension(const std::filesystem::path& path) {
+    std::string extension = path.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return extension;
+}
+
+void ReadRecordedOutputs(const Json& manifest, StoredRun& run) {
+    const auto exports = manifest.find("exports");
+    if (exports == manifest.end() || !exports->is_array()) return;
+
+    // Export records are appended chronologically; restore the latest surviving output.
+    for (auto it = exports->rbegin(); it != exports->rend(); ++it) {
+        if (!it->is_object()) continue;
+        const auto path = it->find("path");
+        if (path == it->end() || !path->is_string()) continue;
+        const std::filesystem::path outputPath = path->get<std::string>();
+        const std::string extension = ModelExtension(outputPath);
+        std::error_code error;
+        if (!outputPath.is_absolute() || (extension != ".obj" && extension != ".glb") ||
+            !std::filesystem::is_regular_file(outputPath, error)) continue;
+
+        const std::string output = outputPath.string();
+        if (std::find(run.outputModelPaths.begin(), run.outputModelPaths.end(), output) !=
+            run.outputModelPaths.end()) continue;
+        run.outputModelPaths.push_back(output);
+        if (extension == ".obj") {
+            run.outputPreviewPaths[output] = output;
+            continue;
+        }
+
+        const auto preview = it->find("preview_path");
+        if (preview == it->end() || !preview->is_string()) continue;
+        const std::filesystem::path previewPath = preview->get<std::string>();
+        if (previewPath.is_absolute() && ModelExtension(previewPath) == ".obj" &&
+            std::filesystem::is_regular_file(previewPath, error)) {
+            run.outputPreviewPaths[output] = previewPath.string();
+        }
+    }
+}
+
 void AddOutputModels(
     std::vector<std::string>& outputModels,
     const std::filesystem::path& outputDirectory
@@ -38,7 +81,8 @@ void AddOutputModels(
     if (!std::filesystem::is_directory(outputDirectory, error)) return;
 
     for (std::filesystem::directory_iterator it(outputDirectory, error), end; !error && it != end; it.increment(error)) {
-        if (it->is_regular_file(error) && it->path().extension() == ".obj") {
+        const std::string extension = ModelExtension(it->path());
+        if (it->is_regular_file(error) && (extension == ".obj" || extension == ".glb")) {
             std::error_code canonicalError;
             const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(it->path(), canonicalError);
             outputModels.push_back((canonicalError ? it->path().lexically_normal() : canonicalPath).string());
@@ -94,7 +138,17 @@ StoredRun ReadRun(
     run.driftLimit = settings.value("drift_limit", 200);
     run.yoloModelSize = settings.value("yoloe_model_size", "s");
 
-    run.outputModelPaths = FindOutputModels(manifest, run.name, localOutputDirectory);
+    if (manifest.contains("exports") || manifest.contains("export_pending")) {
+        // Prepared meshes are not final exports, even when export is still pending.
+        ReadRecordedOutputs(manifest, run);
+    } else {
+        run.outputModelPaths = FindOutputModels(manifest, run.name, localOutputDirectory);
+        for (const std::string& output : run.outputModelPaths) {
+            if (ModelExtension(output) == ".obj") {
+                run.outputPreviewPaths[output] = output;
+            }
+        }
+    }
     run.status = run.outputModelPaths.empty() ? "failed" : "completed";
     if (!run.outputModelPaths.empty()) {
         run.outputModelPath = run.outputModelPaths.front();
