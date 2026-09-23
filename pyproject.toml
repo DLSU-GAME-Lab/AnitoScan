@@ -49,5 +49,5 @@ diff-surfel-rasterization = { path = "vendor/2d-gaussian-splatting/submodules/di
 simple-knn = { path = "vendor/2d-gaussian-splatting/submodules/simple-knn" }
 
 [tool.uv.extra-build-dependencies]
-diff_surfel_rasterization = ["torch"]
-simple_knn = ["torch"]
+diff-surfel-rasterization = ["torch", "setuptools", "wheel"]
+simple-knn = ["torch", "setuptools", "wheel"]

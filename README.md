@@ -5,54 +5,132 @@ AnitoScan is a hybrid 3D reconstruction system designed for the DLSU GAME Lab.
 
 ## Prerequisites
 
-Instead of manually managing Python versions, this project uses `uv` for reproducible toolchain management.
+Before setting up the environment, ensure the following tools are installed on your system:
 
-1. Install uv:
+1. **Operating System**: Windows 10 / 11 (64-bit).
+2. **NVIDIA CUDA Toolkit**: CUDA 12.4 installed and present in your system `PATH`
+3. **Visual Studio**
+   - Installed with the **Desktop development with C++** workload.
+   - Requires the **x64 Native Tools Command Prompt for VS
+
+3. **`uv` Package Manager**
    - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
    - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-2. C++ Build Tools:
+4. C++ Build Tools:
    - CMake
 
 ## Getting Started
 
-### 1. Initialize the environment
+> [!IMPORTANT]  
+> Because local C++/CUDA extensions are built from source via PyTorch and `setuptools`, you **must** perform installation steps inside the **x64 Native Tools Command Prompt for VS** (not standard PowerShell or CMD) to prevent 32-bit compilation mismatches and SDK environment re-activation errors.
 
+
+### Step 1: Clone the Repository
+Clone the project along with its submodules (e.g., `vendor/2d-gaussian-splatting/submodules/simple-knn`):
+
+```cmd
+git clone --recursive [https://github.com/your-org/AnitoScan.git](https://github.com/your-org/AnitoScan.git)
+cd AnitoScan/ 
+```
+
+
+### Step 2: Open the 64-bit Developer Shell
+1. Press the Windows Key.
+
+2. Search for x64 Native Tools Command Prompt for VS.
+
+3. Open it and navigate to your project directory:
+
+```
+cd <project_directory>\AnitoScan
+```
+
+### Step 3: Configure Environment & Install Dependencies
 `uv` will automatically detect the `.python-version` file, download the correct Python interpreter, and sync all dependencies into a local virtual environment. This handles Python library packages as well as the 2D Gaussian Splatting (2DGS) backend engine requirements.
 
-```DOS
-uv sync
+Run the following set of commands to configure the build environment, pin 64-bit Python, clear stale build caches, and compile all dependencies:
 
+:: 1. Prevent PyTorch from attempting multiple MSVC environment activations
 ```
-
-### 2. Build C++ Extensions (CUROPE)
-
-Navigate to the `mast3r` vendor directory to compile the hardware-accelerated extensions.
-
-**If on Windows (x64 Visual Studio Command Prompt):**
-
-```DOS
-cd "vendor\mast3r\dust3r\croco\models\curope"
-
-set CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4
 set DISTUTILS_USE_SDK=1
-$env:PLATFORM = "x64"
-
-uv run python setup.py build_ext --inplace
-cd ../../../../../..
-
 ```
 
-**Update: pycolmap is now used in favor of MASt3R**
+:: 2. Force uv to download and use a 64-bit Python 3.12 target
+```
+uv python pin 3.12-x86_64
+```
+
+:: 3. Resolve dependencies and compile submodules (simple-knn, CUDA extensions)
+```
+uv sync
+```
+
+**Update: pycolmap is now used in favor of MASt3R** -->
 
 ## Running the tool
+### Through `UV`
+Once the initial C++/CUDA compilation via uv sync is complete, you can run the pipeline command above from standard PowerShell, CMD, or VS Code terminals.
+
 
 1. Place video input or image folders inside `data/input/`.
-2. Execute the pipeline:
+   If it does not exist, create the folder in the project root.
+2. Execute the pipeline. Values passed to `--input` are relative to `data/input/`:
 
 ```powershell
 uv run src\pipeline\core\pipeline.py --name <run_name> --input <file_or_dir> --minimum_frames <target_count>
-
 ```
+
+Example Command:
+```
+uv run src\pipeline\core\pipeline.py --name test_scan --input sample_video.mp4 --minimum_frames 100
+```
+
+## Running the editor
+### Through Visual Studio
+1. Open the project folder in Visual Studio.
+2. Build Tab -> `Build All`
+3. After building, the `.exe` file should be in `out > build > debug > bin`.
+
+The editor uses the dummy backend by default. Launch it from the project root with one of these commands:
+
+```powershell
+# Default (dummy backend)
+.\out\build\debug\bin\AnitoScan.exe
+
+# Explicit dummy backend
+.\out\build\debug\bin\AnitoScan.exe --backend dummy
+
+# Real pipeline backend using IPC
+.\out\build\debug\bin\AnitoScan.exe --backend pipeline
+```
+
+### Mask selection
+
+When masking needs input, choose a numbered candidate, click **Draw custom box** and drag around the subject, or click **Skip**. After drawing, click **Use custom box** to submit; drag again to replace the box, **Clear** to remove it, or **Exit drawing mode** to return to the normal preview. The hover magnifier is disabled while drawing.
+
+Manual selection is also available when no candidates are detected. Those frames now wait for a custom box or Skip instead of being skipped automatically. Skip keeps the existing behavior: a transparent output frame, followed by a fresh selection on the next readable frame.
+
+Boxes are sent as `[x1, y1, x2, y2]` in original-image pixels, with the origin at the top-left. The editor accounts for preview scaling and padding; no coordinate conversion is required from the user. A custom box prompts SAM using the same 8% padding and subsequent tracking as an automatic candidate—it is not a rectangular final mask.
+
+The editor and backend must use the same selection protocol: requests include source dimensions and a selection ID, and responses echo the run/selection IDs with an integer candidate, `null` for Skip, or `{"bbox": [x1, y1, x2, y2]}`. Rejected selections leave the prompt available for retry. The dummy backend exercises selection delivery without running segmentation; use `--backend pipeline` to validate actual masks. The standalone OpenCV CLI still supports candidate/Skip input, not mouse-drawn boxes.
+
+### Exporting a prepared model
+
+During a new run, **Phase 5** prepares the mesh and then waits at the **Export asset** panel. Choose OBJ or GLB, enter an absolute destination folder and an asset name, then click **Export**. OBJ is selected by default, but nothing is delivered until you explicitly click Export. The run opens the post-export viewer only after export succeeds; failures stay in Phase 5 for retry. Cancelling before export leaves the run incomplete.
+
+The post-export screen and reopened completed runs are viewer-only: they show the selected output's **OBJ/GLB format**, with no export controls. Existing model-variant buttons select already saved outputs, not a new export format. Phase history never exposes the export panel.
+
+- **OBJ is the default.** The exporter copies the selected OBJ together with its referenced MTL files and textures, preserving their internal filenames and relative references.
+- **GLB** converts the prepared OBJ into a single `.glb` with embedded textures using `trimesh`. The export uses non-metallic, fully rough defaults for converted OBJ materials; it does not reconstruct additional PBR maps.
+- **FBX is planned to be implemented.**
+
+Each export creates a new `destination/asset_name/` folder. Missing destination parents are created. Existing asset folders are never overwritten: choose another name or destination to retry. Files are staged before delivery, and failed exports clean up their temporary output. An export error does not remove the prepared assets or advance the run to completion.
+
+The viewer loads exported OBJs directly. For GLB, the backend reads the exported GLB and builds a cached OBJ/MTL/texture preview in the run workspace for the existing renderer; the format label and saved output path still identify the actual GLB. Exporting does not rerun reconstruction, UV generation, or texture baking.
+
+Successful exports are recorded in the run manifest with their actual format, output path, and preview path, so run history can restore OBJ and GLB even when delivered outside the project. New runs with only a prepared internal OBJ are not treated as completed exports. Legacy directory discovery recognizes both extensions; a legacy GLB without a recorded preview cache is listed but displays “Preview unavailable” rather than loading it as OBJ. Geometry is not automatically centered, reoriented, or calibrated to a real-world scale; validate orientation, units, UVs, normals, and appearance in the engine importer.
+
+Export formats are advertised by the backend. The lightweight dummy launcher uses `uv run --no-project` and supports both OBJ and GLB without third-party dependencies. Its GLB exporter writes a valid, untextured cube fixture and matching cached preview; it exercises the same validation, staging, error handling, completion, and history recording as the real exporter. It does not convert real scans or validate textured GLB conversion. The real pipeline backend still requires `trimesh` for GLB export. Restart the editor after changing backend capabilities so the format list is refreshed. Phase 5 shows export progress or a recoverable error. Cancellation and phase navigation are disabled while an export is running. Successful export automatically advances to the viewer.
 
 ## 🛠 Maintenance & Development
 *   **Adding Dependencies**: `uv add <package_name>`
