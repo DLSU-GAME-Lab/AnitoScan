@@ -160,9 +160,12 @@ def _export_worker(session, cmd, export_callback):
     result = {
         "request_id": cmd["request_id"],
         "run_id": cmd["run_id"],
+        "type": "export_failed",
+        "message": "Export worker terminated unexpectedly",
     }
+    set_run_id(session.run_id)
     try:
-        ipc.send({"type": "export_started", **result})
+        ipc.send({**result, "type": "export_started"})
         output = export_callback(cmd, session.cancel_event)
         result.update(
             type="export_completed",
@@ -172,8 +175,9 @@ def _export_worker(session, cmd, export_callback):
     except PipelineCancelled:
         result.update(type="export_failed", message="Export cancelled during backend shutdown")
     except Exception as error:
-        result.update(type="export_failed", message=str(error))
+        result.update(type="export_failed", message=str(error) or type(error).__name__)
     finally:
+        set_run_id(None)
         # Release the job slot before the terminal event becomes visible to the editor.
         with _STATE_LOCK:
             if _ACTIVE_EXPORT is session:

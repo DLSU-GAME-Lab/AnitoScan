@@ -3,6 +3,7 @@
 #include "editor/ui/components/RunSelector.h"
 
 #include <array>
+#include <string>
 #include <vector>
 
 struct RunSetupData;
@@ -14,7 +15,8 @@ public:
 
 private:
     std::array<char, 128> runName_{};
-    std::array<char, 256> inputSource_{};
+    std::string inputSource_;
+    std::array<char, 256> inputSourceFilter_{};
     int minimumFrames_ = 45;
     int pipelineMode_ = 0;
     int captureMode_ = 0;

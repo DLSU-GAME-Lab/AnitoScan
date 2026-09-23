@@ -92,7 +92,7 @@ void ExportContent::Render(const PhaseDisplayData& data, std::vector<UIInput>& i
         const std::string target = (destinationPath / assetName).string();
         ImGui::TextWrapped("Output folder: %s", target.c_str());
     }
-    if (!data.exportAvailable) {
+    if (!busy && !data.exportAvailable) {
         ImGui::TextWrapped("Export is unavailable for the current source.");
     }
     ImGui::BeginDisabled(busy || !data.exportAvailable || source.empty()
@@ -102,7 +102,9 @@ void ExportContent::Render(const PhaseDisplayData& data, std::vector<UIInput>& i
     }
     ImGui::EndDisabled();
     if (busy) {
-        ImGui::TextWrapped("Exporting... Navigation is disabled until export finishes.");
+        ImGui::TextWrapped("%s", data.exportState.statusText.empty()
+            ? "Exporting..." : data.exportState.statusText.c_str());
+        ImGui::TextWrapped("Large meshes may take time to convert. Navigation unlocks when export completes or fails.");
     }
     if (!data.exportState.error.empty()) {
         ImGui::TextWrapped("Export error: %s", data.exportState.error.c_str());

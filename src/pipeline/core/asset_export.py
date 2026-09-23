@@ -1,7 +1,8 @@
 """User-directed asset export, independent of reconstruction run state."""
 
 
-import importlib.util
+from contextlib import redirect_stdout
+from functools import lru_cache
 import json
 
 import os
@@ -9,10 +10,12 @@ from pathlib import Path, PureWindowsPath
 import re
 import shlex
 import shutil
+import sys
 
 import tempfile
 
 from cancellation import check_cancelled
+from log import log_info
 from manifest import _save_manifest, load_manifest
 
 
@@ -25,8 +28,19 @@ _TEXTURE_OPTIONS = {
 }
 
 
+@lru_cache(maxsize=1)
 def export_formats():
-    return ["obj", "glb"] if importlib.util.find_spec("trimesh") is not None else ["obj"]
+    # Initialize on the IPC listener thread before backend_ready, not on the first export worker.
+    try:
+        with redirect_stdout(sys.stderr):
+            import trimesh
+            from PIL import Image
+            from trimesh.exchange.obj import export_obj
+            from trimesh.visual.material import MultiMaterial, SimpleMaterial
+    except Exception as error:
+        print(f"[export] GLB dependencies unavailable: {error}", file=sys.stderr, flush=True)
+        return ["obj"]
+    return ["obj", "glb"]
 
 
 def validate_request(cmd):
@@ -77,7 +91,7 @@ def _source_for_run(cmd, cancel_event):
     return source, manifest_path
 
 
-def _records(path, cancel_event):
+def _records(path, cancel_event, *, kinds=None):
     with path.open(encoding="utf-8-sig") as stream:
         pending = ""
         for line in stream:
@@ -86,7 +100,14 @@ def _records(path, cancel_event):
             if line.endswith("\\"):
                 pending += line[:-1] + " "
                 continue
-            lexer = shlex.shlex(pending + line, posix=True)
+            record = pending + line
+            pending = ""
+            # Skip geometry before tokenization when only material references are needed.
+            if kinds is not None:
+                prefix = record.split(None, 1)
+                if not prefix or prefix[0].lower() not in kinds:
+                    continue
+            lexer = shlex.shlex(record, posix=True)
             lexer.whitespace_split = True
             # Keep Windows separators visible so they can be rejected, not silently removed.
             lexer.escape = ""
@@ -212,7 +233,8 @@ def _convert_glb(source, output, textures, cancel_event):
             raise ValueError(f"Ambiguous GLB texture reference: {reference}")
         resolver[reference] = payload
 
-    for kind, values in _records(source, cancel_event):
+    log_info("Export: collecting validated material and texture resources")
+    for kind, values in _records(source, cancel_event, kinds={"mtllib"}):
         if kind != "mtllib":
             continue
         for reference in values:
@@ -228,6 +250,7 @@ def _convert_glb(source, output, textures, cancel_event):
                     if directive == "map_kd":
                         diffuse_materials.add(material_name)
     check_cancelled(cancel_event)
+    log_info("Export: loading OBJ geometry for GLB conversion")
     scene = trimesh.load(source, file_type="obj", force="scene", process=False, resolver=resolver)
     if not scene.geometry:
         raise ValueError("OBJ contains no convertible geometry")
@@ -248,6 +271,7 @@ def _convert_glb(source, output, textures, cancel_event):
         check_cancelled(cancel_event)
         if hasattr(geometry.visual, "material"):
             geometry.visual.material = pbr(geometry.visual.material)
+    log_info("Export: serializing GLB geometry and textures")
     payload = scene.export(file_type="glb", include_normals=True)
     check_cancelled(cancel_event)
     output.write_bytes(payload)
@@ -258,6 +282,7 @@ def _glb_preview(output, cache, cancel_event):
     from trimesh.exchange.obj import export_obj
 
     check_cancelled(cancel_event)
+    log_info("Export: generating the editor preview from GLB")
     scene = trimesh.load(output, file_type="glb", force="scene", process=False)
     if not scene.geometry:
         raise ValueError("Exported GLB contains no preview geometry")
@@ -296,7 +321,9 @@ def _publish(stage, target, cancel_event):
 def export_asset(cmd, cancel_event=None, *, glb_converter=_convert_glb, glb_previewer=_glb_preview):
     validate_request(cmd)
     check_cancelled(cancel_event)
+    log_info("Export: validating source and run manifest")
     source, manifest_path = _source_for_run(cmd, cancel_event)
+    log_info("Export: validating OBJ materials and textures")
     files, textures = _dependency_closure(source, cancel_event)
     format_name = cmd.get("format", "obj")
     if format_name == "glb" and glb_converter is _convert_glb and format_name not in export_formats():
@@ -315,6 +342,7 @@ def export_asset(cmd, cancel_event=None, *, glb_converter=_convert_glb, glb_prev
     cache = None
     try:
         if format_name == "obj":
+            log_info("Export: copying OBJ and its materials and textures")
             for path in sorted(files):
                 _copy_file(path, stage / path.relative_to(source.parent), cancel_event)
             output_name = source.name
@@ -322,6 +350,7 @@ def export_asset(cmd, cancel_event=None, *, glb_converter=_convert_glb, glb_prev
             output_name = cmd["asset_name"] + ".glb"
             glb_converter(source, stage / output_name, textures, cancel_event)
         check_cancelled(cancel_event)
+        log_info("Export: publishing asset files")
         _publish(stage, target, cancel_event)
         published = True
         output = target / output_name
@@ -330,6 +359,7 @@ def export_asset(cmd, cancel_event=None, *, glb_converter=_convert_glb, glb_prev
             cache = Path(tempfile.mkdtemp(prefix=".export-preview-", dir=manifest_path.parent))
             preview = glb_previewer(output, cache, cancel_event)
         record = {"path": str(output), "format": format_name, "preview_path": str(preview)}
+        log_info("Export: recording completed asset in the manifest")
         _, manifest = load_manifest(manifest_path)
         manifest.setdefault("exports", []).append(record)
         manifest["export_pending"] = False

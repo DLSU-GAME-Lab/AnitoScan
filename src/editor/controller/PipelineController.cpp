@@ -106,7 +106,9 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
         const auto values = Split(input.value);
         if (values.size() < 2 || !exportState_.busy || values[0] != exportState_.runId ||
             values[1] != exportState_.requestId) return;
-        if (input.type == "export_completed" && values.size() == 4 && activeRun_ &&
+        if (input.type == "export_started") {
+            exportState_.statusText = "Export: preparing asset";
+        } else if (input.type == "export_completed" && values.size() == 4 && activeRun_ &&
             activeRun_->id == values[0] && activeRun_->status == "awaiting_export") {
             exportState_.busy = false;
             exportState_.outputPath = values[2];
@@ -123,9 +125,14 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
             viewingLatest_ = true;
             std::erase_if(runSummaries_, [&](const RunSummary& summary) { return summary.id == activeRun_->id; });
             runSummaries_.push_back({activeRun_->id, activeRun_->name, activeRun_->status});
-        } else if (input.type == "export_failed" && values.size() >= 3) {
+        } else if (input.type == "export_failed") {
             exportState_.busy = false;
-            exportState_.error = input.value.substr(values[0].size() + values[1].size() + 2);
+            exportState_.error = values.size() >= 3
+                ? input.value.substr(values[0].size() + values[1].size() + 2)
+                : "Export failed without an error message. Please retry.";
+        } else if (input.type == "export_completed") {
+            exportState_.busy = false;
+            exportState_.error = "Invalid export completion response. Check the destination before retrying.";
         }
         return;
     }
@@ -152,6 +159,9 @@ void PipelineController::HandleBackendInput(const BackendInput& input) {
             currentPhaseData_ = PhaseData{};
         }
         currentPhaseData_->logs.push_back(values.back());
+        if (exportState_.busy && values[0] == exportState_.runId) {
+            exportState_.statusText = values.back();
+        }
         return;
     }
     if (input.type == "selection_required" && values.size() == 7 && values[0] == activeRun_->id &&
@@ -302,6 +312,7 @@ void PipelineController::ExportAsset(const std::string& runId, const std::string
     exportState_.busy = true;
     exportState_.runId = runId;
     exportState_.requestId = "export-" + std::to_string(nextExportNumber_++);
+    exportState_.statusText = "Waiting for the backend to accept the export...";
     QueueMessage("export_asset", runId + "\n" + exportState_.requestId + "\n" + source + "\n" + settings);
 }
 

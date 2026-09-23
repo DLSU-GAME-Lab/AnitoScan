@@ -33,6 +33,7 @@ struct ExportState {
     std::string runId;
     std::string outputPath;
     std::string error;
+    std::string statusText;
 };
 
 struct RunSummary {

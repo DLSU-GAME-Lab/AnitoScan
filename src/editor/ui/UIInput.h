@@ -5,6 +5,8 @@
 enum class UIClick {
     None,
     CreateRun,
+    RefreshInputSources,
+    OpenInputDirectory,
     SelectRun,
     SelectOutputModel,
     ExportAsset,

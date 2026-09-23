@@ -4,6 +4,7 @@
 #include "editor/protocol/BackendProtocol.h"
 #include "render/Scene.h"
 
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <system_error>
@@ -145,6 +146,35 @@ bool App::InitializeOpenGL() {
 void App::Run() {
     std::string inputError;
     std::string rejectedInputSource;
+    const auto inputDirectory = std::filesystem::path(PROJECT_ROOT_DIR) / "data" / "input";
+    std::vector<std::string> inputSources;
+    std::string inputSourceListError;
+    const auto refreshInputSources = [&] {
+        inputSources.clear();
+        inputSourceListError.clear();
+        std::error_code error;
+        std::filesystem::create_directories(inputDirectory, error);
+        if (!error) {
+            for (std::filesystem::directory_iterator it(inputDirectory, error), end;
+                 !error && it != end; it.increment(error)) {
+                const bool directory = it->is_directory(error);
+                if (error) break;
+                const bool file = it->is_regular_file(error);
+                if (error) break;
+                const auto name = it->path().filename().string();
+                // Run setup values are transported as newline-separated fields.
+                if ((directory || file) && name.find_first_of("\r\n") == std::string::npos) {
+                    inputSources.push_back(name);
+                }
+            }
+        }
+        if (error) {
+            inputSources.clear();
+            inputSourceListError = "Unable to scan data/input: " + error.message();
+        }
+        std::sort(inputSources.begin(), inputSources.end());
+    };
+    refreshInputSources();
     while (running_) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -183,6 +213,8 @@ void App::Run() {
             data.canCreateRun = controller_->CanCreateRun();
             data.inputError = inputError;
             data.rejectedInputSource = rejectedInputSource;
+            data.inputSources = inputSources;
+            data.inputSourceListError = inputSourceListError;
             if (!data.canCreateRun) {
                 data.message = "Backend unavailable";
             }
@@ -224,10 +256,50 @@ void App::Run() {
             else if (input.click == UIClick::NextPhase) controller_->ViewNextPhase();
             else if (input.click == UIClick::FollowLive) controller_->FollowLivePhase();
             else if (input.click == UIClick::StopFollowingLive) controller_->StopFollowingLivePhase();
+            else if (input.click == UIClick::RefreshInputSources) {
+                refreshInputSources();
+                inputError.clear();
+                rejectedInputSource.clear();
+            }
+            else if (input.click == UIClick::OpenInputDirectory) {
+                std::error_code error;
+                std::filesystem::create_directories(inputDirectory, error);
+                if (error) {
+                    inputSourceListError = "Unable to open data/input: " + error.message();
+                } else {
+                    // Percent-encode a file URL so spaces, Unicode, '#' and '%' survive SDL_OpenURL.
+                    const auto path = inputDirectory.generic_u8string();
+                    std::string url = path.starts_with(u8"/") ? "file://" : "file:///";
+                    constexpr char hex[] = "0123456789ABCDEF";
+                    for (const unsigned char character : path) {
+                        if ((character >= 'a' && character <= 'z') ||
+                            (character >= 'A' && character <= 'Z') ||
+                            (character >= '0' && character <= '9') ||
+                            character == '/' || character == ':' || character == '-' ||
+                            character == '_' || character == '.' || character == '~') {
+                            url += static_cast<char>(character);
+                        } else {
+                            url += '%';
+                            url += hex[character >> 4];
+                            url += hex[character & 15];
+                        }
+                    }
+                    if (SDL_OpenURL(url.c_str()) != 0) {
+                        inputSourceListError = std::string("Unable to open data/input: ") + SDL_GetError();
+                    } else {
+                        inputSourceListError.clear();
+                    }
+                }
+            }
             else if (input.click == UIClick::CreateRun) {
                 const auto values = Split(input.value);
                 if (values.size() >= 10) {
                     RunConfig config;
+                    if (std::find(inputSources.begin(), inputSources.end(), values[1]) == inputSources.end()) {
+                        rejectedInputSource = values[1];
+                        inputError = "Select an input source from the list";
+                        continue;
+                    }
                     config.inputSource = values[1];
                     config.minimumFrames = std::stoi(values[2]);
                     config.mode = PipelineModeText(std::stoi(values[3]));
@@ -254,8 +326,26 @@ void App::Run() {
         }
         ProcessPersistenceRequests();
         for (const PipelineMessage& message : controller_->PollMessages()) {
-            const std::string json = SerializeMessage(message.type, message.value);
-            if (!json.empty()) backendClient_->Send(json);
+            std::string json;
+            try {
+                json = SerializeMessage(message.type, message.value);
+            } catch (const std::exception& error) {
+                std::cerr << "Unable to serialize backend request: " << error.what() << '\n';
+            }
+            if (json.empty()) {
+                if (message.type == "export_asset") {
+                    const auto values = Split(message.value);
+                    if (values.size() >= 2) {
+                        controller_->HandleBackendInput({"export_failed", values[0] + "\n" + values[1] +
+                            "\nUnable to serialize the export request. Check the export settings."});
+                    }
+                }
+                continue;
+            }
+            if (!backendClient_->Send(json)) {
+                controller_->HandleBackendInput({"backend_disconnected", {}});
+                break;
+            }
         }
 
         int width = 0, height = 0;
