@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from config import normalize_evaluation_settings
+
 PHASE_NAMES = {
     1: "capture",
     2: "masking",
@@ -38,6 +40,7 @@ def build_manifest(
             "yoloe_model_size": args.get("yoloe_model_size", "s"),
             "iou_threshold": args.get("iou_threshold", 0.50),
             "drift_limit": args.get("drift_limit", 200),
+            **normalize_evaluation_settings(args),
         },
         "status": {
             "phase": 0,

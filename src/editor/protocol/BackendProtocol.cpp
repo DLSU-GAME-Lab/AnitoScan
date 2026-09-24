@@ -35,8 +35,10 @@ T SelectionNumber(const std::string& text) {
 std::string SerializeMessage(std::string_view type, std::string_view value) {
     const auto values = Split(value);
     nlohmann::json json;
-    if (type == "start_run" && values.size() == 11) {
+    if (type == "start_run" && (values.size() == 11 || values.size() == 13)) {
         json = {{"action", "start_run"}, {"run_id", values[0]}, {"name", values[1]}, {"input", values[2]}, {"minimum_frames", std::stoi(values[3])}, {"mode", values[4]}, {"capture_mode", values[5]}, {"quality", values[6]}, {"force", values[7] == "true"}, {"iou_threshold", std::stof(values[8])}, {"drift_limit", std::stoi(values[9])}, {"yoloe_model_size", values[10]}};
+        json["evaluate_quality"] = values.size() == 13 && values[11] == "true";
+        json["test_fraction"] = values.size() == 13 ? std::stod(values[12]) : 0.2;
     } else if (type == "submit_selection") {
         if (values.size() < 3) return {};
         json = {{"action", "submit_selection"}, {"run_id", values[0]}};

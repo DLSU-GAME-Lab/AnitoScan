@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <string_view>
 #include <utility>
 
@@ -41,6 +42,10 @@ CreateRunResult PipelineController::CreateRun(std::string name, RunConfig config
         return CreateRunResult::InvalidName;
     }
     if (config.inputSource.empty() || config.minimumFrames <= 0 || config.driftLimit < 0) {
+        return CreateRunResult::InvalidConfig;
+    }
+    if (config.evaluateQuality && (!std::isfinite(config.testFraction) ||
+        config.testFraction < 0.1f || config.testFraction > 0.5f)) {
         return CreateRunResult::InvalidConfig;
     }
     for (const RunSummary& summary : runSummaries_) {
@@ -233,7 +238,8 @@ void PipelineController::StartRun(const std::string& runId) {
         activeRun_->config.mode + "\n" + activeRun_->config.captureMode + "\n" +
         activeRun_->config.quality + "\n" + (activeRun_->config.force ? "true" : "false") + "\n" +
         std::to_string(activeRun_->config.iouThreshold) + "\n" + std::to_string(activeRun_->config.driftLimit) + "\n" +
-        activeRun_->config.yoloModelSize);
+        activeRun_->config.yoloModelSize + "\n" + (activeRun_->config.evaluateQuality ? "true" : "false") + "\n" +
+        std::to_string(activeRun_->config.testFraction));
 }
 
 void PipelineController::CancelRun(const std::string& runId) {

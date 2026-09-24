@@ -15,6 +15,8 @@ struct RunConfig {
     float iouThreshold = 0.5f;
     int driftLimit = 200;
     std::string yoloModelSize = "s";
+    bool evaluateQuality = false;
+    float testFraction = 0.2f;
 };
 
 struct RunState {

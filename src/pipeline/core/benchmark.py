@@ -103,6 +103,42 @@ def append_phase_benchmark(
         )
 
 
+def reset_quality_report(manifest: dict[str, Any], *, status: str = "pending") -> None:
+    """Invalidate previous BM-5 scores before a new preparation/evaluation attempt."""
+    root = Path(manifest["paths"]["run_root"]) / "evaluation"
+    root.mkdir(parents=True, exist_ok=True)
+    settings = manifest.get("settings", {})
+    summary = {
+        "benchmark": "BM-5", "status": status, "run_name": manifest.get("run_name"),
+        "quality": settings.get("quality", "fast"),
+        "train_frames": 0, "test_frames": 0,
+        "requested_train_frames": 0, "requested_test_frames": 0,
+        "psnr_db": None, "ssim": None, "split_fingerprint": None,
+        "settings": {"evaluate_quality": settings.get("evaluate_quality", False), "test_fraction": settings.get("test_fraction", 0.2)},
+        "errors": [],
+    }
+    temporary = root / "summary.json.tmp"
+    temporary.write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    temporary.replace(root / "summary.json")
+    (root / "per_frame.csv").write_text("frame,status,psnr_db,ssim\n", encoding="utf-8")
+
+
+def fail_pending_quality_report(manifest: dict[str, Any], error: BaseException) -> None:
+    """Record early failures without replacing a more detailed evaluator report."""
+    path = Path(manifest["paths"]["run_root"]) / "evaluation" / "summary.json"
+    try:
+        summary = json.loads(path.read_text(encoding="utf-8"))
+        if summary.get("status") != "pending":
+            return
+        summary["status"] = "failed"
+        summary["errors"] = [f"{type(error).__name__}: {error}"]
+        temporary = path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        temporary.replace(path)
+    except (OSError, ValueError, TypeError) as report_error:
+        print(f"[benchmark] Failed to record BM-5 failure: {report_error}", file=sys.stderr)
+
+
 def _elapsed_since(start_time: float) -> float:
     try:
         import time

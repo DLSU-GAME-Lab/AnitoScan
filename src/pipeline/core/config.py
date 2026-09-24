@@ -1,6 +1,19 @@
 import argparse
+import math
 import sys
 from pathlib import Path
+
+
+def normalize_evaluation_settings(args: dict) -> dict:
+    """Use one BM-5 settings contract for GUI, CLI, and saved manifests."""
+    enabled = args.get("evaluate_quality", False)
+    fraction = args.get("test_fraction", 0.2)
+    if not isinstance(enabled, bool):
+        raise ValueError("evaluate_quality must be a boolean")
+    if (isinstance(fraction, bool) or not isinstance(fraction, (int, float))
+            or not math.isfinite(fraction) or not 0.1 <= fraction <= 0.5):
+        raise ValueError("test_fraction must be between 0.10 and 0.50")
+    return {"evaluate_quality": enabled, "test_fraction": float(fraction)}
 
 
 def resolve_geometry_presets(quality: str) -> tuple[int, int, int]:
@@ -76,4 +89,12 @@ def parse_cli_args():
     parser.add_argument("--yoloe_model_size", type=str, choices=["n", "s", "m", "l", "x"], default="s")
     parser.add_argument("--quality", type=str, choices=["fast", "medium", "detailed"], default="fast", help="Quality preset for 2DGS generation")
 
-    return parser.parse_args()
+    parser.add_argument("--evaluate_quality", action="store_true", help="Enable BM-5 held-out PSNR/SSIM evaluation (training-only reconstruction)")
+    parser.add_argument("--test_fraction", type=float, default=0.2, help="Fraction reserved for BM-5 test views, 0.10-0.50 (default: 0.20)")
+
+    args = parser.parse_args()
+    try:
+        normalize_evaluation_settings(vars(args))
+    except ValueError as error:
+        parser.error(str(error))
+    return args

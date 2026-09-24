@@ -178,6 +178,15 @@ void RunSetupScreen::Render(const RunSetupData& data, std::vector<UIInput>& inpu
                 ImGui::TableNextColumn(); ImGui::SetNextItemWidth(-1.0f); ImGui::Combo("##YoloModel", &modelSize_, "n\0s\0m\0l\0x\0");
                 ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextDisabled("Rebuild cache");
                 ImGui::TableNextColumn(); ImGui::Checkbox("Force rebuild", &forceRebuild_);
+                ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextDisabled("Quality evaluation");
+                ImGui::TableNextColumn(); ImGui::Checkbox("Evaluate reconstruction quality (BM-5)", &evaluateQuality_);
+                ImGui::TextWrapped("Adds processing time to compute PSNR/SSIM. Held-out views are reserved for evaluation and excluded from training.");
+                ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextDisabled("Held-out views");
+                ImGui::TableNextColumn(); ImGui::SetNextItemWidth(-1.0f);
+                ImGui::BeginDisabled(!evaluateQuality_);
+                ImGui::SliderInt("##TestPercentage", &testPercentage_, 10, 50, "%d%%");
+                testPercentage_ = std::clamp(testPercentage_, 10, 50);
+                ImGui::EndDisabled();
                 ImGui::EndTable();
             }
         }
@@ -193,7 +202,8 @@ void RunSetupScreen::Render(const RunSetupData& data, std::vector<UIInput>& inpu
                     std::to_string(minimumFrames_) + "\n" + std::to_string(pipelineMode_) + "\n" +
                     std::to_string(captureMode_) + "\n" + std::to_string(quality_) + "\n" +
                     std::to_string(iouThreshold_) + "\n" + std::to_string(driftLimit_) + "\n" +
-                    std::to_string(modelSize_) + "\n" + (forceRebuild_ ? "1" : "0")
+                    std::to_string(modelSize_) + "\n" + (forceRebuild_ ? "1" : "0") + "\n" +
+                    (evaluateQuality_ ? "1" : "0") + "\n" + std::to_string(testPercentage_)
             });
         }
         ImGui::EndDisabled();

@@ -1,8 +1,11 @@
 import binascii
+import json
 import struct
 import zlib
+from decimal import Decimal
 from pathlib import Path
 
+from benchmark import append_phase_benchmark
 from cancellation import check_cancelled
 from dummy_assets import CUBE_OBJ, export_dummy_asset
 from ipc_handlers import await_ipc_selection, listen_for_ipc_commands
@@ -268,6 +271,35 @@ def run_dummy_phase(
         _emit_schedule(schedule, cancel_event)
 
     check_cancelled(cancel_event)
+    if phase_num == 4 and manifest["settings"].get("evaluate_quality", False):
+        evaluation_dir = Path(manifest["paths"]["run_root"]) / "evaluation"
+        evaluation_dir.mkdir(parents=True, exist_ok=True)
+        fraction = manifest["settings"].get("test_fraction", 0.2)
+        test_count = int(total_frames * Decimal(str(fraction)))
+        summary = {
+            "benchmark": "BM-5", "status": "mocked", "mock": True,
+            "run_name": manifest["run_name"], "quality": manifest["settings"]["quality"],
+            "train_frames": 0, "test_frames": 0,
+            "requested_train_frames": total_frames - test_count,
+            "requested_test_frames": test_count,
+            "psnr_db": None, "ssim": None, "split_fingerprint": None,
+            "settings": {"evaluate_quality": True, "test_fraction": fraction},
+            "errors": [],
+            "details": {"note": "Dummy simulation only; counts use minimum_frames, not real extracted frames. No model was trained and no quality scores were measured."},
+        }
+        summary_path = evaluation_dir / "summary.json"
+        temporary = summary_path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(summary_path)
+        (evaluation_dir / "per_frame.csv").write_text("frame,status,psnr_db,ssim\n", encoding="utf-8")
+        log_info(f"BM-5 simulated: {total_frames - test_count}/{test_count} train/test; PSNR and SSIM are not measured in dummy mode.")
+        log_progress(1.0, "Phase 4: BM-5 simulated (no measured scores)")
+        append_phase_benchmark(
+            manifest, 4, status="mocked", skipped=False, duration_seconds=0.0,
+            settings=summary["settings"],
+            metrics={"quality_status": "mocked", "psnr_db": None, "ssim": None},
+            paths={"quality_summary": summary_path},
+        )
     if phase_num == 5:
         output_dir = Path(manifest["paths"]["export"])
         output_dir.mkdir(parents=True, exist_ok=True)

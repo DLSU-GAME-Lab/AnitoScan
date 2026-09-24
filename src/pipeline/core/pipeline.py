@@ -9,9 +9,11 @@ from benchmark import (
     BENCHMARK_INVOCATION_ENV,
     append_phase_benchmark,
     create_invocation_id,
+    fail_pending_quality_report,
+    reset_quality_report,
 )
 from cancellation import PipelineCancelled, check_cancelled
-from config import build_phase_cmd, parse_cli_args, resolve_geometry_presets
+from config import build_phase_cmd, normalize_evaluation_settings, parse_cli_args, resolve_geometry_presets
 from ipc_handlers import await_ipc_selection, listen_for_ipc_commands
 from log import log_done, log_error, log_event, log_info, set_ipc_mode
 from manifest import _save_manifest, load_manifest
@@ -311,6 +313,7 @@ def run_pipeline_with_args(
     os.environ[BENCHMARK_INVOCATION_ENV] = create_invocation_id()
 
     args = dict(args)
+    args.update(normalize_evaluation_settings(args))
     if ipc_mode:
         capture_mode = args.get("capture_mode", "auto")
         if capture_mode not in {"auto", "image", "video"}:
@@ -336,6 +339,11 @@ def run_pipeline_with_args(
     log_event("workspace_ready", {"workspace_path": str(base_dir)})
 
     execute_phase = phase_executor or run_real_phase
+    _, manifest = load_manifest(manifest_path)
+    if args["evaluate_quality"]:
+        reset_quality_report(manifest)
+    elif args.get("force") and (base_dir / "evaluation" / "summary.json").exists():
+        reset_quality_report(manifest, status="disabled")
 
     try:
         for phase_num in range(1, 6):
@@ -362,7 +370,9 @@ def run_pipeline_with_args(
         else:
             log_done(name, str(final_obj_path))
         return final_obj_path
-    except PipelineCancelled:
+    except Exception as error:
+        if args["evaluate_quality"]:
+            fail_pending_quality_report(manifest, error)
         raise
 
 

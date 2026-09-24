@@ -66,6 +66,8 @@ RunState ToRunState(const StoredRun& run) {
     result.config.minimumFrames = run.minimumFrames;
     result.config.driftLimit = run.driftLimit;
     result.config.yoloModelSize = run.yoloModelSize;
+    result.config.evaluateQuality = run.evaluateQuality;
+    result.config.testFraction = run.testFraction;
     return result;
 }
 
@@ -309,6 +311,10 @@ void App::Run() {
                     config.driftLimit = std::stoi(values[7]);
                     config.yoloModelSize = ModelSizeText(std::stoi(values[8]));
                     config.force = values[9] == "1";
+                    if (values.size() >= 12) {
+                        config.evaluateQuality = values[10] == "1";
+                        config.testFraction = std::stof(values[11]) / 100.0f;
+                    }
                     inputError.clear();
                     rejectedInputSource.clear();
                     // Match workspace.py: relative sources are under data/input; absolute paths remain absolute.

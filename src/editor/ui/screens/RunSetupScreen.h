@@ -25,5 +25,7 @@ private:
     int driftLimit_ = 200;
     int modelSize_ = 1;
     bool forceRebuild_ = false;
+    bool evaluateQuality_ = false;
+    int testPercentage_ = 20;
     RunSelector runSelector_;
 };

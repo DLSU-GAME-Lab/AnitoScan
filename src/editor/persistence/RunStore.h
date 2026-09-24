@@ -19,6 +19,8 @@ struct StoredRun {
     int minimumFrames = 45;
     int driftLimit = 200;
     std::string yoloModelSize;
+    bool evaluateQuality = false;
+    float testFraction = 0.2f;
     std::vector<std::string> outputModelPaths;
     std::string outputModelPath;
     std::map<std::string, std::string> outputPreviewPaths;

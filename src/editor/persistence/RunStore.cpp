@@ -137,6 +137,8 @@ StoredRun ReadRun(
     run.iouThreshold = settings.value("iou_threshold", 0.5f);
     run.driftLimit = settings.value("drift_limit", 200);
     run.yoloModelSize = settings.value("yoloe_model_size", "s");
+    run.evaluateQuality = settings.value("evaluate_quality", false);
+    run.testFraction = settings.value("test_fraction", 0.2f);
 
     if (manifest.contains("exports") || manifest.contains("export_pending")) {
         // Prepared meshes are not final exports, even when export is still pending.

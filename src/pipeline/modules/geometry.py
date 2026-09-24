@@ -18,6 +18,12 @@ from cancellation import check_cancelled
 from log import log_error, log_info, log_progress, set_ipc_mode, set_phase
 from manifest import load_manifest, update_manifest
 
+# This module is stdlib-only at import time; CUDA/vendor imports stay in the child.
+try:
+    from . import evaluate_quality as bm5
+except ImportError:
+    import evaluate_quality as bm5
+
 # =====================================================================
 # DIRECTORY RESOLUTION
 # =====================================================================
@@ -81,6 +87,78 @@ def _iter_child_output(process: subprocess.Popen, cancel_event):
     reader.join()
 
 
+def _quality_metrics(manifest, metrics):
+    summary = bm5.read_json(bm5.report_paths(manifest)["quality_summary"])
+    metrics.update({
+        "quality_status": summary["status"],
+        "quality_train_frames": summary["train_frames"],
+        "quality_test_frames": summary["test_frames"],
+        "quality_requested_train_frames": summary["requested_train_frames"],
+        "quality_requested_test_frames": summary["requested_test_frames"],
+        "psnr_db": summary["psnr_db"],
+        "ssim": summary["ssim"],
+        "quality_train_iterations": summary["train_iterations"],
+        "split_fingerprint": summary["split_fingerprint"],
+    })
+    return summary
+
+
+def _run_quality_child(manifest_path, manifest, model_dir, config, metrics, cancel_event, *, preflight=False, iteration=None):
+    command = [sys.executable, str(MODULE_PATH.with_name("evaluate_quality.py")),
+               "--manifest", str(manifest_path), "--model-dir", str(model_dir)]
+    if preflight:
+        command.extend([
+            "--preflight", "--train-iterations", str(config["train_iterations"]),
+            "--densify-until-iter", str(config["densify_until_iter"]),
+            "--opacity-reset-interval", str(config["opacity_reset_interval"]),
+        ])
+    elif iteration is not None:
+        command.extend(["--iteration", str(iteration)])
+    environment = os.environ.copy()
+    environment["PYTHONUNBUFFERED"] = "1"
+    # Clear stale scores even if the interpreter fails before importing the evaluator.
+    pending = bm5.new_summary(manifest)
+    pending["details"]["stage"] = "preflight" if preflight else "evaluation"
+    bm5.save_report(manifest, pending, [])
+    output = deque(maxlen=20)
+    try:
+        check_cancelled(cancel_event)
+        process = subprocess.Popen(
+            command, cwd=str(PROJECT_ROOT), env=environment, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            encoding="utf-8", errors="replace", bufsize=1,
+        )
+        for line in _iter_child_output(process, cancel_event):
+            stripped = line.strip()
+            if stripped:
+                output.append(stripped)
+                log_info(f"[BM-5] {stripped}")
+            match = re.search(r"BM5_PROGRESS (\d+)/(\d+)", line)
+            if match:
+                current, total = map(int, match.groups())
+                log_progress(TRAIN_END + 0.05 * current / max(total, 1),
+                             f"Phase 4: BM-5 held-out frames {current}/{total}")
+        process.wait()
+        _check_child_cancelled(process, cancel_event)
+        summary = _quality_metrics(manifest, metrics)
+        if process.returncode != 0:
+            detail = "; ".join(summary["errors"]) or (output[-1] if output else "No child-process output")
+            raise RuntimeError(f"Phase 4 BM-5 failed (exit {process.returncode}): {detail}. "
+                               f"Report: {bm5.report_paths(manifest)['quality_summary']}")
+        if not preflight and summary["status"] != "completed":
+            raise RuntimeError("Phase 4 BM-5 did not evaluate every requested test frame; see evaluation/summary.json")
+        return summary
+    except Exception as error:
+        try:
+            summary = bm5.read_json(bm5.report_paths(manifest)["quality_summary"])
+        except (OSError, ValueError, TypeError):
+            summary = {}
+        if not summary.get("errors"):
+            bm5.write_failure_report(manifest, error)
+        _quality_metrics(manifest, metrics)
+        raise
+
+
 def run_surface_reconstruction(
     manifest_path_string,
     train_iterations,
@@ -122,9 +200,41 @@ def run_surface_reconstruction(
         "sparse_dir": sparse_dir,
         "gs_model_dir": gs_model_dir,
     }
+    training_config = {
+        "train_iterations": train_iterations,
+        "densify_until_iter": densify_until_iter,
+        "opacity_reset_interval": opacity_reset_interval,
+    }
+    evaluate_quality = manifest.get("settings", {}).get("evaluate_quality", False)
+    plan = None
+    training_marker = None
+    try:
+        options = bm5.quality_settings(manifest)
+        evaluate_quality = options["evaluate_quality"]
+        benchmark_settings.update(options)
+        if not evaluate_quality:
+            if (input_data_path / "evaluation_identity.json").exists():
+                raise ValueError("BM-5 spatial data cannot be used for normal training. Rerun Phase 3 with evaluation disabled and --force first.")
+            if (gs_model_dir / bm5.MARKER_NAME).exists() and not force:
+                raise ValueError("BM-5 checkpoint cannot be reused with evaluation disabled. Rerun Phase 4 with --force.")
+        if evaluate_quality:
+            benchmark_settings.update(benchmark="BM-5", vendor_eval_split=False, white_background=True)
+            benchmark_paths.update(bm5.report_paths(manifest))
+            benchmark_paths["quality_training_marker"] = gs_model_dir / bm5.MARKER_NAME
+    except (ValueError, TypeError) as error:
+        if evaluate_quality:
+            bm5.write_failure_report(manifest, error)
+        append_failed_phase_benchmark(
+            manifest, 4, start_time=phase_start, settings=benchmark_settings,
+            metrics=benchmark_metrics, paths=benchmark_paths, error=error,
+        )
+        raise
 
     if not (sparse_dir / "points3D.txt").exists():
         error = FileNotFoundError(f"Spatial initialization missing in {input_data_path}. Run Phase 3 first.")
+        if evaluate_quality:
+            bm5.write_failure_report(manifest, error)
+            _quality_metrics(manifest, benchmark_metrics)
         append_failed_phase_benchmark(
             manifest,
             4,
@@ -137,6 +247,32 @@ def run_surface_reconstruction(
         raise error
 
     check_cancelled(cancel_event)
+    if evaluate_quality:
+        try:
+            log_progress(0, "Phase 4: BM-5 dependency/API preflight...")
+            _run_quality_child(manifest_path, manifest, gs_model_dir, training_config,
+                               benchmark_metrics, cancel_event, preflight=True)
+            plan = bm5.read_json(bm5.report_paths(manifest)["quality_training_plan"])
+            benchmark_settings["training_fingerprint"] = plan["fingerprint"]
+            benchmark_settings["split_fingerprint"] = plan["split_fingerprint"]
+            benchmark_settings["vendor_source_sha256"] = plan["vendor"]["source_sha256"]
+            benchmark_settings["vendor_revision"] = plan["vendor"]["revision"]
+            benchmark_settings["effective_training_config"] = plan["training_config"]
+            if not force:
+                training_marker = bm5.validate_training_cache(gs_model_dir, plan)
+        except Exception as error:
+            try:
+                reported = bm5.read_json(bm5.report_paths(manifest)["quality_summary"])
+            except (OSError, ValueError, TypeError):
+                reported = {}
+            if not reported.get("errors"):
+                bm5.write_failure_report(manifest, error, plan)
+            _quality_metrics(manifest, benchmark_metrics)
+            append_failed_phase_benchmark(
+                manifest, 4, start_time=phase_start, settings=benchmark_settings,
+                metrics=benchmark_metrics, paths=benchmark_paths, error=error,
+            )
+            raise
     if force and gs_model_dir.exists():
         shutil.rmtree(gs_model_dir)
     gs_model_dir.mkdir(parents=True, exist_ok=True)
@@ -164,6 +300,13 @@ def run_surface_reconstruction(
         "--quiet",
     ]
 
+    if evaluate_quality:
+        # The upstream split is authoritative. Never pass --eval to the vendor;
+        # disable its scheduled evaluation and explicitly save the final iteration.
+        train_cmd = [sys.executable, str(GS_PATH / "train.py"), "-s", str(input_data_path),
+                     "-m", str(gs_model_dir), *bm5.training_flags(training_config),
+                     "--test_iterations", "-1", "--save_iterations", str(train_iterations), "--quiet"]
+
     render_cmd = [
         sys.executable,
         str(GS_PATH / "render.py"),
@@ -179,23 +322,29 @@ def run_surface_reconstruction(
 
     log_info(f"Starting 2DGS Training ({train_iterations} iterations)...")
     log_progress(0, "Phase 4: Training 2DGS...")
-    start_time = time.perf_counter()
+    start_time = phase_start if evaluate_quality else time.perf_counter()
 
     train_checkpoint_exists = (
         gs_model_dir / "point_cloud" / f"iteration_{train_iterations}"
     ).exists()
+    if evaluate_quality:
+        train_checkpoint_exists = training_marker is not None
     benchmark_metrics["train_checkpoint_exists"] = train_checkpoint_exists
 
     training_skipped = False
     if train_checkpoint_exists and not force:
         training_skipped = True
         benchmark_metrics["training_skipped"] = training_skipped
-        log_info("Found existing training output. Skipping training...")
+        benchmark_metrics["training_iteration"] = training_marker["final_iteration"] if training_marker else train_iterations
+        log_info("Found validated BM-5 training output. Skipping training, not evaluation..." if evaluate_quality
+                 else "Found existing training output. Skipping training...")
     else:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         try:
             check_cancelled(cancel_event)
+            if evaluate_quality:
+                bm5.mark_training_started(gs_model_dir, plan)
             process = subprocess.Popen(
                 train_cmd,
                 cwd=str(GS_PATH),
@@ -209,6 +358,9 @@ def run_surface_reconstruction(
                 bufsize=1,
             )
         except (OSError, ValueError) as error:
+            if evaluate_quality:
+                bm5.write_failure_report(manifest, error, plan)
+                _quality_metrics(manifest, benchmark_metrics)
             append_failed_phase_benchmark(
                 manifest,
                 4,
@@ -246,6 +398,9 @@ def run_surface_reconstruction(
                 f"Last output: {last_output}"
             )
             benchmark_metrics["training_return_code"] = process.returncode
+            if evaluate_quality:
+                bm5.write_failure_report(manifest, error, plan)
+                _quality_metrics(manifest, benchmark_metrics)
             append_failed_phase_benchmark(
                 manifest,
                 4,
@@ -257,10 +412,38 @@ def run_surface_reconstruction(
             )
             raise error
 
+    actual_iteration = train_iterations
+    if evaluate_quality:
+        try:
+            if not training_skipped:
+                training_marker = bm5.finish_training(gs_model_dir, plan)
+            actual_iteration = training_marker["final_iteration"]
+            benchmark_metrics["training_iteration"] = actual_iteration
+            benchmark_paths["quality_checkpoint"] = gs_model_dir / "point_cloud" / f"iteration_{actual_iteration}" / "point_cloud.ply"
+        except (RuntimeError, ValueError, OSError, KeyError) as error:
+            bm5.write_failure_report(manifest, error, plan)
+            _quality_metrics(manifest, benchmark_metrics)
+            append_failed_phase_benchmark(
+                manifest, 4, start_time=phase_start, settings=benchmark_settings,
+                metrics=benchmark_metrics, paths=benchmark_paths, error=error,
+            )
+            raise
+        try:
+            log_progress(TRAIN_END, "Phase 4: Evaluating held-out BM-5 frames...")
+            _run_quality_child(manifest_path, manifest, gs_model_dir, training_config,
+                               benchmark_metrics, cancel_event, iteration=actual_iteration)
+        except Exception as error:
+            append_failed_phase_benchmark(
+                manifest, 4, start_time=phase_start, settings=benchmark_settings,
+                metrics=benchmark_metrics, paths=benchmark_paths, error=error,
+            )
+            raise
+        render_cmd[-1] = str(actual_iteration)
+
     # 6. Rendering / TSDF Fusion
     log_info("Starting Mesh Extraction (TSDF Fusion)...")
-    log_progress(TRAIN_END, "Phase 4: Extracting mesh...")
-    mesh_output_dir = gs_model_dir / "train" / f"ours_{train_iterations}"
+    log_progress(TRAIN_END + (0.05 if evaluate_quality else 0), "Phase 4: Extracting mesh...")
+    mesh_output_dir = gs_model_dir / "train" / f"ours_{actual_iteration}"
     benchmark_paths["mesh_output_dir"] = mesh_output_dir
 
     meshing_skipped = False
@@ -382,14 +565,9 @@ def run_surface_reconstruction(
         manifest,
         4,
         status="completed",
-        skipped=training_skipped and meshing_skipped,
+        skipped=training_skipped and meshing_skipped and not evaluate_quality,
         duration_seconds=total_time,
-        settings={
-            "force": force,
-            "train_iterations": train_iterations,
-            "densify_until_iter": densify_until_iter,
-            "opacity_reset_interval": opacity_reset_interval,
-        },
+        settings=benchmark_settings,
         metrics={
             **benchmark_metrics,
             "training_skipped": training_skipped,

@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from config import normalize_evaluation_settings
 from manifest import (
     build_manifest,
     initialize_manifest,
@@ -65,6 +66,16 @@ def _find_manifest_conflicts(existing: dict[str, Any], desired: dict[str, Any]) 
                 f"{_format_field(keys)}: existing={existing_value!r}, requested={desired_value!r}"
             )
 
+    previous_evaluation = normalize_evaluation_settings(existing.get("settings", {}))
+    next_evaluation = normalize_evaluation_settings(desired.get("settings", {}))
+    if previous_evaluation["evaluate_quality"] or next_evaluation["evaluate_quality"]:
+        for key in ("evaluate_quality", "test_fraction"):
+            if previous_evaluation[key] != next_evaluation[key]:
+                conflicts.append(f"settings.{key}: existing={previous_evaluation[key]!r}, requested={next_evaluation[key]!r}")
+        old_quality = existing.get("settings", {}).get("quality", "fast")
+        new_quality = desired["settings"]["quality"]
+        if old_quality != new_quality:
+            conflicts.append(f"settings.quality: existing={old_quality!r}, requested={new_quality!r} (BM-5 checkpoint identity)")
     return conflicts
 
 
@@ -131,6 +142,7 @@ def init_workspace(
                 existing_manifest,
                 {
                     "quality": desired_manifest["settings"]["quality"],
+                    **normalize_evaluation_settings(desired_manifest["settings"]),
                 },
             )
             return base_dir, manifest_path
