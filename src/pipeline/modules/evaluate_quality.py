@@ -28,7 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 GS_PATH = PROJECT_ROOT / "vendor" / "2d-gaussian-splatting"
 MARKER_NAME = "bm5_training.json"
 ADAPTER_VERSION = 1
-PREVIEW_COUNT = 3
+
 CENTER_TOLERANCE_PX = 0.0001
 CSV_FIELDS = [
     "frame", "status", "width", "height", "fx", "fy", "cx", "cy",
@@ -615,15 +615,14 @@ def _evaluate_frames(manifest, split, poses, adapter, model, summary, rows):
             if np.all(reference == 1):
                 raise QualityIncompleteError("Test reference is blank after vendor resolution scaling")
             psnr, ssim = image_scores(reference, rendered)
-            if len(preview_paths) < PREVIEW_COUNT:
-                paths["quality_previews"].mkdir(parents=True, exist_ok=True)
-                preview = {}
-                for label, pixels in (("render", rendered), ("reference", reference)):
-                    path = paths["quality_previews"] / f"bm5_{index:04d}_{label}.png"
-                    adapter.Image.fromarray(np.rint(pixels * 255).astype(np.uint8)).save(path)
-                    row[f"{label}_preview"] = str(path)
-                    preview[label] = str(path)
-                preview_paths.append({"frame": frame, **preview})
+            paths["quality_previews"].mkdir(parents=True, exist_ok=True)
+            preview = {}
+            for label, pixels in (("render", rendered), ("reference", reference)):
+                path = paths["quality_previews"] / f"bm5_{index:04d}_{label}.png"
+                adapter.Image.fromarray(np.rint(pixels * 255).astype(np.uint8)).save(path)
+                row[f"{label}_preview"] = str(path)
+                preview[label] = str(path)
+            preview_paths.append({"frame": frame, **preview})
             scores.append((psnr, ssim))
             row.update(status="evaluated", psnr_db=psnr, ssim=ssim)
         except QualityIncompleteError as error:

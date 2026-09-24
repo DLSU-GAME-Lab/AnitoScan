@@ -162,7 +162,7 @@ Each real evaluation writes under `data/runs/<run>/evaluation/`:
 - `test_poses.json`: localized test cameras and per-frame localization failures.
 - `summary.json`: measured means, requested/actual counts, quality, iteration, checkpoint/vendor identity, settings, and status.
 - `per_frame.csv`: individual metrics and failure reasons.
-- `previews/`: up to three rendered/reference pairs (metrics are computed before PNG quantization).
+- `previews/`: rendered/reference pairs for every successfully evaluated test frame, with no preview limit (metrics are computed before PNG quantization).
 
 Phase 4 also appends the summary metrics and paths to `logs/benchmark.jsonl`. All requested test frames must be evaluated for a complete result. Partial evaluations retain their diagnostics but stop Phase 4 instead of silently dropping failed views. An exact image match has infinite PSNR: per-frame CSV uses `inf`, and strict JSON stores a null mean with an explicit explanation. No arbitrary PSNR cap is applied.
 
