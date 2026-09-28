@@ -1,17 +1,17 @@
 cmake_minimum_required (VERSION 3.22)
 project ("AnitoScan" LANGUAGES C CXX)
 
+set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(FETCHCONTENT_BASE_DIR "${CMAKE_SOURCE_DIR}/vendor")
-include(FetchContent)
+set(MY_PROJECT_ROOT "${CMAKE_SOURCE_DIR}" CACHE INTERNAL "")
+set(MAIN_TARGET "AnitoScan" CACHE INTERNAL "Main application target name")
 
-# TODO: complete when editor is now included
-add_executable(${PROJECT_NAME}
-    src/engine/main.cpp
-    # Add your other .cpp files here
-)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(Dependencies)
+include(Config)
 
-target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/src")
+add_subdirectory(src/editor)
