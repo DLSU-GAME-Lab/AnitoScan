@@ -88,7 +88,7 @@ def new_summary(manifest):
         "benchmark": "BM-5", "status": "incomplete", "run_name": manifest.get("run_name"),
         "quality": settings.get("quality", "fast"), "train_frames": 0, "test_frames": 0,
         "requested_train_frames": 0, "requested_test_frames": 0,
-        "skipped_localization_frames": 0,
+        "skipped_localization_frames": 0, "skipped_mask_frames": 0,
         "psnr_db": None, "ssim": None, "train_iterations": None, "split_fingerprint": None,
         "settings": {
             "evaluate_quality": settings.get("evaluate_quality", False),
@@ -589,18 +589,27 @@ def _evaluate_frames(manifest, split, poses, adapter, model, summary, rows):
     background = torch.ones(3, dtype=torch.float32, device="cuda")
     preview_paths = []
     skipped_localization = []
+    skipped_masks = []
     summary["details"]["skipped_localization"] = skipped_localization
+    summary["details"]["skipped_masks"] = skipped_masks
     for index, frame in enumerate(split["test"]):
         row = {"frame": frame, "status": "incomplete"}
-        # Only explicit Phase 3 failures are nonfatal; missing poses or bad inputs are not.
-        if frame in failed and frame in split["usable_test"] and frame not in excluded:
+        # Only recorded empty masks and localization failures are nonfatal.
+        reason = None
+        if excluded.get(frame) == "all_transparent" and frame not in split["usable_test"] and frame not in cameras:
+            reason = "Phase 3 excluded test frame: all_transparent (mask contains no foreground)"
+            row["status"] = "skipped_mask"
+            skipped_masks.append({"frame": frame, "reason": "all_transparent"})
+        elif frame in failed and frame in split["usable_test"] and frame not in excluded:
             reason = f"Phase 3 camera localization failed: {failed[frame]}"
-            row.update(status="skipped_localization", error=reason)
-            rows.append(row)
+            row["status"] = "skipped_localization"
             skipped_localization.append({"frame": frame, "reason": failed[frame]})
+        if reason is not None:
+            row["error"] = reason
+            rows.append(row)
             summary["warnings"].append(f"{frame}: {reason}")
             log_info(f"BM-5: Skipping {frame} — {reason}")
-            log_info(f"BM5_PROGRESS {index + 1}/{len(split['test'])} {frame}: skipped_localization")
+            log_info(f"BM5_PROGRESS {index + 1}/{len(split['test'])} {frame}: {row['status']}")
             continue
         camera = None
         try:
@@ -656,6 +665,7 @@ def _evaluate_frames(manifest, split, poses, adapter, model, summary, rows):
         log_info(f"BM5_PROGRESS {index + 1}/{len(split['test'])} {frame}: {row['status']}")
     summary["test_frames"] = len(scores)
     summary["skipped_localization_frames"] = len(skipped_localization)
+    summary["skipped_mask_frames"] = len(skipped_masks)
     summary["details"]["previews"] = preview_paths
     if scores:
         psnr_mean = float(np.mean([score[0] for score in scores], dtype=np.float64))
@@ -667,10 +677,11 @@ def _evaluate_frames(manifest, split, poses, adapter, model, summary, rows):
     summary["details"]["metrics_cover_evaluated_frames_only"] = len(scores) != len(split["test"])
     if rendering_failed:
         raise RuntimeError("One or more held-out renders/metrics failed; see per_frame.csv and summary.json")
-    if len(scores) + len(skipped_localization) != len(split["test"]):
+    if len(scores) + len(skipped_localization) + len(skipped_masks) != len(split["test"]):
         raise QualityIncompleteError(
             f"Evaluated {len(scores)}/{len(split['test'])} requested test frames; "
-            f"skipped {len(skipped_localization)} recorded Phase 3 localization failures. "
+            f"skipped {len(skipped_localization)} recorded Phase 3 localization failures "
+            f"and {len(skipped_masks)} all-transparent masks. "
             "Other frames could not be evaluated; fix their references/poses before rerunning."
         )
 
@@ -727,15 +738,16 @@ def run_evaluation(manifest_path, model_dir=None, iteration=None, *, preflight=F
                 raise RuntimeError("The saved Gaussian checkpoint is empty or contains non-finite positions")
             summary["details"]["gaussians"] = int(gaussians.get_xyz.shape[0])
             _evaluate_frames(manifest, split, poses, adapter, gaussians, summary, rows)
-        skipped = summary["skipped_localization_frames"]
+        skipped = summary["skipped_localization_frames"] + summary["skipped_mask_frames"]
         summary["status"] = "incomplete" if skipped else "completed"
         summary["details"]["stage"] = "evaluated"
         if skipped:
-            summary["details"]["incomplete_reason"] = "localization_skips"
+            summary["details"]["incomplete_reason"] = "recorded_frame_skips" if summary["skipped_mask_frames"] else "localization_skips"
         save_report(manifest, summary, rows)
         log_info(
             f"BM-5 {summary['status']}: Evaluated {summary['test_frames']}/{summary['requested_test_frames']} frames; "
-            f"skipped {skipped} due to Phase 3 localization failures. "
+            f"skipped {summary['skipped_localization_frames']} localization failures "
+            f"and {summary['skipped_mask_frames']} all-transparent masks. "
             f"PSNR={summary['psnr_db']} dB, SSIM={summary['ssim']}; {paths['quality_summary']}"
         )
         if skipped:

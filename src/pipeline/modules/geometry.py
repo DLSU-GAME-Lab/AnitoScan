@@ -96,6 +96,7 @@ def _quality_metrics(manifest, metrics):
         "quality_requested_train_frames": summary["requested_train_frames"],
         "quality_requested_test_frames": summary["requested_test_frames"],
         "quality_skipped_localization_frames": summary.get("skipped_localization_frames", 0),
+        "quality_skipped_mask_frames": summary.get("skipped_mask_frames", 0),
         "psnr_db": summary["psnr_db"],
         "ssim": summary["ssim"],
         "quality_train_iterations": summary["train_iterations"],
@@ -147,21 +148,25 @@ def _run_quality_child(manifest_path, manifest, model_dir, config, metrics, canc
             raise RuntimeError(f"Phase 4 BM-5 failed (exit {process.returncode}): {detail}. "
                                f"Report: {bm5.report_paths(manifest)['quality_summary']}")
         if not preflight and summary["status"] != "completed":
-            skipped = summary.get("skipped_localization_frames", 0)
+            skipped_localization = summary.get("skipped_localization_frames", 0)
+            skipped_masks = summary.get("skipped_mask_frames", 0)
             details = summary.get("details", {})
-            localization_only = (
+            recorded_skips_only = (
                 summary["status"] == "incomplete"
                 and details.get("stage") == "evaluated"
-                and details.get("incomplete_reason") == "localization_skips"
+                and details.get("incomplete_reason") in {"localization_skips", "recorded_frame_skips"}
                 and not summary["errors"]
-                and type(skipped) is int and skipped > 0
-                and summary["test_frames"] + skipped == summary["requested_test_frames"]
+                and type(skipped_localization) is int and skipped_localization >= 0
+                and type(skipped_masks) is int and skipped_masks >= 0
+                and skipped_localization + skipped_masks > 0
+                and summary["test_frames"] + skipped_localization + skipped_masks == summary["requested_test_frames"]
             )
-            if not localization_only:
-                raise RuntimeError("Phase 4 BM-5 evaluation is incomplete for reasons other than recorded localization skips; see evaluation/summary.json")
+            if not recorded_skips_only:
+                raise RuntimeError("Phase 4 BM-5 evaluation is incomplete for reasons other than recorded localization/empty-mask skips; see evaluation/summary.json")
             log_info(
                 f"BM-5 warning: Evaluated {summary['test_frames']}/{summary['requested_test_frames']} frames; "
-                f"skipped {skipped} localization failures. Continuing mesh extraction and export."
+                f"skipped {skipped_localization} localization failures and {skipped_masks} all-transparent masks. "
+                "Continuing mesh extraction and export."
             )
         return summary
     except Exception as error:

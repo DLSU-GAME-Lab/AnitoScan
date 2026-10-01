@@ -113,7 +113,7 @@ def reset_quality_report(manifest: dict[str, Any], *, status: str = "pending") -
         "quality": settings.get("quality", "fast"),
         "train_frames": 0, "test_frames": 0,
         "requested_train_frames": 0, "requested_test_frames": 0,
-        "skipped_localization_frames": 0,
+        "skipped_localization_frames": 0, "skipped_mask_frames": 0,
         "psnr_db": None, "ssim": None, "split_fingerprint": None,
         "settings": {"evaluate_quality": settings.get("evaluate_quality", False), "test_fraction": settings.get("test_fraction", 0.2)},
         "warnings": [],
