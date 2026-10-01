@@ -160,11 +160,13 @@ Each real evaluation writes under `data/runs/<run>/evaluation/`:
 
 - `split.json`: membership, exclusions, foreground coverage, and input fingerprint.
 - `test_poses.json`: localized test cameras and per-frame localization failures.
-- `summary.json`: measured means, requested/actual counts, quality, iteration, checkpoint/vendor identity, settings, and status.
-- `per_frame.csv`: individual metrics and failure reasons.
+- `summary.json`: measured means, requested/actual counts, `skipped_localization_frames`, quality, iteration, checkpoint/vendor identity, settings, status, and warnings. `details.skipped_localization` lists skipped filenames and their Phase 3 failure reasons.
+- `per_frame.csv`: individual metrics and failure reasons, including `skipped_localization` rows with no scores for known Phase 3 localization failures.
 - `previews/`: rendered/reference pairs for every successfully evaluated test frame, with no preview limit (metrics are computed before PNG quantization).
 
-Phase 4 also appends the summary metrics and paths to `logs/benchmark.jsonl`. All requested test frames must be evaluated for a complete result. Partial evaluations retain their diagnostics but stop Phase 4 instead of silently dropping failed views. An exact image match has infinite PSNR: per-frame CSV uses `inf`, and strict JSON stores a null mean with an explicit explanation. No arbitrary PSNR cap is applied.
+Phase 4 also appends the summary metrics, coverage counts, and paths to `logs/benchmark.jsonl`. Frames explicitly recorded as localization failures in Phase 3 are skipped before rendering and logged individually. If all other test frames evaluate successfully, evaluation exits successfully and mesh extraction/export continue, but the benchmark remains `status: incomplete` with `details.incomplete_reason: localization_skips`. Scores average only the successfully evaluated frames; report evaluated/requested coverage alongside any partial scores. If every test frame is skipped, PSNR and SSIM remain null and reconstruction can still continue. Missing poses without a recorded failure, excluded/invalid references, invalid checkpoints, and rendering errors remain fatal to Phase 4. All requested test frames must be evaluated for `status: completed`.
+
+An exact image match has infinite PSNR: per-frame CSV uses `inf`, and strict JSON stores a null mean with an explicit explanation. No arbitrary PSNR cap is applied.
 
 BM-5 refuses all-frame/unmarked or mismatched spatial/checkpoint caches. Changing evaluation settings, quality, inputs, or relevant training/vendor data requires a new run or an explicit `--force` rebuild. Old scores are invalidated before a new attempt; a failed rerun is not reported using previous scores.
 

@@ -274,8 +274,8 @@ def _run_evaluation_spatial(
         )
         log_info(
             f"BM5 localized {len(poses['cameras'])}/{len(split['test'])} held-out frames. "
-            "Unavailable frames are recorded in evaluation/test_poses.json; "
-            "a complete evaluation requires every test frame."
+            "Localization failures are recorded in evaluation/test_poses.json and skipped during BM-5 rendering. "
+            "Partial localization coverage does not stop reconstruction; a complete benchmark still requires every test frame."
         )
         log_progress(1.0, "Phase 3: Spatial initialization complete")
     except Exception as error:

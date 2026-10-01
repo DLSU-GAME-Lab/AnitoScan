@@ -88,6 +88,7 @@ def new_summary(manifest):
         "benchmark": "BM-5", "status": "incomplete", "run_name": manifest.get("run_name"),
         "quality": settings.get("quality", "fast"), "train_frames": 0, "test_frames": 0,
         "requested_train_frames": 0, "requested_test_frames": 0,
+        "skipped_localization_frames": 0,
         "psnr_db": None, "ssim": None, "train_iterations": None, "split_fingerprint": None,
         "settings": {
             "evaluate_quality": settings.get("evaluate_quality", False),
@@ -103,6 +104,7 @@ def new_summary(manifest):
             "principal_point_tolerance_px": CENTER_TOLERANCE_PX,
         },
         "details": {"paths": {key: str(path) for key, path in report_paths(manifest).items()}},
+        "warnings": [],
         "errors": [],
     }
 
@@ -201,6 +203,10 @@ def load_inputs(manifest, summary):
     _filenames([item["frame"] for item in failed], "test_poses.failed")
     if not {item["frame"] for item in cameras + failed} <= set(split["test"]):
         raise ValueError("test_poses.json contains frames outside the requested test split")
+    if {item["frame"] for item in cameras} & {item["frame"] for item in failed}:
+        raise ValueError("test_poses.json marks the same frame as both localized and failed")
+    if any(not isinstance(item.get("reason"), str) or not item["reason"].strip() for item in failed):
+        raise ValueError("Each Phase 3 localization failure must include a reason")
     summary["details"]["test_poses_sha256"] = file_hash(paths["test_poses"])
     return split, poses
 
@@ -582,14 +588,26 @@ def _evaluate_frames(manifest, split, poses, adapter, model, summary, rows):
     rendering_failed = False
     background = torch.ones(3, dtype=torch.float32, device="cuda")
     preview_paths = []
+    skipped_localization = []
+    summary["details"]["skipped_localization"] = skipped_localization
     for index, frame in enumerate(split["test"]):
         row = {"frame": frame, "status": "incomplete"}
+        # Only explicit Phase 3 failures are nonfatal; missing poses or bad inputs are not.
+        if frame in failed and frame in split["usable_test"] and frame not in excluded:
+            reason = f"Phase 3 camera localization failed: {failed[frame]}"
+            row.update(status="skipped_localization", error=reason)
+            rows.append(row)
+            skipped_localization.append({"frame": frame, "reason": failed[frame]})
+            summary["warnings"].append(f"{frame}: {reason}")
+            log_info(f"BM-5: Skipping {frame} — {reason}")
+            log_info(f"BM5_PROGRESS {index + 1}/{len(split['test'])} {frame}: skipped_localization")
+            continue
         camera = None
         try:
             if frame not in split["usable_test"] or frame in excluded:
                 raise QualityIncompleteError(f"Excluded test frame: {excluded.get(frame, 'not in usable_test')}")
-            if frame in failed or frame not in cameras:
-                raise QualityIncompleteError(f"Test localization failed: {failed.get(frame, 'camera missing from test_poses.json')}")
+            if frame not in cameras:
+                raise QualityIncompleteError("Camera missing from test_poses.json without a recorded Phase 3 localization failure")
             coverage = split["foreground_coverage"].get(frame)
             if coverage is not None:
                 if isinstance(coverage, bool) or not isinstance(coverage, (int, float)) or not math.isfinite(coverage) or not 0 <= coverage <= 1:
@@ -637,6 +655,7 @@ def _evaluate_frames(manifest, split, poses, adapter, model, summary, rows):
         rows.append(row)
         log_info(f"BM5_PROGRESS {index + 1}/{len(split['test'])} {frame}: {row['status']}")
     summary["test_frames"] = len(scores)
+    summary["skipped_localization_frames"] = len(skipped_localization)
     summary["details"]["previews"] = preview_paths
     if scores:
         psnr_mean = float(np.mean([score[0] for score in scores], dtype=np.float64))
@@ -648,10 +667,11 @@ def _evaluate_frames(manifest, split, poses, adapter, model, summary, rows):
     summary["details"]["metrics_cover_evaluated_frames_only"] = len(scores) != len(split["test"])
     if rendering_failed:
         raise RuntimeError("One or more held-out renders/metrics failed; see per_frame.csv and summary.json")
-    if len(scores) != len(split["test"]):
+    if len(scores) + len(skipped_localization) != len(split["test"]):
         raise QualityIncompleteError(
-            f"Evaluated {len(scores)}/{len(split['test'])} requested test frames. "
-            "Fix missing/blank references or failed Phase 3 localization and rerun Phase 4; do not drop requested test frames."
+            f"Evaluated {len(scores)}/{len(split['test'])} requested test frames; "
+            f"skipped {len(skipped_localization)} recorded Phase 3 localization failures. "
+            "Other frames could not be evaluated; fix their references/poses before rerunning."
         )
 
 
@@ -707,10 +727,21 @@ def run_evaluation(manifest_path, model_dir=None, iteration=None, *, preflight=F
                 raise RuntimeError("The saved Gaussian checkpoint is empty or contains non-finite positions")
             summary["details"]["gaussians"] = int(gaussians.get_xyz.shape[0])
             _evaluate_frames(manifest, split, poses, adapter, gaussians, summary, rows)
-        summary["status"] = "completed"
+        skipped = summary["skipped_localization_frames"]
+        summary["status"] = "incomplete" if skipped else "completed"
         summary["details"]["stage"] = "evaluated"
+        if skipped:
+            summary["details"]["incomplete_reason"] = "localization_skips"
         save_report(manifest, summary, rows)
-        log_info(f"BM-5 completed: PSNR={summary['psnr_db']} dB, SSIM={summary['ssim']}; {paths['quality_summary']}")
+        log_info(
+            f"BM-5 {summary['status']}: Evaluated {summary['test_frames']}/{summary['requested_test_frames']} frames; "
+            f"skipped {skipped} due to Phase 3 localization failures. "
+            f"PSNR={summary['psnr_db']} dB, SSIM={summary['ssim']}; {paths['quality_summary']}"
+        )
+        if skipped:
+            log_info("BM-5 warning: Partial coverage; reconstruction can continue. Report evaluated/requested counts alongside any scores.")
+            if not summary["test_frames"]:
+                log_info("BM-5 warning: No test frames could be evaluated; PSNR and SSIM are unavailable.")
         return summary
     except (Exception, SystemExit) as error:
         summary["status"] = "incomplete" if isinstance(error, QualityIncompleteError) else "failed"
