@@ -61,6 +61,8 @@ Thumbs.db
 
 .cache/
 
+*.egg-info/
+
 # Vendor
 # Block the heavy dependency folders entirely
 /vendor/imgui/
