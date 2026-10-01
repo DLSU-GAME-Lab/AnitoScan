@@ -189,6 +189,8 @@ GLuint Model::LoadTexture(const std::string& filename) {
 	int width, height, channels;
 	stbi_set_flip_vertically_on_load(true);
 	unsigned char* data = stbi_load(fullPath.c_str(), &width, &height, &channels, 0);
+	// Do not leave model texture orientation enabled for subsequent UI image loads.
+	stbi_set_flip_vertically_on_load(false);
 	if (!data) {
 		std::cerr << "[ERROR]: Failed to load model's texture" << fullPath << std::endl;
 		return 0;

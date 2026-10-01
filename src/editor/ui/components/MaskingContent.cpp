@@ -287,6 +287,8 @@ bool MaskingContent::LoadPreview(const char* path) {
     loadedPath_ = path;
 
     int channels = 0;
+    // Preview UVs and custom-box coordinates both use the source image's top-left origin.
+    stbi_set_flip_vertically_on_load(false);
     stbi_uc* pixels = stbi_load(path, &textureWidth_, &textureHeight_, &channels, 4);
     if (pixels == nullptr) {
         return false;
