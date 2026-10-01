@@ -69,6 +69,8 @@ Thumbs.db
 /vendor/tinyobjloader/
 /vendor/glm/
 
-/vendor/2d-gaussian-splatting/
+# /vendor/2d-gaussian-splatting/
+/vendor/2d-gaussian-splatting/submodules/diff-surfel-rasterization/build
+/vendor/2d-gaussian-splatting/submodules/simple-knn/build
 
 imgui.ini
